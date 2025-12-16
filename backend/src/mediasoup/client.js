@@ -1,13 +1,15 @@
 import WebSocket from "ws";
 import { randomUUID } from "crypto";
 
-const MEDIASOUP_WS = "ws://mediasoup:4000";
+const MEDIASOUP_HOST = process.env.MEDIASOUP_HOST || "127.0.0.1";
+const MEDIASOUP_PORT = process.env.MEDIASOUP_PORT || 4000;
+
 
 let socket;
 const pending = new Map();
 
 export function connectMediasoup() {
-    socket = new WebSocket(MEDIASOUP_WS);
+    socket = new WebSocket(`ws://${MEDIASOUP_HOST}:${MEDIASOUP_PORT}`);
 
     socket.on("open", () => {
         console.log("🔗 Connected to mediasoup");
