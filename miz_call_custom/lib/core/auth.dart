@@ -93,6 +93,37 @@ class AuthService {
     }
   }
 
+  Future<Map<String, dynamic>> _patch({
+    required String path,
+    required Map<String, dynamic> payload,
+    String? bearer,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final response = await _client.patch(
+      uri,
+      headers: {
+        'Content-Type': 'application/json',
+        if (bearer != null) 'Authorization': 'Bearer $bearer',
+      },
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (response.body.isEmpty) return {};
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    try {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final message = data['error'] ?? data['message'] ?? response.body;
+      throw Exception(message.toString());
+    } catch (_) {
+      throw Exception(
+        'Auth request failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
+
   Future<CreatedUser> createUser({
     required String token,
     required String username,
@@ -137,6 +168,39 @@ class AuthService {
     return list
         .map((e) => HostCall.fromMap(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<void> setUserEnabled({
+    required String token,
+    required String userId,
+    required bool enabled,
+  }) async {
+    await _patch(
+      path: '/host/users/$userId',
+      bearer: token,
+      payload: {'enabled': enabled},
+    );
+  }
+
+  Future<void> deleteUser({
+    required String token,
+    required String userId,
+  }) async {
+    final uri = Uri.parse('$baseUrl/host/users/$userId');
+    final response = await _client.delete(
+      uri,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) return;
+    try {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final message = data['error'] ?? data['message'] ?? response.body;
+      throw Exception(message.toString());
+    } catch (_) {
+      throw Exception(
+        'Auth request failed (${response.statusCode}): ${response.body}',
+      );
+    }
   }
 
   Future<Map<String, dynamic>> _get({

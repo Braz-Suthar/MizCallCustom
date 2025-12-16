@@ -43,6 +43,21 @@ router.patch(
   }
 );
 
+/* DELETE USER */
+router.delete(
+  "/users/:userId",
+  requireAuth,
+  requireHost,
+  async (req, res) => {
+    await query(
+      `DELETE FROM users 
+       WHERE id = $1 AND host_id = $2`,
+      [req.params.userId, req.hostId]
+    );
+    res.sendStatus(204);
+  }
+);
+
 /* LIST USERS FOR HOST */
 router.get("/users", requireAuth, requireHost, async (req, res) => {
   const result = await query(
