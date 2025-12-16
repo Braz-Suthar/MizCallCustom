@@ -1,0 +1,9 @@
+{
+    "name": "mizcallcustom-mediasoup",
+    "type": "module",
+    "dependencies": {
+        "mediasoup": "^3.14.7",
+        "ws": "^8.16.0",
+        "uuid": "^9.0.1"
+    }
+}

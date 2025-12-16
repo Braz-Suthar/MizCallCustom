@@ -1,0 +1,122 @@
+########################################
+# OS / Editor
+########################################
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+*.iml
+
+########################################
+# Environment / Secrets
+########################################
+.env
+.env.*
+!.env.example
+
+########################################
+# Logs
+########################################
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+########################################
+# Node.js (Backend / Recorder / Mediasoup)
+########################################
+node_modules/
+dist/
+build/
+coverage/
+
+########################################
+# Docker
+########################################
+docker-data/
+docker-volumes/
+**/docker-data/
+**/docker-volumes/
+
+########################################
+# PostgreSQL / Redis (local data)
+########################################
+postgres-data/
+redis-data/
+**/postgres-data/
+**/redis-data/
+
+########################################
+# Recordings (server storage)
+########################################
+recordings/
+audio-recordings/
+**/recordings/
+**/audio-recordings/
+
+########################################
+# Flutter / Dart
+########################################
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+
+########################################
+# Flutter platform folders
+########################################
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Runner.xcworkspace/
+
+# macOS
+macos/Pods/
+macos/Flutter/ephemeral/
+
+# Windows
+windows/flutter/ephemeral/
+windows/.vs/
+windows/CMakeSettings.json
+
+########################################
+# Gradle / Kotlin
+########################################
+.gradle/
+**/.gradle/
+**/build/
+
+########################################
+# C++ / Native (if added later)
+########################################
+*.o
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+
+########################################
+# Misc
+########################################
+tmp/
+temp/
+.cache/
+*.pid

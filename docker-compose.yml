@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  mediasoup:
+    build: ./mediasoup-server
+    ports:
+      - "4000:4000"
+      - "40000-40100:40000-40100/udp"
+    environment:
+      MEDIASOUP_RTC_MIN_PORT: 40000
+      MEDIASOUP_RTC_MAX_PORT: 40100
+
+  api:
+    build: ./backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.example
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - recordings:/var/app/recordings
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mizcallcustom
+      POSTGRES_USER: miz
+      POSTGRES_PASSWORD: mizpass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  redis:
+    image: redis:7
+    volumes:
+      - redisdata:/data
+
+  recorder:
+    build: ./recorder
+    ports:
+      - "7000:7000"
+    volumes:
+      - recordings:/var/app/recordings
+    depends_on:
+      - mediasoup
+
+volumes:
+  pgdata:
+  redisdata:
+  recordings:
