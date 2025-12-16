@@ -152,7 +152,10 @@ class _CallScreenState extends State<CallScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Live Call")),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text("Live Call"),
+      ),
       body: Column(
         children: [
           Expanded(

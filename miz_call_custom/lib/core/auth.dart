@@ -122,6 +122,49 @@ class AuthService {
     if (roomId == null) throw Exception('roomId missing in response');
     return roomId;
   }
+
+  Future<List<HostUser>> fetchUsers({required String token}) async {
+    final data = await _get(path: '/host/users', bearer: token);
+    final list = data['users'] as List<dynamic>? ?? [];
+    return list
+        .map((e) => HostUser.fromMap(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<List<HostCall>> fetchCalls({required String token}) async {
+    final data = await _get(path: '/host/calls', bearer: token);
+    final list = data['calls'] as List<dynamic>? ?? [];
+    return list
+        .map((e) => HostCall.fromMap(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> _get({
+    required String path,
+    String? bearer,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final response = await _client.get(
+      uri,
+      headers: {
+        if (bearer != null) 'Authorization': 'Bearer $bearer',
+      },
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    try {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final message = data['error'] ?? data['message'] ?? response.body;
+      throw Exception(message.toString());
+    } catch (_) {
+      throw Exception(
+        'Auth request failed (${response.statusCode}): ${response.body}',
+      );
+    }
+  }
 }
 
 class AuthResult {
@@ -134,4 +177,50 @@ class CreatedUser {
   CreatedUser({required this.userId, this.password});
   final String userId;
   final String? password;
+}
+
+class HostUser {
+  HostUser({
+    required this.id,
+    required this.username,
+    required this.enabled,
+    this.lastSpeaking,
+  });
+
+  final String id;
+  final String username;
+  final bool enabled;
+  final String? lastSpeaking;
+
+  factory HostUser.fromMap(Map<String, dynamic> map) {
+    return HostUser(
+      id: map['id'] as String,
+      username: map['username'] as String,
+      enabled: (map['enabled'] as bool?) ?? true,
+      lastSpeaking: map['last_speaking']?.toString(),
+    );
+  }
+}
+
+class HostCall {
+  HostCall({
+    required this.id,
+    required this.status,
+    required this.startedAt,
+    this.endedAt,
+  });
+
+  final String id;
+  final String status;
+  final String startedAt;
+  final String? endedAt;
+
+  factory HostCall.fromMap(Map<String, dynamic> map) {
+    return HostCall(
+      id: map['id'] as String,
+      status: map['status']?.toString() ?? '',
+      startedAt: map['started_at']?.toString() ?? '',
+      endedAt: map['ended_at']?.toString(),
+    );
+  }
 }

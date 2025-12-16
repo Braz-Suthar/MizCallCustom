@@ -4,7 +4,7 @@ import '../core/auth.dart';
 import '../core/config.dart';
 import 'call_screen.dart';
 
-class HostDashboardScreen extends StatefulWidget {
+class HostDashboardScreen extends StatelessWidget {
   const HostDashboardScreen({
     super.key,
     required this.jwtToken,
@@ -15,10 +15,30 @@ class HostDashboardScreen extends StatefulWidget {
   final String? hostId;
 
   @override
-  State<HostDashboardScreen> createState() => _HostDashboardScreenState();
+  @override
+  Widget build(BuildContext context) {
+    return HostDashboardBody(
+      jwtToken: jwtToken,
+      hostId: hostId,
+    );
+  }
 }
 
-class _HostDashboardScreenState extends State<HostDashboardScreen> {
+class HostDashboardBody extends StatefulWidget {
+  const HostDashboardBody({
+    super.key,
+    required this.jwtToken,
+    this.hostId,
+  });
+
+  final String jwtToken;
+  final String? hostId;
+
+  @override
+  State<HostDashboardBody> createState() => _HostDashboardBodyState();
+}
+
+class _HostDashboardBodyState extends State<HostDashboardBody> {
   final _auth = AuthService();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -94,67 +114,94 @@ class _HostDashboardScreenState extends State<HostDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Host Dashboard')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (widget.hostId != null)
-              Text(
-                'Host ID: ${widget.hostId}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _usernameController,
-              decoration: const InputDecoration(
-                labelText: 'New user username',
-              ),
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.hostId != null)
+            Text(
+              'Host ID: ${widget.hostId}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _passwordController,
-              decoration: const InputDecoration(
-                labelText: 'Password (optional, random if blank)',
+          const SizedBox(height: 16),
+          Text(
+            'Quick actions',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _busy ? null : _startCall,
+                  icon: const Icon(Icons.call),
+                  label: const Text('Start call'),
+                ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _createUser,
+                  icon: const Icon(Icons.person_add_alt_1),
+                  label: const Text('Add user'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Add user',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _usernameController,
+            decoration: const InputDecoration(
+              labelText: 'New user username',
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _busy ? null : _createUser,
-                child: _busy
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Add new user'),
-              ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _passwordController,
+            decoration: const InputDecoration(
+              labelText: 'Password (optional, random if blank)',
             ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: _busy ? null : _startCall,
-                child: const Text('Start new call'),
-              ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _busy ? null : _createUser,
+              child: _busy
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Add new user'),
             ),
-            const SizedBox(height: 12),
-            if (_error != null)
-              Text(
-                _error!,
-                style: const TextStyle(color: Colors.redAccent),
-              ),
-            if (_message != null)
-              Text(
-                _message!,
-                style: const TextStyle(color: Colors.green),
-              ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: _busy ? null : _startCall,
+              child: const Text('Start new call'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_error != null)
+            Text(
+              _error!,
+              style: const TextStyle(color: Colors.redAccent),
+            ),
+          if (_message != null)
+            Text(
+              _message!,
+              style: const TextStyle(color: Colors.green),
+            ),
+        ],
       ),
     );
   }

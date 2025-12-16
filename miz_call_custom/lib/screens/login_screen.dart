@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
 import '../core/config.dart';
-import 'host_dashboard_screen.dart';
+import 'host_home_screen.dart';
 import 'host_register_screen.dart';
 import 'call_screen.dart';
 
@@ -66,7 +66,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => HostDashboardScreen(
+            builder: (_) => HostHomeScreen(
               jwtToken: token,
               hostId: hostId,
             ),
@@ -95,7 +95,10 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text('Login'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

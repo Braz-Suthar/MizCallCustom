@@ -43,6 +43,18 @@ router.patch(
   }
 );
 
+/* LIST USERS FOR HOST */
+router.get("/users", requireAuth, requireHost, async (req, res) => {
+  const result = await query(
+    `SELECT id, username, enabled, last_speaking
+     FROM users
+     WHERE host_id = $1
+     ORDER BY username`,
+    [req.hostId]
+  );
+  res.json({ users: result.rows });
+});
+
 /* START CALL (LOGICAL ONLY FOR NOW) */
 router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
   const roomId = uuid();
@@ -54,6 +66,18 @@ router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
   );
 
   res.json({ roomId });
+});
+
+/* LIST CALLS FOR HOST */
+router.get("/calls", requireAuth, requireHost, async (req, res) => {
+  const result = await query(
+    `SELECT id, status, started_at, ended_at
+     FROM rooms
+     WHERE host_id = $1
+     ORDER BY started_at DESC`,
+    [req.hostId]
+  );
+  res.json({ calls: result.rows });
 });
 
 export default router;

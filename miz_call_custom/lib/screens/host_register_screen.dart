@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
-import 'host_dashboard_screen.dart';
+import 'host_home_screen.dart';
 
 class HostRegisterScreen extends StatefulWidget {
   const HostRegisterScreen({super.key});
@@ -43,7 +43,7 @@ class _HostRegisterScreenState extends State<HostRegisterScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => HostDashboardScreen(
+          builder: (_) => HostHomeScreen(
             jwtToken: result.token,
             hostId: result.hostId,
           ),
@@ -61,7 +61,10 @@ class _HostRegisterScreenState extends State<HostRegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Register Host')),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text('Register Host'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
