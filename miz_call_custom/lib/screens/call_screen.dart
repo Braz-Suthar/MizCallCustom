@@ -28,6 +28,7 @@ class _CallScreenState extends State<CallScreen> {
   late final WebRTCService _webrtc;
   late final SignalingClient _signaling;
   List<Map<String, dynamic>>? _iceServers;
+  bool _webrtcReady = false;
 
   bool _connected = false;
   bool _speaking = false;
@@ -43,9 +44,7 @@ class _CallScreenState extends State<CallScreen> {
       // 1️⃣ Mic permission
       await requestMicPermission();
 
-      // 2️⃣ Init WebRTC (audio-only)
       _webrtc = WebRTCService();
-      await _webrtc.init();
 
       if (WebRTC.platformIsAndroid) {
         await Helper.setAndroidAudioConfiguration(
@@ -57,6 +56,9 @@ class _CallScreenState extends State<CallScreen> {
       // 3️⃣ Connect signaling
       _signaling = SignalingClient(widget.wsUrl);
       _signaling.stream.listen(_onSignal);
+
+      // Optional eager init with whatever ice we have (likely empty)
+      await _ensureWebrtcReady();
 
       // 4️⃣ Join room
       _signaling.send({
@@ -75,12 +77,11 @@ class _CallScreenState extends State<CallScreen> {
 
     switch (msg["type"]) {
       case "TURN_CONFIG":
-  _iceServers = List<Map<String, dynamic>>.from(msg["iceServers"]);
-
-  _webrtc = WebRTCService();
-  await _webrtc.init(_iceServers!);
-  break;
+        _iceServers = List<Map<String, dynamic>>.from(msg["iceServers"]);
+        await _ensureWebrtcReady();
+        break;
       case "SEND_TRANSPORT_CREATED":
+        await _ensureWebrtcReady();
         // CONNECT send transport (DTLS)
         _signaling.send({
           "type": "CONNECT_SEND_TRANSPORT",
@@ -96,6 +97,7 @@ class _CallScreenState extends State<CallScreen> {
         break;
 
       case "RECV_TRANSPORT_CREATED":
+        await _ensureWebrtcReady();
         // CONNECT recv transport (DTLS)
         _signaling.send({
           "type": "CONNECT_RECV_TRANSPORT",
@@ -135,8 +137,16 @@ class _CallScreenState extends State<CallScreen> {
   @override
   void dispose() {
     _signaling.close();
-    _webrtc.dispose();
+    if (_webrtcReady) {
+      _webrtc.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _ensureWebrtcReady() async {
+    if (_webrtcReady) return;
+    await _webrtc.init(_iceServers ?? const []);
+    _webrtcReady = true;
   }
 
   @override

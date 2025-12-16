@@ -1,27 +1,38 @@
 version: "3.9"
 
 services:
+  # ========================
+  # MEDIASOUP (HOST NETWORK)
+  # ========================
   mediasoup:
     build: ./mediasoup-server
-    ports:
-      - "4000:4000"
-      - "40000-40100:40000-40100/udp"
+    network_mode: host
+    env_file:
+      - .env
     environment:
       MEDIASOUP_RTC_MIN_PORT: 40000
       MEDIASOUP_RTC_MAX_PORT: 40100
+    restart: always
 
+  # ========================
+  # API (INTERNAL ONLY)
+  # ========================
   api:
     build: ./backend
-    ports:
-      - "3000:3000"
     env_file:
-      - .env.example
+      - .env
+    ports:
+      - "127.0.0.1:3100:3100"
     depends_on:
       - postgres
       - redis
     volumes:
       - recordings:/var/app/recordings
+    restart: always
 
+  # ========================
+  # POSTGRES
+  # ========================
   postgres:
     image: postgres:15
     environment:
@@ -31,20 +42,29 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: always
 
+  # ========================
+  # REDIS
+  # ========================
   redis:
     image: redis:7
     volumes:
       - redisdata:/data
+    restart: always
 
+  # ========================
+  # RECORDER (INTERNAL)
+  # ========================
   recorder:
     build: ./recorder
-    ports:
-      - "7000:7000"
+    env_file:
+      - .env
     volumes:
       - recordings:/var/app/recordings
     depends_on:
       - mediasoup
+    restart: always
 
 volumes:
   pgdata:
