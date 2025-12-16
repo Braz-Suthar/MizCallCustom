@@ -47,6 +47,17 @@ export function handleSocket({ socket, router, peers }) {
                     }
                 }));
 
+                socket.send(JSON.stringify({
+                    type: "TURN_CONFIG",
+                    iceServers: [
+                      {
+                        urls: process.env.TURN_URLS.split(","),
+                        username: process.env.TURN_USERNAME,
+                        credential: process.env.TURN_PASSWORD,
+                      }
+                    ]
+                  }));
+
                 break;
             }
 

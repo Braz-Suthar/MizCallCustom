@@ -8,11 +8,11 @@ class WebRTCService {
   RTCRtpSender? _audioSender;
 
   /// Initialize WebRTC (audio only)
-  Future<void> init() async {
+  Future<void> init(List<Map<String, dynamic>> iceServers) async {
     pc = await createPeerConnection({
-      'iceServers': [],
-      'sdpSemantics': 'unified-plan',
-    });
+    'iceServers': iceServers,
+    'sdpSemantics': 'unified-plan',
+  });
 
     // Attach remote audio handler EARLY
     pc.onTrack = (event) {

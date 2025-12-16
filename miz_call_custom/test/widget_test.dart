@@ -13,6 +13,7 @@ void main() {
   testWidgets('App renders login button', (WidgetTester tester) async {
     await tester.pumpWidget(const MizCallCustomApp());
 
-    expect(find.text('Login (Mock)'), findsOneWidget);
+    expect(find.text('Login'), findsOneWidget);
+    expect(find.text('Login as Host'), findsOneWidget);
   });
 }

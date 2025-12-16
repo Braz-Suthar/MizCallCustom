@@ -4,13 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../core/auth.dart';
+import '../core/background_audio.dart';
+import '../core/config.dart';
 import '../signaling/signaling_client.dart';
 import '../webrtc/webrtc_service.dart';
 import '../widgets/mic_button.dart';
-import '../core/background_audio.dart';
 
 class CallScreen extends StatefulWidget {
-  const CallScreen({super.key});
+  const CallScreen({
+    super.key,
+    required this.jwtToken,
+    this.wsUrl = defaultWsUrl,
+  });
+
+  final String jwtToken;
+  final String wsUrl;
 
   @override
   State<CallScreen> createState() => _CallScreenState();
@@ -19,16 +27,10 @@ class CallScreen extends StatefulWidget {
 class _CallScreenState extends State<CallScreen> {
   late final WebRTCService _webrtc;
   late final SignalingClient _signaling;
+  List<Map<String, dynamic>>? _iceServers;
 
   bool _connected = false;
   bool _speaking = false;
-
-  // TODO: inject real JWT from login
-  final String jwtToken = "REPLACE_WITH_REAL_JWT";
-
-  // Android emulator → 10.0.2.2
-  // Real device → your LAN IP
-  final String wsUrl = "ws://10.0.2.2:3000/ws";
 
   @override
   void initState() {
@@ -53,13 +55,13 @@ class _CallScreenState extends State<CallScreen> {
 
       await BackgroundAudio.start();
       // 3️⃣ Connect signaling
-      _signaling = SignalingClient(wsUrl);
+      _signaling = SignalingClient(widget.wsUrl);
       _signaling.stream.listen(_onSignal);
 
       // 4️⃣ Join room
       _signaling.send({
         "type": "JOIN",
-        "token": jwtToken,
+        "token": widget.jwtToken,
       });
 
       setState(() => _connected = true);
@@ -72,6 +74,12 @@ class _CallScreenState extends State<CallScreen> {
     final msg = jsonDecode(raw);
 
     switch (msg["type"]) {
+      case "TURN_CONFIG":
+  _iceServers = List<Map<String, dynamic>>.from(msg["iceServers"]);
+
+  _webrtc = WebRTCService();
+  await _webrtc.init(_iceServers!);
+  break;
       case "SEND_TRANSPORT_CREATED":
         // CONNECT send transport (DTLS)
         _signaling.send({
