@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'host_dashboard_screen.dart';
 import '../core/auth.dart';
 import '../core/config.dart';
+import '../core/theme.dart';
+import '../core/session.dart';
+import 'host_dashboard_screen.dart';
 import 'call_screen.dart';
 
 class HostHomeScreen extends StatefulWidget {
@@ -73,6 +75,8 @@ class _HostHomeScreenState extends State<HostHomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
         type: BottomNavigationBarType.fixed,
+        showSelectedLabels: false,
+        showUnselectedLabels: false,
         onTap: (i) => setState(() => _index = i),
         items: _tabs
             .map(
@@ -164,105 +168,102 @@ class _HostUsersTabState extends State<HostUsersTab> {
       context: context,
       barrierDismissible: true,
       builder: (ctx) {
-        return Dialog(
-          backgroundColor: Colors.blueGrey.shade900,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Create User',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Create User',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text('Full Name'),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        decoration: const InputDecoration(
+                          hintText: "Enter user's full name",
                         ),
+                        onChanged: (v) => username = v,
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? 'Required' : null,
                       ),
-                      IconButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        icon: const Icon(Icons.close),
+                      const SizedBox(height: 16),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Active Status'),
+                        value: active,
+                        onChanged: (v) => setModalState(() => active = v),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Full Name'),
-                  const SizedBox(height: 8),
-                  TextFormField(
-                    decoration: const InputDecoration(
-                      hintText: "Enter user's full name",
-                    ),
-                    onChanged: (v) => username = v,
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Active Status'),
-                    value: active,
-                    onChanged: (v) {
-                      setState(() {
-                        active = v;
-                      });
-                    },
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Use Custom Password'),
-                    value: useCustomPassword,
-                    onChanged: (v) {
-                      setState(() {
-                        useCustomPassword = v;
-                      });
-                    },
-                  ),
-                  if (useCustomPassword) ...[
-                    const SizedBox(height: 8),
-                    const Text('Password'),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      decoration: const InputDecoration(
-                        hintText: 'Enter custom password',
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Use Custom Password'),
+                        value: useCustomPassword,
+                        onChanged: (v) =>
+                            setModalState(() => useCustomPassword = v),
                       ),
-                      onChanged: (v) => password = v,
-                      validator: (v) {
-                        if (!useCustomPassword) return null;
-                        return (v == null || v.isEmpty)
-                            ? 'Password required'
-                            : null;
-                      },
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        child: const Text('Cancel'),
-                      ),
-                      ElevatedButton(
-                        onPressed: () {
-                          if (formKey.currentState?.validate() ?? false) {
-                            Navigator.pop(ctx, true);
-                          }
-                        },
-                        child: const Text('Create'),
+                      if (useCustomPassword) ...[
+                        const SizedBox(height: 8),
+                        const Text('Password'),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          decoration: const InputDecoration(
+                            hintText: 'Enter custom password',
+                          ),
+                          onChanged: (v) => password = v,
+                          validator: (v) {
+                            if (!useCustomPassword) return null;
+                            return (v == null || v.isEmpty)
+                                ? 'Password required'
+                                : null;
+                          },
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancel'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () {
+                              if (formKey.currentState?.validate() ?? false) {
+                                Navigator.pop(ctx, true);
+                              }
+                            },
+                            child: const Text('Create'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -316,30 +317,11 @@ class _HostUsersTabState extends State<HostUsersTab> {
   Widget build(BuildContext context) {
     final users = _filteredUsers;
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Users'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refresh,
-          ),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-              onPressed: _addUser,
-              icon: const Icon(Icons.add),
-              label: const Text('Create User'),
-            ),
-            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -391,7 +373,7 @@ class _HostUsersTabState extends State<HostUsersTab> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade900,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -412,7 +394,7 @@ class _HostUsersTabState extends State<HostUsersTab> {
         margin: const EdgeInsets.only(top: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.blueGrey.shade800,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
@@ -447,6 +429,9 @@ class _HostUsersTabState extends State<HostUsersTab> {
                       case 'details':
                         _showUserDetails(user);
                         break;
+                      case 'edit':
+                        _editUser(user);
+                        break;
                       case 'delete':
                         _confirmDelete(user);
                         break;
@@ -456,6 +441,10 @@ class _HostUsersTabState extends State<HostUsersTab> {
                     const PopupMenuItem(
                       value: 'details',
                       child: Text('View details'),
+                    ),
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Text('Edit'),
                     ),
                     const PopupMenuItem(
                       value: 'delete',
@@ -495,7 +484,7 @@ class _HostUsersTabState extends State<HostUsersTab> {
       barrierDismissible: true,
       builder: (ctx) {
         return Dialog(
-          backgroundColor: Colors.blueGrey.shade900,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Padding(
@@ -543,7 +532,7 @@ class _HostUsersTabState extends State<HostUsersTab> {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.blueGrey.shade800,
+                    color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Column(
@@ -632,7 +621,7 @@ class _HostUsersTabState extends State<HostUsersTab> {
       barrierDismissible: true,
       builder: (ctx) {
         return Dialog(
-          backgroundColor: Colors.blueGrey.shade900,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: Padding(
@@ -719,6 +708,82 @@ class _HostUsersTabState extends State<HostUsersTab> {
         SnackBar(content: Text('Delete failed: $e')),
       );
     }
+  }
+
+  Future<void> _editUser(HostUser user) async {
+    bool active = user.enabled;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Edit User',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(user.username.isEmpty ? user.id : user.username),
+                    const SizedBox(height: 12),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Active Status'),
+                      value: active,
+                      onChanged: (v) => setModalState(() => active = v),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result != true) return;
+
+    await _auth.setUserEnabled(
+      token: widget.jwtToken,
+      userId: user.id,
+      enabled: active,
+    );
+    await _refresh();
   }
 }
 
@@ -809,30 +874,11 @@ class _HostCallsTabState extends State<HostCallsTab> {
   Widget build(BuildContext context) {
     final calls = _filteredCalls;
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Calls'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _refresh,
-          ),
-        ],
-      ),
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size.fromHeight(52),
-              ),
-              onPressed: _startCall,
-              icon: const Icon(Icons.add),
-              label: const Text('New Call'),
-            ),
-            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -875,6 +921,10 @@ class _HostCallsTabState extends State<HostCallsTab> {
           ],
         ),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _startCall,
+        child: const Icon(Icons.add_call),
+      ),
     );
   }
 
@@ -887,7 +937,7 @@ class _HostCallsTabState extends State<HostCallsTab> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade900,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -983,16 +1033,13 @@ class HostSettingsTab extends StatelessWidget {
   final String? hostId;
 
   void _logout(BuildContext context) {
+    Session.clear();
     Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Settings'),
-      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -1009,6 +1056,7 @@ class HostSettingsTab extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _card(
+            context,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1026,7 +1074,7 @@ class HostSettingsTab extends StatelessWidget {
                 Center(
                   child: CircleAvatar(
                     radius: 48,
-                    backgroundColor: Colors.blueGrey.shade800,
+                    backgroundColor: Theme.of(context).colorScheme.surface,
                     child: const Icon(Icons.person, size: 48),
                   ),
                 ),
@@ -1059,6 +1107,7 @@ class HostSettingsTab extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _card(
+            context,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1102,6 +1151,7 @@ class HostSettingsTab extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _card(
+            context,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1116,13 +1166,30 @@ class HostSettingsTab extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Dark Mode'),
+                    ValueListenableBuilder(
+                      valueListenable: ThemeController.instance.mode,
+                      builder: (context, mode, _) {
+                        return Switch(
+                          value: mode == ThemeMode.dark,
+                          onChanged: (v) =>
+                              ThemeController.instance.toggle(v),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
                 const Text('Laptop Preview'),
                 const SizedBox(height: 8),
-                _previewBox(height: 120),
+                _previewBox(context, height: 120),
                 const SizedBox(height: 16),
                 const Text('Mobile Preview'),
                 const SizedBox(height: 8),
-                _previewBox(height: 140, width: 90),
+                _previewBox(context, height: 140, width: 90),
                 const SizedBox(height: 16),
                 const Text('Choose your background:'),
                 const SizedBox(height: 8),
@@ -1130,10 +1197,10 @@ class HostSettingsTab extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _thumbBox(label: 'Wave'),
-                    _thumbBox(label: 'Sunset'),
-                    _thumbBox(label: 'Blue'),
-                    _thumbBox(label: 'Custom', add: true),
+                    _thumbBox(context, label: 'Wave'),
+                    _thumbBox(context, label: 'Sunset'),
+                    _thumbBox(context, label: 'Blue'),
+                    _thumbBox(context, label: 'Custom', add: true),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -1172,11 +1239,11 @@ class HostSettingsTab extends StatelessWidget {
     );
   }
 
-  Widget _card({required Widget child}) {
+  Widget _card(BuildContext context, {required Widget child}) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade900,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: child,
@@ -1211,26 +1278,27 @@ class HostSettingsTab extends StatelessWidget {
     );
   }
 
-  Widget _previewBox({double? width, required double height}) {
+  Widget _previewBox(BuildContext context,
+      {double? width, required double height}) {
     return Container(
       width: width ?? double.infinity,
       height: height,
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade800,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
       ),
       child: const Center(child: Icon(Icons.image, size: 32)),
     );
   }
 
-  Widget _thumbBox({required String label, bool add = false}) {
+  Widget _thumbBox(BuildContext context, {required String label, bool add = false}) {
     return Container(
       width: 70,
       height: 44,
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade800,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blueGrey.shade700),
+        border: Border.all(color: Theme.of(context).dividerColor),
       ),
       child: Center(
         child: add

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
 import '../core/config.dart';
+import '../core/session.dart';
+import '../core/theme.dart';
 import 'host_home_screen.dart';
 import 'host_register_screen.dart';
 import 'call_screen.dart';
@@ -16,26 +18,21 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _auth = AuthService();
 
-  final _hostIdController = TextEditingController();
-  final _userIdController = TextEditingController();
+  final _idController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  bool _isHost = true;
   bool _loading = false;
   String? _error;
 
   @override
   void dispose() {
-    _hostIdController.dispose();
-    _userIdController.dispose();
+    _idController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  bool _isValidHostId(String value) =>
-      RegExp(r"^H\d{6}$").hasMatch(value.trim());
-  bool _isValidUserId(String value) =>
-      RegExp(r"^U\d{6}$").hasMatch(value.trim());
+  bool _isValidHostId(String value) => RegExp(r"^H\\d{6}$").hasMatch(value.trim());
+  bool _isValidUserId(String value) => RegExp(r"^U\\d{6}$").hasMatch(value.trim());
 
   Future<void> _login() async {
     setState(() {
@@ -45,24 +42,28 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       late final String token;
+      final id = _idController.text.trim();
+      final password = _passwordController.text;
+
+      if (!_isValidHostId(id) && !_isValidUserId(id)) {
+        throw Exception('ID must start with H or U followed by 6 digits');
+      }
+
       String? hostId;
-      if (_isHost) {
-        hostId = _hostIdController.text.trim();
-        if (!_isValidHostId(hostId)) {
-          throw Exception('Host ID must look like H123456');
-        }
+      if (id.startsWith('H')) {
+        hostId = id;
         token = await _auth.loginHost(hostId);
+        await Session.save(token: token, role: 'host', hostId: hostId);
       } else {
-        final userId = _userIdController.text.trim();
-        final password = _passwordController.text;
-        if (!_isValidUserId(userId) || password.isEmpty) {
-          throw Exception('User ID must look like U123456 and password required');
+        if (password.isEmpty) {
+          throw Exception('Password required for user login');
         }
-        token = await _auth.loginUser(userId, password);
+        token = await _auth.loginUser(id, password);
+        await Session.save(token: token, role: 'user');
       }
 
       if (!mounted) return;
-      if (_isHost) {
+      if (id.startsWith('H')) {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -95,47 +96,26 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Login'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ToggleButtons(
-              isSelected: [_isHost, !_isHost],
-              onPressed: (index) {
-                setState(() {
-                  _isHost = index == 0;
-                  _error = null;
-                });
-              },
-              children: const [
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('Host'),
-                ),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('User'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (_isHost) ...[
-              TextField(
-                controller: _hostIdController,
-                decoration: const InputDecoration(
-                  labelText: 'Host ID (H + 6 digits)',
-                ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 24),
+              Text(
+                'Welcome back',
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.bold),
               ),
-            ] else ...[
+              const SizedBox(height: 6),
+              const SizedBox(height: 24),
               TextField(
-                controller: _userIdController,
+                controller: _idController,
                 decoration: const InputDecoration(
-                  labelText: 'User ID (U + 6 digits)',
+                  labelText: 'User ID',
                 ),
               ),
               const SizedBox(height: 12),
@@ -146,34 +126,39 @@ class _LoginScreenState extends State<LoginScreen> {
                   labelText: 'Password',
                 ),
               ),
-            ],
-            const SizedBox(height: 16),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(
-                  _error!,
-                  style: const TextStyle(color: Colors.redAccent),
+              const SizedBox(height: 16),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.redAccent),
+                  ),
                 ),
-              ),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _login,
-                child: _loading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(_isHost ? 'Login as Host' : 'Login as User'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_isHost)
+              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: appleBlue,
+                    minimumSize: const Size.fromHeight(48),
+                  ),
+                  onPressed: _loading ? null : _login,
+                  child: _loading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'Login',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Center(
+                child: TextButton(
                   onPressed: _loading
                       ? null
                       : () {
@@ -184,10 +169,14 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           );
                         },
-                  child: const Text('Register new host'),
+                  child: Text(
+                    "Don't have a Host Account ? Create Account",
+                    style: TextStyle(color: appleBlue),
+                  ),
                 ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );

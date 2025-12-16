@@ -40,9 +40,6 @@ class HostDashboardBody extends StatefulWidget {
 
 class _HostDashboardBodyState extends State<HostDashboardBody> {
   final _auth = AuthService();
-  final _usernameController = TextEditingController();
-  final _passwordController = TextEditingController();
-
   bool _busy = false;
   String? _message;
   String? _error;
@@ -58,40 +55,7 @@ class _HostDashboardBodyState extends State<HostDashboardBody> {
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
     super.dispose();
-  }
-
-  Future<void> _createUser() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-      _message = null;
-    });
-
-    try {
-      final username = _usernameController.text.trim();
-      final password = _passwordController.text.trim();
-      if (username.isEmpty) {
-        throw Exception('Username required');
-      }
-
-      final created = await _auth.createUser(
-        token: widget.jwtToken,
-        username: username,
-        password: password.isEmpty ? null : password,
-      );
-
-      setState(() {
-        _message =
-            'User created: ${created.userId}${created.password != null ? " / pwd: ${created.password}" : ""}';
-      });
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   Future<void> _startCall() async {
@@ -153,38 +117,11 @@ class _HostDashboardBodyState extends State<HostDashboardBody> {
         .toList()
       ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
 
-    return RefreshIndicator(
+    final content = RefreshIndicator(
       onRefresh: _refreshData,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Dashboard',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (widget.hostId != null)
-                    Text(
-                      'Host ID: ${widget.hostId}',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                ],
-              ),
-              IconButton(
-                onPressed: _refreshData,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           _buildCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -205,15 +142,6 @@ class _HostDashboardBodyState extends State<HostDashboardBody> {
                   icon: const Icon(Icons.call),
                   label: const Text('New Call'),
                 ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(56),
-                  ),
-                  onPressed: _busy ? null : _createUser,
-                  icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('Create User'),
-                ),
               ],
             ),
           ),
@@ -227,49 +155,6 @@ class _HostDashboardBodyState extends State<HostDashboardBody> {
               _statCard('Active Users', activeUsers.toString()),
               _statCard('Active Calls', activeCalls.toString()),
             ],
-          ),
-          const SizedBox(height: 16),
-          _buildCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Add user',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _usernameController,
-                  decoration: const InputDecoration(
-                    labelText: 'New user username',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _passwordController,
-                  decoration: const InputDecoration(
-                    labelText: 'Password (optional, random if blank)',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _busy ? null : _createUser,
-                    child: _busy
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Add new user'),
-                  ),
-                ),
-              ],
-            ),
           ),
           const SizedBox(height: 16),
           _buildCard(
@@ -322,6 +207,21 @@ class _HostDashboardBodyState extends State<HostDashboardBody> {
         ],
       ),
     );
+
+    return Stack(
+      children: [
+        content,
+        Positioned(
+          bottom: 24,
+          right: 24,
+          child: FloatingActionButton(
+            backgroundColor: Colors.green,
+            onPressed: () {},
+            child: const Icon(Icons.chat),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildCard({required Widget child}) {
@@ -329,7 +229,7 @@ class _HostDashboardBodyState extends State<HostDashboardBody> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade900,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: child,
