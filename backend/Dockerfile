@@ -1,12 +1,18 @@
-FROM node:18
+FROM node:18-alpine
 
 WORKDIR /app
 
-COPY package.json .
-RUN npm install
+# Install dependencies (better caching)
+COPY package.json package-lock.json* ./
+RUN npm install --production
 
+# Copy application source
 COPY migrations ./migrations
 COPY src ./src
 
-EXPOSE 3000
+ENV NODE_ENV=production
+
+# Document correct port (optional but correct)
+EXPOSE 3100
+
 CMD ["node", "src/index.js"]
