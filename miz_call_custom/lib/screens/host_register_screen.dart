@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
-import '../core/config.dart';
-import 'call_screen.dart';
+import 'host_dashboard_screen.dart';
 
 class HostRegisterScreen extends StatefulWidget {
   const HostRegisterScreen({super.key});
@@ -44,9 +43,9 @@ class _HostRegisterScreenState extends State<HostRegisterScreen> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => CallScreen(
+          builder: (_) => HostDashboardScreen(
             jwtToken: result.token,
-            wsUrl: defaultWsUrl,
+            hostId: result.hostId,
           ),
         ),
       );

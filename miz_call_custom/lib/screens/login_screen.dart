@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
 import '../core/config.dart';
+import 'host_dashboard_screen.dart';
 import 'host_register_screen.dart';
 import 'call_screen.dart';
 
@@ -44,8 +45,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       late final String token;
+      String? hostId;
       if (_isHost) {
-        final hostId = _hostIdController.text.trim();
+        hostId = _hostIdController.text.trim();
         if (!_isValidHostId(hostId)) {
           throw Exception('Host ID must look like H123456');
         }
@@ -60,15 +62,27 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => CallScreen(
-            jwtToken: token,
-            wsUrl: defaultWsUrl,
+      if (_isHost) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => HostDashboardScreen(
+              jwtToken: token,
+              hostId: hostId,
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => CallScreen(
+              jwtToken: token,
+              wsUrl: defaultWsUrl,
+            ),
+          ),
+        );
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {

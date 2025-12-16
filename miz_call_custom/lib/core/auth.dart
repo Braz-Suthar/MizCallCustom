@@ -66,11 +66,15 @@ class AuthService {
   Future<Map<String, dynamic>> _post({
     required String path,
     required Map<String, dynamic> payload,
+    String? bearer,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
     final response = await _client.post(
       uri,
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        if (bearer != null) 'Authorization': 'Bearer $bearer',
+      },
       body: jsonEncode(payload),
     );
 
@@ -88,10 +92,46 @@ class AuthService {
       );
     }
   }
+
+  Future<CreatedUser> createUser({
+    required String token,
+    required String username,
+    String? password,
+  }) async {
+    final data = await _post(
+      path: '/host/users',
+      bearer: token,
+      payload: {
+        'username': username,
+        if (password != null && password.isNotEmpty) 'password': password,
+      },
+    );
+    final userId = data['userId'] as String?;
+    final pwd = data['password'] as String?;
+    if (userId == null) throw Exception('userId missing in response');
+    return CreatedUser(userId: userId, password: pwd);
+  }
+
+  Future<String> startHostCall({required String token}) async {
+    final data = await _post(
+      path: '/host/calls/start',
+      bearer: token,
+      payload: const {},
+    );
+    final roomId = data['roomId'] as String?;
+    if (roomId == null) throw Exception('roomId missing in response');
+    return roomId;
+  }
 }
 
 class AuthResult {
   AuthResult({required this.token, required this.hostId});
   final String token;
   final String hostId;
+}
+
+class CreatedUser {
+  CreatedUser({required this.userId, this.password});
+  final String userId;
+  final String? password;
 }
