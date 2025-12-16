@@ -20,6 +20,10 @@ app.use("/auth", authRoutes);
 app.use("/host", hostRoutes);
 app.use("/recordings", recordingRoutes);
 
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
 // Create HTTP server (required for WS)
 const server = http.createServer(app);
 
