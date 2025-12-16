@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
 import '../core/config.dart';
+import 'host_register_screen.dart';
 import 'call_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -30,6 +31,11 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  bool _isValidHostId(String value) =>
+      RegExp(r"^H\d{6}$").hasMatch(value.trim());
+  bool _isValidUserId(String value) =>
+      RegExp(r"^U\d{6}$").hasMatch(value.trim());
+
   Future<void> _login() async {
     setState(() {
       _loading = true;
@@ -40,13 +46,15 @@ class _LoginScreenState extends State<LoginScreen> {
       late final String token;
       if (_isHost) {
         final hostId = _hostIdController.text.trim();
-        if (hostId.isEmpty) throw Exception('Host ID required');
+        if (!_isValidHostId(hostId)) {
+          throw Exception('Host ID must look like H123456');
+        }
         token = await _auth.loginHost(hostId);
       } else {
         final userId = _userIdController.text.trim();
         final password = _passwordController.text;
-        if (userId.isEmpty || password.isEmpty) {
-          throw Exception('User ID and password required');
+        if (!_isValidUserId(userId) || password.isEmpty) {
+          throw Exception('User ID must look like U123456 and password required');
         }
         token = await _auth.loginUser(userId, password);
       }
@@ -103,14 +111,14 @@ class _LoginScreenState extends State<LoginScreen> {
               TextField(
                 controller: _hostIdController,
                 decoration: const InputDecoration(
-                  labelText: 'Host ID',
+                  labelText: 'Host ID (H + 6 digits)',
                 ),
               ),
             ] else ...[
               TextField(
                 controller: _userIdController,
                 decoration: const InputDecoration(
-                  labelText: 'User ID',
+                  labelText: 'User ID (U + 6 digits)',
                 ),
               ),
               const SizedBox(height: 12),
@@ -144,6 +152,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     : Text(_isHost ? 'Login as Host' : 'Login as User'),
               ),
             ),
+            const SizedBox(height: 8),
+            if (_isHost)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _loading
+                      ? null
+                      : () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const HostRegisterScreen(),
+                            ),
+                          );
+                        },
+                  child: const Text('Register new host'),
+                ),
+              ),
           ],
         ),
       ),

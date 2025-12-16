@@ -1,11 +1,11 @@
 CREATE TABLE hosts (
-  id UUID PRIMARY KEY,
+  id TEXT PRIMARY KEY CHECK (id ~ '^H[0-9]{6}$'),
   name TEXT NOT NULL
 );
 
 CREATE TABLE users (
-  id UUID PRIMARY KEY,
-  host_id UUID REFERENCES hosts(id),
+  id TEXT PRIMARY KEY CHECK (id ~ '^U[0-9]{6}$'),
+  host_id TEXT REFERENCES hosts(id),
   username TEXT NOT NULL,
   password TEXT NOT NULL,
   enabled BOOLEAN DEFAULT true,
@@ -14,7 +14,7 @@ CREATE TABLE users (
 
 CREATE TABLE rooms (
   id UUID PRIMARY KEY,
-  host_id UUID REFERENCES hosts(id),
+  host_id TEXT REFERENCES hosts(id),
   status TEXT,
   started_at TIMESTAMPTZ,
   ended_at TIMESTAMPTZ
@@ -22,8 +22,8 @@ CREATE TABLE rooms (
 
 CREATE TABLE clips (
   id UUID PRIMARY KEY,
-  host_id UUID,
-  user_id UUID,
+  host_id TEXT,
+  user_id TEXT,
   room_id UUID,
   start_time TIMESTAMPTZ,
   end_time TIMESTAMPTZ,

@@ -21,6 +21,19 @@ class AuthService {
   final http.Client _client;
   final String baseUrl;
 
+  Future<AuthResult> registerHost(String name) async {
+    final data = await _post(
+      path: '/auth/host/register',
+      payload: {'name': name},
+    );
+    final token = data['token'] as String?;
+    final hostId = data['hostId'] as String?;
+    if (token == null || hostId == null) {
+      throw Exception('hostId/token missing in response');
+    }
+    return AuthResult(token: token, hostId: hostId);
+  }
+
   Future<String> loginHost(String hostId) {
     return _postForToken(
       path: '/auth/host/login',
@@ -42,6 +55,18 @@ class AuthService {
     required String path,
     required Map<String, dynamic> payload,
   }) async {
+    final data = await _post(path: path, payload: payload);
+    final token = data['token'] as String?;
+    if (token == null) {
+      throw Exception('Token missing in response');
+    }
+    return token;
+  }
+
+  Future<Map<String, dynamic>> _post({
+    required String path,
+    required Map<String, dynamic> payload,
+  }) async {
     final uri = Uri.parse('$baseUrl$path');
     final response = await _client.post(
       uri,
@@ -50,12 +75,7 @@ class AuthService {
     );
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final token = data['token'] as String?;
-      if (token == null) {
-        throw Exception('Token missing in response');
-      }
-      return token;
+      return jsonDecode(response.body) as Map<String, dynamic>;
     }
 
     try {
@@ -68,4 +88,10 @@ class AuthService {
       );
     }
   }
+}
+
+class AuthResult {
+  AuthResult({required this.token, required this.hostId});
+  final String token;
+  final String hostId;
 }

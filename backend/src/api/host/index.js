@@ -2,14 +2,15 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
+import { generateUserId } from "../../services/id.js";
 
 const router = Router();
 
 /* CREATE USER */
 router.post("/users", requireAuth, requireHost, async (req, res) => {
-  const id = uuid();
+  const id = await generateUserId();
   const username = req.body.username;
-  const password = req.body.password || uuid().slice(0, 8);
+  const password = req.body.password || Math.random().toString(36).slice(2, 10);
 
   if (!username)
     return res.status(400).json({ error: "username required" });
