@@ -1,32 +1,39 @@
 import { WebSocketServer } from "ws";
-import mediasoup from "mediasoup";
-import { createWebRtcTransport } from "../mediasoup/transports.js";
 import { verifyToken as verifyJwt } from "../services/auth.js";
 import { Peer } from "./peer.js";
+import { sendMediasoup } from "../mediasoup/client.js";
+import { MS } from "../mediasoup/commands.js";
 import { v4 as uuid } from "uuid";
 
-const mediaCodecs = [
-  {
-    kind: "audio",
-    mimeType: "audio/opus",
-    clockRate: 48000,
-    channels: 2,
-  },
-];
+const ROOM_ID = "main-room";
+
+let routerRtpCapabilities = null;
+const peers = new Map();
+
+async function ensureRoom() {
+  if (routerRtpCapabilities) return;
+  const res = await sendMediasoup({
+    type: MS.CREATE_ROOM,
+    roomId: ROOM_ID,
+  });
+  routerRtpCapabilities = res?.rtpCapabilities ?? null;
+}
 
 export async function startWebSocketServer(httpServer) {
-  const worker = await mediasoup.createWorker();
-  const router = await worker.createRouter({ mediaCodecs });
-  const peers = new Map();
-
+  await ensureRoom();
   const wss = new WebSocketServer({ server: httpServer });
   wss.on("connection", (socket) => {
-    handleSocket({ socket, router, peers });
+    handleSocket({ socket });
   });
 }
 
-export function handleSocket({ socket, router, peers }) {
+export function handleSocket({ socket }) {
     let peer = null;
+
+    const requirePeer = () => {
+        if (!peer) throw new Error("Peer not initialized");
+        return peer;
+    };
 
     socket.on("message", async (raw) => {
         const msg = JSON.parse(raw.toString());
@@ -45,29 +52,39 @@ export function handleSocket({ socket, router, peers }) {
 
                 peers.set(peer.id, peer);
 
-                // SEND transport
-                peer.sendTransport = await createWebRtcTransport(router);
+                await ensureRoom();
+
+                // SEND transport via mediasoup-server
+                const sendT = await sendMediasoup({
+                    type: MS.CREATE_TRANSPORT,
+                    roomId: ROOM_ID,
+                });
+                peer.sendTransport = { id: sendT.id };
 
                 socket.send(JSON.stringify({
                     type: "SEND_TRANSPORT_CREATED",
                     params: {
-                        id: peer.sendTransport.id,
-                        iceParameters: peer.sendTransport.iceParameters,
-                        iceCandidates: peer.sendTransport.iceCandidates,
-                        dtlsParameters: peer.sendTransport.dtlsParameters,
+                        id: sendT.id,
+                        iceParameters: sendT.iceParameters,
+                        iceCandidates: sendT.iceCandidates,
+                        dtlsParameters: sendT.dtlsParameters,
                     }
                 }));
 
                 // RECV transport
-                peer.recvTransport = await createWebRtcTransport(router);
+                const recvT = await sendMediasoup({
+                    type: MS.CREATE_TRANSPORT,
+                    roomId: ROOM_ID,
+                });
+                peer.recvTransport = { id: recvT.id };
 
                 socket.send(JSON.stringify({
                     type: "RECV_TRANSPORT_CREATED",
                     params: {
-                        id: peer.recvTransport.id,
-                        iceParameters: peer.recvTransport.iceParameters,
-                        iceCandidates: peer.recvTransport.iceCandidates,
-                        dtlsParameters: peer.recvTransport.dtlsParameters,
+                        id: recvT.id,
+                        iceParameters: recvT.iceParameters,
+                        iceCandidates: recvT.iceCandidates,
+                        dtlsParameters: recvT.dtlsParameters,
                     }
                 }));
 
@@ -87,26 +104,36 @@ export function handleSocket({ socket, router, peers }) {
 
             /* -------- CONNECT SEND TRANSPORT -------- */
             case "CONNECT_SEND_TRANSPORT": {
-                await peer.sendTransport.connect({
-                    dtlsParameters: msg.dtlsParameters
+                await sendMediasoup({
+                    type: MS.CONNECT_TRANSPORT,
+                    roomId: ROOM_ID,
+                    transportId: requirePeer().sendTransport.id,
+                    dtlsParameters: msg.dtlsParameters,
                 });
                 break;
             }
 
             /* -------- CONNECT RECV TRANSPORT -------- */
             case "CONNECT_RECV_TRANSPORT": {
-                await peer.recvTransport.connect({
-                    dtlsParameters: msg.dtlsParameters
+                await sendMediasoup({
+                    type: MS.CONNECT_TRANSPORT,
+                    roomId: ROOM_ID,
+                    transportId: requirePeer().recvTransport.id,
+                    dtlsParameters: msg.dtlsParameters,
                 });
                 break;
             }
 
             /* ---------------- PRODUCE ---------------- */
             case "PRODUCE": {
-                peer.producer = await peer.sendTransport.produce({
-                    kind: msg.kind,
+                const res = await sendMediasoup({
+                    type: MS.PRODUCE,
+                    roomId: ROOM_ID,
+                    transportId: requirePeer().sendTransport.id,
                     rtpParameters: msg.rtpParameters,
+                    ownerId: peer.id,
                 });
+                peer.producer = { id: res.producerId };
 
                 // Notify other peers
                 for (const other of peers.values()) {
@@ -128,47 +155,33 @@ export function handleSocket({ socket, router, peers }) {
 
             /* ---------------- CONSUME ---------------- */
             case "CONSUME": {
-                const producerPeer = [...peers.values()]
-                    .find(p => p.producer?.id === msg.producerId);
-
-                if (!producerPeer) return;
-
-                // Role-based audio rules
-                if (
-                    peer.role === "user" &&
-                    producerPeer.role !== "host"
-                ) {
-                    return; // users hear only host
-                }
-
-                const consumer = await peer.recvTransport.consume({
-                    producerId: msg.producerId,
-                    rtpCapabilities: router.rtpCapabilities,
-                    paused: false,
+                const res = await sendMediasoup({
+                    type: MS.CONSUME,
+                    roomId: ROOM_ID,
+                    transportId: requirePeer().recvTransport.id,
+                    producerOwnerId: msg.producerOwnerId,
+                    rtpCapabilities: msg.rtpCapabilities ?? {},
                 });
-
-                peer.consumers.set(consumer.id, consumer);
 
                 socket.send(JSON.stringify({
                     type: "CONSUMER_CREATED",
                     params: {
-                        id: consumer.id,
-                        producerId: consumer.producerId,
-                        kind: consumer.kind,
-                        rtpParameters: consumer.rtpParameters,
+                        id: res.id,
+                        producerId: res.producerId,
+                        kind: res.kind,
+                        rtpParameters: res.rtpParameters,
                     }
                 }));
-
                 break;
             }
 
             /* ------------ PUSH TO TALK ------------- */
             case "PTT_START":
-                peer.producer?.resume();
+                // Not implemented with mediasoup server shim
                 break;
 
             case "PTT_STOP":
-                peer.producer?.pause();
+                // Not implemented with mediasoup server shim
                 break;
         }
     });
