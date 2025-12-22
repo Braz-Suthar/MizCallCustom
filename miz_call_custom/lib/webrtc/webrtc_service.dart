@@ -70,33 +70,55 @@ class WebRTCService {
 
   /// Extract DTLS parameters for CONNECT_TRANSPORT
   Future<Map<String, dynamic>> getDtlsParameters() async {
-    final stats = await pc.getStats();
-    final certificateReport = stats.firstWhere(
-      (report) => report.type == 'certificate',
-      orElse: () => throw StateError('No certificate stats available'),
-    );
+    Map<String, dynamic> _reportsToDtls(Iterable reports) {
+      final cert = reports.firstWhere(
+        (r) =>
+            (r is Map && r['type'] == 'certificate') ||
+            ((r is Object) && (r as dynamic?)?.type == 'certificate'),
+        orElse: () => throw StateError('No certificate stats available'),
+      );
 
-    final fingerprint =
-        (certificateReport.values['fingerprint'] as String?) ??
-            (certificateReport.values['fingerprintValue'] as String?);
-    final algorithm =
-        (certificateReport.values['fingerprintAlgorithm'] as String?) ??
-            (certificateReport.values['algorithm'] as String?) ??
-            'sha-256';
+      final values = (cert is Map)
+          ? cert
+          : (cert as dynamic?)?.values as Map? ?? const {};
 
-    if (fingerprint == null) {
-      throw StateError('No DTLS fingerprint found');
+      final fingerprint =
+          (values['fingerprint'] as String?) ??
+              (values['fingerprintValue'] as String?);
+      final algorithm =
+          (values['fingerprintAlgorithm'] as String?) ??
+              (values['algorithm'] as String?) ??
+              'sha-256';
+
+      if (fingerprint == null) {
+        throw StateError('No DTLS fingerprint found');
+      }
+
+      return {
+        'role': 'auto',
+        'fingerprints': [
+          {
+            'algorithm': algorithm,
+            'value': fingerprint,
+          }
+        ],
+      };
     }
 
-    return {
-      'role': 'auto',
-      'fingerprints': [
-        {
-          'algorithm': algorithm,
-          'value': fingerprint,
-        }
-      ],
-    };
+    try {
+      final stats = await pc.getStats();
+      return _reportsToDtls(stats);
+    } catch (_) {
+      // Some platforms need an SDP to generate certificate stats; create a quick offer.
+      final offer = await pc.createOffer({
+        'offerToReceiveAudio': true,
+        'offerToReceiveVideo': false,
+      });
+      await pc.setLocalDescription(offer);
+      final stats = await pc.getStats();
+      return _reportsToDtls(stats);
+    }
+
   }
 
   /// Close everything

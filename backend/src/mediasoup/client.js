@@ -46,13 +46,15 @@ export function connectMediasoup() {
 }
 
 export function sendMediasoup(cmd) {
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-        throw new Error("Mediasoup WS not connected");
-    }
+    const ensure = socket && socket.readyState === WebSocket.OPEN
+        ? Promise.resolve()
+        : connectMediasoup();
 
-    return new Promise((resolve) => {
-        const requestId = randomUUID();
-        pending.set(requestId, resolve);
-        socket.send(JSON.stringify({ ...cmd, requestId }));
+    return ensure.then(() => {
+        return new Promise((resolve) => {
+            const requestId = randomUUID();
+            pending.set(requestId, resolve);
+            socket.send(JSON.stringify({ ...cmd, requestId }));
+        });
     });
 }
