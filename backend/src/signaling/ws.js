@@ -25,17 +25,22 @@ export async function startWebSocketServer(httpServer) {
   const wss = new WebSocketServer({ server: httpServer });
   wssInstance = wss;
   wss.on("connection", (socket) => {
+    console.log("[WS] connection open");
     handleSocket({ socket });
   });
 }
 
 export function broadcastCallEvent(payload) {
+  console.log("[WS] broadcast event", payload);
   const msg = JSON.stringify(payload);
+  let sent = 0;
   for (const peer of peers.values()) {
     if (peer.socket.readyState === 1 && peer.role === "user") {
       peer.socket.send(msg);
+      sent += 1;
     }
   }
+  console.log("[WS] broadcast delivered to", sent, "users");
 }
 
 export function handleSocket({ socket }) {
@@ -54,6 +59,7 @@ export function handleSocket({ socket }) {
             /* ---------------- JOIN ---------------- */
             case "JOIN": {
                 const { userId, role } = verifyJwt(msg.token);
+                console.log("[WS] JOIN", { userId, role });
 
                 peer = new Peer({
                     id: userId,
@@ -145,6 +151,7 @@ export function handleSocket({ socket }) {
                     ownerId: peer.id,
                 });
                 peer.producer = { id: res.producerId };
+                console.log("[WS] PRODUCE", { ownerId: peer.id, producerId: res.producerId });
 
                 // Notify other peers
                 for (const other of peers.values()) {
@@ -173,6 +180,7 @@ export function handleSocket({ socket }) {
                     producerOwnerId: msg.producerOwnerId,
                     rtpCapabilities: msg.rtpCapabilities ?? {},
                 });
+                console.log("[WS] CONSUME", { consumerId: res.id, producerOwnerId: msg.producerOwnerId });
 
                 socket.send(JSON.stringify({
                     type: "CONSUMER_CREATED",
