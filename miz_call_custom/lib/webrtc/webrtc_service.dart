@@ -5,6 +5,7 @@ class WebRTCService {
   late MediaStream localStream;
   late MediaStreamTrack audioTrack;
   late RTCVideoRenderer _remoteRenderer;
+  Map<String, dynamic>? _cachedDtls;
 
   RTCRtpSender? _audioSender;
   RTCVideoRenderer get remoteRenderer => _remoteRenderer;
@@ -70,6 +71,8 @@ class WebRTCService {
 
   /// Extract DTLS parameters for CONNECT_TRANSPORT
   Future<Map<String, dynamic>> getDtlsParameters() async {
+    if (_cachedDtls != null) return _cachedDtls!;
+
     Map<String, dynamic> _reportsToDtls(Iterable reports) {
       final cert = reports.firstWhere(
         (r) =>
@@ -107,16 +110,20 @@ class WebRTCService {
 
     try {
       final stats = await pc.getStats();
-      return _reportsToDtls(stats);
+      _cachedDtls = _reportsToDtls(stats);
+      return _cachedDtls!;
     } catch (_) {
       // Some platforms need an SDP to generate certificate stats; create a quick offer.
-      final offer = await pc.createOffer({
-        'offerToReceiveAudio': true,
-        'offerToReceiveVideo': false,
-      });
-      await pc.setLocalDescription(offer);
+      if (pc.getLocalDescription() == null) {
+        final offer = await pc.createOffer({
+          'offerToReceiveAudio': true,
+          'offerToReceiveVideo': false,
+        });
+        await pc.setLocalDescription(offer);
+      }
       final stats = await pc.getStats();
-      return _reportsToDtls(stats);
+      _cachedDtls = _reportsToDtls(stats);
+      return _cachedDtls!;
     }
 
   }

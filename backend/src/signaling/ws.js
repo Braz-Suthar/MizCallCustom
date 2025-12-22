@@ -10,6 +10,7 @@ const ROOM_ID = "main-room";
 let routerRtpCapabilities = null;
 const peers = new Map();
 let wssInstance = null;
+const producerIdToOwner = new Map();
 
 async function ensureRoom() {
   if (routerRtpCapabilities) return;
@@ -184,6 +185,7 @@ export function handleSocket({ socket }) {
                     ownerId: peer.id,
                 });
                 peer.producer = { id: res.producerId };
+                producerIdToOwner.set(res.producerId, peer.id);
                 console.log("[WS] PRODUCE", { ownerId: peer.id, producerId: res.producerId });
 
                 // Notify other peers
@@ -206,12 +208,17 @@ export function handleSocket({ socket }) {
 
             /* ---------------- CONSUME ---------------- */
             case "CONSUME": {
+                const ownerId =
+                  msg.producerOwnerId ??
+                  producerIdToOwner.get(msg.producerId) ??
+                  msg.producerId; // fallback
                 const res = await sendMediasoup({
                     type: MS.CONSUME,
                     roomId: ROOM_ID,
                     transportId: requirePeer().recvTransport.id,
-                    producerOwnerId: msg.producerOwnerId,
-                    rtpCapabilities: msg.rtpCapabilities ?? {},
+                    producerOwnerId: ownerId,
+                    // Use router caps since legacy client doesn't send rtpCapabilities
+                    rtpCapabilities: routerRtpCapabilities ?? {},
                 });
                 console.log("[WS] CONSUME", { consumerId: res.id, producerOwnerId: msg.producerOwnerId });
 
