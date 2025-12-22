@@ -30,12 +30,16 @@ export async function startWebSocketServer(httpServer) {
   });
 }
 
-export function broadcastCallEvent(payload) {
-  console.log("[WS] broadcast event", payload);
+export function broadcastCallEvent(hostId, payload) {
+  console.log("[WS] broadcast event", payload, "hostId", hostId);
   const msg = JSON.stringify(payload);
   let sent = 0;
   for (const peer of peers.values()) {
-    if (peer.socket.readyState === 1 && peer.role === "user") {
+    if (
+      peer.socket.readyState === 1 &&
+      peer.role === "user" &&
+      peer.hostId === hostId
+    ) {
       peer.socket.send(msg);
       sent += 1;
     }
@@ -58,14 +62,19 @@ export function handleSocket({ socket }) {
 
             /* ---------------- JOIN ---------------- */
             case "JOIN": {
-                const { userId, role } = verifyJwt(msg.token);
-                console.log("[WS] JOIN", { userId, role });
+                const decoded = verifyJwt(msg.token);
+                const role = decoded.role;
+                const userId = decoded.userId;
+                const hostId = decoded.hostId;
+                const id = role === "host" ? hostId : userId;
+                console.log("[WS] JOIN", { id, role, hostId, userId });
 
                 peer = new Peer({
-                    id: userId,
+                    id,
                     socket,
                     role
                 });
+                peer.hostId = hostId;
 
                 peers.set(peer.id, peer);
 
