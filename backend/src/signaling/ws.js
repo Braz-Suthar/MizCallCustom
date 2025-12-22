@@ -1,5 +1,29 @@
+import { WebSocketServer } from "ws";
+import mediasoup from "mediasoup";
 import { createWebRtcTransport } from "../mediasoup/transports.js";
+import { verifyToken as verifyJwt } from "../services/auth.js";
+import { Peer } from "./peer.js";
 import { v4 as uuid } from "uuid";
+
+const mediaCodecs = [
+  {
+    kind: "audio",
+    mimeType: "audio/opus",
+    clockRate: 48000,
+    channels: 2,
+  },
+];
+
+export async function startWebSocketServer(httpServer) {
+  const worker = await mediasoup.createWorker();
+  const router = await worker.createRouter({ mediaCodecs });
+  const peers = new Map();
+
+  const wss = new WebSocketServer({ server: httpServer });
+  wss.on("connection", (socket) => {
+    handleSocket({ socket, router, peers });
+  });
+}
 
 export function handleSocket({ socket, router, peers }) {
     let peer = null;
