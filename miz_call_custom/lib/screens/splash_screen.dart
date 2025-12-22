@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/session.dart';
+import '../core/config.dart';
 import 'host_home_screen.dart';
 import 'intro_screen.dart';
 import 'user_dashboard_screen.dart';

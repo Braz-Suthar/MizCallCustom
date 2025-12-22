@@ -16,12 +16,17 @@ let wssInstance = null;
 export function broadcastCallEvent(hostId, payload) {
     if (!wssInstance) return;
     const msg = JSON.stringify(payload);
+    console.log("[WS] broadcast", payload, "targetHost:", hostId);
+    if (!hostId) {
+        console.warn("[WS] broadcast skipped: missing hostId on payload");
+    }
     wssInstance.clients.forEach((client) => {
         if (
             client.readyState === 1 &&
             client.auth?.role === "user" &&
-            client.auth?.hostId === hostId
+            (hostId ? client.auth?.hostId === hostId : true)
         ) {
+            console.log("[WS] -> user", client.auth?.userId);
             client.send(msg);
         }
     });
@@ -40,6 +45,7 @@ export function startWebSocketServer(httpServer) {
                 if (msg.type === EVENTS.AUTH) {
                     const data = jwt.verify(msg.token, SECRET);
                     socket.auth = data;
+                    console.log("[WS] authed", data);
                     return;
                 }
 

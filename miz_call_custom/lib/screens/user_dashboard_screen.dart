@@ -28,27 +28,36 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   int _index = 0;
   SignalingClient? _signaling;
   bool _navigatingToCall = false;
+  String? _activeRoomId;
+  String? _lastSignal;
+  String? _wsStatus;
+  String? _wsError;
 
-  late final List<_TabSpec> _tabs = [
-    _TabSpec(
-      label: 'Dashboard',
-      icon: Icons.dashboard_outlined,
-      builder: () => UserDashboardTab(
-        jwtToken: widget.jwtToken,
-        wsUrl: widget.wsUrl,
-      ),
-    ),
-    _TabSpec(
-      label: 'Recordings',
-      icon: Icons.library_music_outlined,
-      builder: () => UserRecordingsTab(jwtToken: widget.jwtToken),
-    ),
-    _TabSpec(
-      label: 'Settings',
-      icon: Icons.settings_outlined,
-      builder: () => UserSettingsTab(jwtToken: widget.jwtToken),
-    ),
-  ];
+  List<_TabSpec> get _tabs => [
+        _TabSpec(
+          label: 'Dashboard',
+          icon: Icons.dashboard_outlined,
+          builder: () => UserDashboardTab(
+            jwtToken: widget.jwtToken,
+            wsUrl: widget.wsUrl,
+            activeRoomId: _activeRoomId,
+            onJoin: _goToCall,
+        lastSignal: _lastSignal,
+            wsStatus: _wsStatus,
+            wsError: _wsError,
+          ),
+        ),
+        _TabSpec(
+          label: 'Recordings',
+          icon: Icons.library_music_outlined,
+          builder: () => UserRecordingsTab(jwtToken: widget.jwtToken),
+        ),
+        _TabSpec(
+          label: 'Settings',
+          icon: Icons.settings_outlined,
+          builder: () => UserSettingsTab(jwtToken: widget.jwtToken),
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -79,25 +88,61 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
 
   void _ensureSignaling() {
     if (_signaling != null) return;
-    final client = SignalingClient(widget.wsUrl);
-    _signaling = client;
-    client.stream.listen(_onSignal, onError: (_) {});
-    client.send({
-      "type": "auth",
-      "token": widget.jwtToken,
-    });
+    try {
+      debugPrint("[UserDash] connecting ws ${widget.wsUrl}");
+      final client = SignalingClient(widget.wsUrl);
+      _signaling = client;
+      _wsStatus = "connected";
+      client.stream.listen(
+        _onSignal,
+        onError: (err) {
+          debugPrint("[UserDash] signaling error: $err");
+          setState(() {
+            _wsError = err.toString();
+            _wsStatus = "error";
+          });
+        },
+        onDone: () {
+          debugPrint("[UserDash] signaling stream closed");
+          setState(() {
+            _wsStatus = "closed";
+          });
+        },
+      );
+      debugPrint("[UserDash] sending auth over WS");
+      client.send({
+        "type": "auth",
+        "token": widget.jwtToken,
+      });
+    } catch (e) {
+      debugPrint("[UserDash] WS init failed: $e");
+      setState(() {
+        _wsError = e.toString();
+        _wsStatus = "init_failed";
+      });
+    }
   }
 
   void _onSignal(dynamic raw) {
+    debugPrint("[UserDash] raw signal: $raw");
     try {
       final msg = jsonDecode(raw as String);
+      setState(() {
+        _lastSignal = msg["type"]?.toString();
+      });
       switch (msg["type"]) {
         case "call-started":
         case "CALL_STARTED":
+          setState(() {
+            _activeRoomId = msg["roomId"]?.toString();
+          });
           _goToCall();
           break;
         case "call-stopped":
         case "CALL_STOPPED":
+          setState(() {
+            _activeRoomId = null;
+          });
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text("Call ended by host")),
@@ -141,10 +186,20 @@ class UserDashboardTab extends StatelessWidget {
     super.key,
     required this.jwtToken,
     required this.wsUrl,
+    required this.onJoin,
+    this.activeRoomId,
+    this.lastSignal,
+    this.wsStatus,
+    this.wsError,
   });
 
   final String jwtToken;
   final String wsUrl;
+  final VoidCallback onJoin;
+  final String? activeRoomId;
+  final String? lastSignal;
+  final String? wsStatus;
+  final String? wsError;
 
   @override
   Widget build(BuildContext context) {
@@ -167,6 +222,53 @@ class UserDashboardTab extends StatelessWidget {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 24),
+          if (activeRoomId != null)
+            Card(
+              color: Colors.green.shade50,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.call, color: Colors.green),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Live call in progress',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (activeRoomId!.isNotEmpty)
+                            Text(
+                              'Room: $activeRoomId',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: onJoin,
+                      child: const Text('Join'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          const SizedBox(height: 12),
+          if (lastSignal != null)
+            Text(
+              'Last signal: $lastSignal',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          if (wsStatus != null)
+            Text(
+              'WS: $wsStatus${wsError != null ? " ($wsError)" : ""}',
+              style: const TextStyle(fontSize: 12, color: Colors.redAccent),
+            ),
+          if (lastSignal != null) const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -176,17 +278,7 @@ class UserDashboardTab extends StatelessWidget {
               ),
               icon: const Icon(Icons.call),
               label: const Text('Join Call'),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => CallScreen(
-                      jwtToken: jwtToken,
-                      wsUrl: wsUrl,
-                    ),
-                  ),
-                );
-              },
+              onPressed: onJoin,
             ),
           ),
         ],
