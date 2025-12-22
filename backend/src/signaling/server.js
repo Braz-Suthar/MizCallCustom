@@ -13,6 +13,25 @@ import { MS } from "../mediasoup/commands.js";
 const SECRET = process.env.JWT_SECRET;
 let wssInstance = null;
 
+const roomState = new Map();
+
+function getState(roomId) {
+    return roomState.get(roomId);
+}
+
+function ensureState(roomId) {
+    if (!roomState.has(roomId)) {
+        roomState.set(roomId, {
+            hostSocket: null,
+            hostProducerId: null,
+            routerRtpCapabilities: null,
+            transports: new Map(), // transportId -> { socket, role, ownerId }
+            producers: new Map(), // ownerId -> producerId
+        });
+    }
+    return roomState.get(roomId);
+}
+
 export function broadcastCallEvent(hostId, payload) {
     if (!wssInstance) return;
     const msg = JSON.stringify(payload);
@@ -63,14 +82,19 @@ export function startWebSocketServer(httpServer) {
                     socket.roomId = msg.roomId;
                     createRoom(msg.roomId, socket);
 
-                    await sendMediasoup({
+                    const res = await sendMediasoup({
                         type: MS.CREATE_ROOM,
                         roomId: msg.roomId
                     });
 
+                    const state = ensureState(msg.roomId);
+                    state.hostSocket = socket;
+                    state.routerRtpCapabilities = res?.rtpCapabilities || null;
+
                     broadcastCallEvent(socket.auth.hostId, {
                         type: EVENTS.CALL_STARTED,
-                        roomId: msg.roomId
+                        roomId: msg.roomId,
+                        routerRtpCapabilities: state.routerRtpCapabilities
                     });
 
                     return;
@@ -88,6 +112,90 @@ export function startWebSocketServer(httpServer) {
                             userId: socket.auth.userId
                         })
                     );
+                    return;
+                }
+
+                /* CREATE TRANSPORT */
+                if (msg.type === EVENTS.CREATE_TRANSPORT) {
+                    const state = ensureState(msg.roomId);
+                    const response = await sendMediasoup({
+                        type: MS.CREATE_TRANSPORT,
+                        roomId: msg.roomId
+                    });
+
+                    state.transports.set(response.id, {
+                        socket,
+                        role,
+                        ownerId: role === "host" ? socket.auth.hostId : socket.auth.userId
+                    });
+
+                    socket.send(JSON.stringify({
+                        type: "transport-created",
+                        data: response
+                    }));
+                    return;
+                }
+
+                /* CONNECT TRANSPORT */
+                if (msg.type === "connect-transport") {
+                    await sendMediasoup({
+                        type: MS.CONNECT_TRANSPORT,
+                        roomId: msg.roomId,
+                        transportId: msg.transportId,
+                        dtlsParameters: msg.dtlsParameters
+                    });
+                    socket.send(JSON.stringify({
+                        type: "transport-connected",
+                        transportId: msg.transportId
+                    }));
+                    return;
+                }
+
+                /* PRODUCE */
+                if (msg.type === "produce") {
+                    const ownerId = role === "host" ? socket.auth.hostId : socket.auth.userId;
+                    const res = await sendMediasoup({
+                        type: MS.PRODUCE,
+                        roomId: msg.roomId,
+                        transportId: msg.transportId,
+                        rtpParameters: msg.rtpParameters,
+                        ownerId
+                    });
+
+                    const state = ensureState(msg.roomId);
+                    state.producers.set(ownerId, res.producerId);
+                    if (role === "host") {
+                        state.hostProducerId = res.producerId;
+                        broadcastCallEvent(socket.auth.hostId, {
+                            type: "host-producer",
+                            roomId: msg.roomId,
+                            producerId: res.producerId,
+                            routerRtpCapabilities: state.routerRtpCapabilities
+                        });
+                    }
+
+                    socket.send(JSON.stringify({
+                        type: "produced",
+                        producerId: res.producerId,
+                        recorder: res.recorder
+                    }));
+                    return;
+                }
+
+                /* CONSUME */
+                if (msg.type === "consume") {
+                    const res = await sendMediasoup({
+                        type: MS.CONSUME,
+                        roomId: msg.roomId,
+                        transportId: msg.transportId,
+                        producerOwnerId: msg.producerOwnerId,
+                        rtpCapabilities: msg.rtpCapabilities
+                    });
+
+                    socket.send(JSON.stringify({
+                        type: "consumed",
+                        consumer: res
+                    }));
                     return;
                 }
 

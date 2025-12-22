@@ -59,6 +59,7 @@ class _CallScreenState extends State<CallScreen> {
 
       // Optional eager init with whatever ice we have (likely empty)
       await _ensureWebrtcReady();
+      await _webrtc.setSpeakerphone(true);
 
       // 4️⃣ Join room
       _signaling!.send({

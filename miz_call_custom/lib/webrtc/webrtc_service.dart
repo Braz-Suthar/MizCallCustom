@@ -4,11 +4,16 @@ class WebRTCService {
   late RTCPeerConnection pc;
   late MediaStream localStream;
   late MediaStreamTrack audioTrack;
+  late RTCVideoRenderer _remoteRenderer;
 
   RTCRtpSender? _audioSender;
+  RTCVideoRenderer get remoteRenderer => _remoteRenderer;
 
   /// Initialize WebRTC (audio only)
   Future<void> init([List<Map<String, dynamic>> iceServers = const []]) async {
+    _remoteRenderer = RTCVideoRenderer();
+    await _remoteRenderer.initialize();
+
     pc = await createPeerConnection({
       'iceServers': iceServers,
       'sdpSemantics': 'unified-plan',
@@ -18,8 +23,12 @@ class WebRTCService {
     pc.onTrack = (event) {
       if (event.track.kind == 'audio') {
         final stream = event.streams.isNotEmpty ? event.streams.first : null;
-        if (stream != null && !stream.getAudioTracks().contains(event.track)) {
-          stream.addTrack(event.track); // ensure track is linked to a stream
+        if (stream != null) {
+          if (!stream.getAudioTracks().contains(event.track)) {
+            stream.addTrack(event.track); // ensure track is linked to a stream
+          }
+          // Bind to renderer so audio plays out the device speaker.
+          _remoteRenderer.srcObject = stream;
         }
       }
     };
@@ -46,6 +55,11 @@ class WebRTCService {
   /// Enable / disable mic (push-to-talk)
   void setMic(bool enabled) {
     audioTrack.enabled = enabled;
+  }
+
+  /// Force speakerphone on/off (mobile).
+  Future<void> setSpeakerphone(bool on) async {
+    await Helper.setSpeakerphoneOn(on);
   }
 
   /// Extract RTP parameters for mediasoup PRODUCE
@@ -89,5 +103,6 @@ class WebRTCService {
   Future<void> dispose() async {
     await pc.close();
     await localStream.dispose();
+    await _remoteRenderer.dispose();
   }
 }

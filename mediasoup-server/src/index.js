@@ -80,6 +80,16 @@ wss.on("connection", async (socket) => {
             }));
         }
 
+        if (msg.type === "connect-transport") {
+            const room = rooms.get(msg.roomId);
+            const transport = room.transports.get(msg.transportId);
+            await transport.connect({ dtlsParameters: msg.dtlsParameters });
+            socket.send(JSON.stringify({
+                requestId: msg.requestId,
+                ok: true
+            }));
+        }
+
         if (msg.type === "produce") {
             const room = rooms.get(msg.roomId);
 
