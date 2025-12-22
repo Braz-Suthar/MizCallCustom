@@ -85,7 +85,8 @@ router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
 
   broadcastCallEvent(req.hostId, {
     type: "call-started",
-    roomId
+    roomId,
+    hostId: req.hostId,
   });
 });
 

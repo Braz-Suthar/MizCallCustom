@@ -17,19 +17,18 @@ export function broadcastCallEvent(hostId, payload) {
     if (!wssInstance) return;
     const msg = JSON.stringify(payload);
     console.log("[WS] broadcast", payload, "targetHost:", hostId);
-    if (!hostId) {
-        console.warn("[WS] broadcast skipped: missing hostId on payload");
-    }
+    let sent = 0;
     wssInstance.clients.forEach((client) => {
         if (
             client.readyState === 1 &&
-            client.auth?.role === "user" &&
-            (hostId ? client.auth?.hostId === hostId : true)
+            client.auth?.role === "user"
         ) {
             console.log("[WS] -> user", client.auth?.userId);
             client.send(msg);
+            sent += 1;
         }
     });
+    console.log("[WS] broadcast delivered to", sent, "clients");
 }
 
 export function startWebSocketServer(httpServer) {
@@ -37,16 +36,23 @@ export function startWebSocketServer(httpServer) {
     wssInstance = wss;
 
     wss.on("connection", (socket) => {
+        console.log("[WS] connection open");
         socket.on("message", async (raw) => {
             try {
                 const msg = JSON.parse(raw.toString());
 
                 /* AUTH MESSAGE */
                 if (msg.type === EVENTS.AUTH) {
-                    const data = jwt.verify(msg.token, SECRET);
-                    socket.auth = data;
-                    console.log("[WS] authed", data);
-                    return;
+                    try {
+                        const data = jwt.verify(msg.token, SECRET);
+                        socket.auth = data;
+                        console.log("[WS] authed", data);
+                        return;
+                    } catch (err) {
+                        console.error("[WS] auth failed:", err.message);
+                        socket.close();
+                        return;
+                    }
                 }
 
                 if (!socket.auth) return;
