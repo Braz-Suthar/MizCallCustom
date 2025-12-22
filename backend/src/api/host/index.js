@@ -102,4 +102,24 @@ router.get("/calls", requireAuth, requireHost, async (req, res) => {
   res.json({ calls: result.rows });
 });
 
+/* END CALL */
+router.patch("/calls/:id/end", requireAuth, requireHost, async (req, res) => {
+  const { id } = req.params;
+  await query(
+    `UPDATE rooms
+     SET status = 'ended',
+         ended_at = NOW()
+     WHERE id = $1 AND host_id = $2`,
+    [id, req.hostId]
+  );
+
+  broadcastCallEvent(req.hostId, {
+    type: "call-stopped",
+    roomId: id,
+    hostId: req.hostId
+  });
+
+  res.json({ ok: true });
+});
+
 export default router;

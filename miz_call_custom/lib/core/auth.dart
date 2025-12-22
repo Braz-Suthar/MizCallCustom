@@ -173,6 +173,17 @@ class AuthService {
         .toList();
   }
 
+  Future<void> endCall({
+    required String token,
+    required String callId,
+  }) async {
+    await _patch(
+      path: '/host/calls/$callId/end',
+      bearer: token,
+      payload: const {},
+    );
+  }
+
   Future<List<UserRecordingGroup>> fetchUserRecordings({
     required String token,
   }) async {

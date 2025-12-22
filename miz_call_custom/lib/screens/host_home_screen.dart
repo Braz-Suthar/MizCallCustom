@@ -800,6 +800,7 @@ class _HostCallsTabState extends State<HostCallsTab> {
   final _searchController = TextEditingController();
   List<HostCall> _calls = const [];
   bool _loading = true;
+  String? _busyId;
 
   @override
   void initState() {
@@ -833,6 +834,25 @@ class _HostCallsTabState extends State<HostCallsTab> {
 
   Future<void> _refresh() async {
     await _load();
+  }
+
+  Future<void> _endCall(String callId) async {
+    setState(() => _busyId = callId);
+    try {
+      await _auth.endCall(token: widget.jwtToken, callId: callId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Call ended')),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to end call: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _busyId = null);
+    }
   }
 
   Future<void> _startCall() async {
@@ -1017,6 +1037,50 @@ class _HostCallsTabState extends State<HostCallsTab> {
                   Text('RECORDING', style: TextStyle(color: Colors.white54)),
                   Text('-'),
                 ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.call),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => CallScreen(
+                          jwtToken: widget.jwtToken,
+                          wsUrl: defaultWsUrl,
+                        ),
+                      ),
+                    );
+                  },
+                  label: const Text('Join'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.call_end, color: Colors.red),
+                  onPressed: status == 'active' && _busyId != call.id
+                      ? () => _endCall(call.id)
+                      : null,
+                  label: _busyId == call.id
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          'End',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                  ),
+                ),
               ),
             ],
           ),
