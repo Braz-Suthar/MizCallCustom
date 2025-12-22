@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import 'host_home_screen.dart';
 import 'host_register_screen.dart';
 import 'call_screen.dart';
+import 'user_dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -31,8 +32,8 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  bool _isValidHostId(String value) => RegExp(r"^H\\d{6}$").hasMatch(value.trim());
-  bool _isValidUserId(String value) => RegExp(r"^U\\d{6}$").hasMatch(value.trim());
+  bool _isValidHostId(String value) => RegExp(r'^H\d{6}$').hasMatch(value.trim());
+  bool _isValidUserId(String value) => RegExp(r'^U\d{6}$').hasMatch(value.trim());
 
   Future<void> _login() async {
     setState(() {
@@ -58,8 +59,10 @@ class _LoginScreenState extends State<LoginScreen> {
         if (password.isEmpty) {
           throw Exception('Password required for user login');
         }
-        token = await _auth.loginUser(id, password);
-        await Session.save(token: token, role: 'user');
+        final result = await _auth.loginUser(id, password);
+        token = result.token;
+        hostId = result.hostId;
+        await Session.save(token: token, role: 'user', hostId: hostId);
       }
 
       if (!mounted) return;
@@ -77,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => CallScreen(
+            builder: (_) => UserDashboardScreen(
               jwtToken: token,
               wsUrl: defaultWsUrl,
             ),

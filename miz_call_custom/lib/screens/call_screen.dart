@@ -26,7 +26,7 @@ class CallScreen extends StatefulWidget {
 
 class _CallScreenState extends State<CallScreen> {
   late final WebRTCService _webrtc;
-  late final SignalingClient _signaling;
+  SignalingClient? _signaling;
   List<Map<String, dynamic>>? _iceServers;
   bool _webrtcReady = false;
 
@@ -55,13 +55,13 @@ class _CallScreenState extends State<CallScreen> {
       await BackgroundAudio.start();
       // 3️⃣ Connect signaling
       _signaling = SignalingClient(widget.wsUrl);
-      _signaling.stream.listen(_onSignal);
+      _signaling!.stream.listen(_onSignal);
 
       // Optional eager init with whatever ice we have (likely empty)
       await _ensureWebrtcReady();
 
       // 4️⃣ Join room
-      _signaling.send({
+      _signaling!.send({
         "type": "JOIN",
         "token": widget.jwtToken,
       });
@@ -83,13 +83,13 @@ class _CallScreenState extends State<CallScreen> {
       case "SEND_TRANSPORT_CREATED":
         await _ensureWebrtcReady();
         // CONNECT send transport (DTLS)
-        _signaling.send({
+        _signaling?.send({
           "type": "CONNECT_SEND_TRANSPORT",
           "dtlsParameters": await _webrtc.getDtlsParameters(),
         });
 
         // PRODUCE audio
-        _signaling.send({
+        _signaling?.send({
           "type": "PRODUCE",
           "kind": "audio",
           "rtpParameters": _webrtc.getRtpParameters(),
@@ -99,7 +99,7 @@ class _CallScreenState extends State<CallScreen> {
       case "RECV_TRANSPORT_CREATED":
         await _ensureWebrtcReady();
         // CONNECT recv transport (DTLS)
-        _signaling.send({
+        _signaling?.send({
           "type": "CONNECT_RECV_TRANSPORT",
           "dtlsParameters": await _webrtc.getDtlsParameters(),
         });
@@ -107,7 +107,7 @@ class _CallScreenState extends State<CallScreen> {
 
       case "NEW_PRODUCER":
         // Backend tells us a producer is available
-        _signaling.send({
+        _signaling?.send({
           "type": "CONSUME",
           "producerId": msg["producerId"],
         });
@@ -124,19 +124,49 @@ class _CallScreenState extends State<CallScreen> {
 
   void _onMicPressed() {
     _webrtc.setMic(true);
-    _signaling.send({ "type": "PTT_START" });
+    _signaling?.send({ "type": "PTT_START" });
     setState(() => _speaking = true);
   }
 
   void _onMicReleased() {
     _webrtc.setMic(false);
-    _signaling.send({ "type": "PTT_STOP" });
+    _signaling?.send({ "type": "PTT_STOP" });
     setState(() => _speaking = false);
+  }
+
+  Future<void> _endCall() async {
+    setState(() {
+      _speaking = false;
+      _connected = false;
+    });
+
+    try {
+      _webrtc.setMic(false);
+    } catch (_) {}
+
+    try {
+      await BackgroundAudio.stop();
+    } catch (_) {}
+
+    try {
+      _signaling?.close();
+    } catch (_) {}
+
+    try {
+      if (_webrtcReady) {
+        await _webrtc.dispose();
+        _webrtcReady = false;
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override
   void dispose() {
-    _signaling.close();
+    _signaling?.close();
     if (_webrtcReady) {
       _webrtc.dispose();
     }
@@ -173,6 +203,20 @@ class _CallScreenState extends State<CallScreen> {
           MicButton(
             onPressed: _onMicPressed,
             onReleased: _onMicReleased,
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                ),
+                onPressed: _endCall,
+                child: const Text("End Call"),
+              ),
+            ),
           ),
           const SizedBox(height: 24),
         ],

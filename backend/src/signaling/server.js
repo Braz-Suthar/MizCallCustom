@@ -11,9 +11,25 @@ import { sendMediasoup } from "../mediasoup/client.js";
 import { MS } from "../mediasoup/commands.js";
 
 const SECRET = process.env.JWT_SECRET;
+let wssInstance = null;
+
+export function broadcastCallEvent(hostId, payload) {
+    if (!wssInstance) return;
+    const msg = JSON.stringify(payload);
+    wssInstance.clients.forEach((client) => {
+        if (
+            client.readyState === 1 &&
+            client.auth?.role === "user" &&
+            client.auth?.hostId === hostId
+        ) {
+            client.send(msg);
+        }
+    });
+}
 
 export function startWebSocketServer(httpServer) {
     const wss = new WebSocketServer({ server: httpServer });
+    wssInstance = wss;
 
     wss.on("connection", (socket) => {
         socket.on("message", async (raw) => {
@@ -32,10 +48,16 @@ export function startWebSocketServer(httpServer) {
                 const { role } = socket.auth;
 
                 if (msg.type === EVENTS.CALL_STARTED && role === "host") {
+                    socket.roomId = msg.roomId;
                     createRoom(msg.roomId, socket);
 
                     await sendMediasoup({
                         type: MS.CREATE_ROOM,
+                        roomId: msg.roomId
+                    });
+
+                    broadcastCallEvent(socket.auth.hostId, {
+                        type: EVENTS.CALL_STARTED,
                         roomId: msg.roomId
                     });
 
@@ -115,6 +137,15 @@ export function startWebSocketServer(httpServer) {
                 }
             } catch (e) {
                 console.error("WS error:", e.message);
+            }
+        });
+
+        socket.on("close", () => {
+            if (socket.auth?.role === "host" && socket.roomId) {
+                broadcastCallEvent(socket.auth.hostId, {
+                    type: EVENTS.CALL_STOPPED,
+                    roomId: socket.roomId
+                });
             }
         });
     });

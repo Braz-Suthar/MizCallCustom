@@ -41,14 +41,17 @@ class AuthService {
     );
   }
 
-  Future<String> loginUser(String userId, String password) {
-    return _postForToken(
+  Future<UserLoginResult> loginUser(String userId, String password) async {
+    final data = await _post(
       path: '/auth/user/login',
       payload: {
         'userId': userId,
         'password': password,
       },
     );
+    final token = data['token'] as String?;
+    if (token == null) throw Exception('Token missing in response');
+    return UserLoginResult(token: token, hostId: data['hostId'] as String?);
   }
 
   Future<String> _postForToken({
@@ -170,6 +173,23 @@ class AuthService {
         .toList();
   }
 
+  Future<List<UserRecordingGroup>> fetchUserRecordings({
+    required String token,
+  }) async {
+    final data = await _get(path: '/recordings/user', bearer: token);
+    if (data.isEmpty) return const [];
+
+    final groups = <UserRecordingGroup>[];
+    data.forEach((key, value) {
+      final entries = (value as List<dynamic>? ?? [])
+          .map((e) => UserRecording.fromMap(e as Map<String, dynamic>))
+          .toList();
+      groups.add(UserRecordingGroup(date: key, recordings: entries));
+    });
+    groups.sort((a, b) => b.date.compareTo(a.date)); // newest first
+    return groups;
+  }
+
   Future<void> setUserEnabled({
     required String token,
     required String userId,
@@ -237,6 +257,12 @@ class AuthResult {
   final String hostId;
 }
 
+class UserLoginResult {
+  UserLoginResult({required this.token, this.hostId});
+  final String token;
+  final String? hostId;
+}
+
 class CreatedUser {
   CreatedUser({required this.userId, this.password});
   final String userId;
@@ -287,4 +313,45 @@ class HostCall {
       endedAt: map['ended_at']?.toString(),
     );
   }
+}
+
+class UserRecording {
+  UserRecording({
+    required this.id,
+    required this.startTime,
+    this.endTime,
+    this.filePath,
+    this.meetingId,
+    this.hostId,
+  });
+
+  final String id;
+  final DateTime startTime;
+  final DateTime? endTime;
+  final String? filePath;
+  final String? meetingId;
+  final String? hostId;
+
+  factory UserRecording.fromMap(Map<String, dynamic> map) {
+    DateTime? _parse(dynamic v) {
+      if (v == null) return null;
+      return DateTime.tryParse(v.toString());
+    }
+
+    return UserRecording(
+      id: map['id']?.toString() ?? '',
+      startTime: _parse(map['start_time']) ?? DateTime.now(),
+      endTime: _parse(map['end_time']),
+      filePath: map['file_path']?.toString(),
+      meetingId: map['meeting_id']?.toString(),
+      hostId: map['host_id']?.toString(),
+    );
+  }
+}
+
+class UserRecordingGroup {
+  UserRecordingGroup({required this.date, required this.recordings});
+
+  final String date;
+  final List<UserRecording> recordings;
 }

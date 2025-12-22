@@ -46,7 +46,7 @@ router.post("/user/login", async (req, res) => {
     return res.status(400).json({ error: "Missing credentials" });
 
   const result = await query(
-    `SELECT id, enabled FROM users 
+    `SELECT id, host_id, enabled FROM users 
      WHERE id = $1 AND password = $2`,
     [userId, password]
   );
@@ -57,8 +57,9 @@ router.post("/user/login", async (req, res) => {
   if (!result.rows[0].enabled)
     return res.status(403).json({ error: "User disabled by host" });
 
-  const token = signToken({ role: "user", userId });
-  res.json({ token });
+  const hostId = result.rows[0].host_id;
+  const token = signToken({ role: "user", userId, hostId });
+  res.json({ token, hostId });
 });
 
 export default router;

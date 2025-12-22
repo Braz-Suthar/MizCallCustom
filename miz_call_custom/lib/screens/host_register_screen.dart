@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
+import '../core/session.dart';
 import '../core/theme.dart';
 import 'host_home_screen.dart';
 
@@ -67,6 +68,7 @@ class _HostRegisterScreenState extends State<HostRegisterScreen> {
 
       final result = await _auth.registerHost(name);
       _hostId = result.hostId;
+      await Session.save(token: result.token, role: 'host', hostId: result.hostId);
 
       if (!mounted) return;
       Navigator.pushReplacement(

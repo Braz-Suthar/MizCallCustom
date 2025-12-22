@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../core/session.dart';
-import 'call_screen.dart';
 import 'host_home_screen.dart';
 import 'intro_screen.dart';
+import 'user_dashboard_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -39,9 +39,9 @@ class _SplashScreenState extends State<SplashScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => CallScreen(
+            builder: (_) => UserDashboardScreen(
               jwtToken: session.token,
-              wsUrl: session.hostId ?? '', // hostId unused for users
+              wsUrl: defaultWsUrl,
             ),
           ),
         );

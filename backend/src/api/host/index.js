@@ -3,6 +3,7 @@ import { v4 as uuid } from "uuid";
 import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
 import { generateUserId } from "../../services/id.js";
+import { broadcastCallEvent } from "../../signaling/server.js";
 
 const router = Router();
 
@@ -81,6 +82,11 @@ router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
   );
 
   res.json({ roomId });
+
+  broadcastCallEvent(req.hostId, {
+    type: "call-started",
+    roomId
+  });
 });
 
 /* LIST CALLS FOR HOST */
