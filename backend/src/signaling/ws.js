@@ -60,6 +60,30 @@ export function handleSocket({ socket }) {
 
         switch (msg.type) {
 
+            /* ---------------- AUTH ONLY (for dashboards wanting push) ---------------- */
+            case "auth":
+            case "AUTH": {
+                if (peer) break; // already authed
+                try {
+                    const decoded = verifyJwt(msg.token);
+                    const role = decoded.role;
+                    const userId = decoded.userId;
+                    const hostId = decoded.hostId;
+                    const id = role === "host" ? hostId : userId;
+                    console.log("[WS] AUTH", { id, role, hostId, userId });
+                    peer = new Peer({
+                        id,
+                        socket,
+                        role,
+                        hostId
+                    });
+                    peers.set(peer.id, peer);
+                } catch (e) {
+                    console.error("[WS] AUTH failed", e.message);
+                }
+                break;
+            }
+
             /* ---------------- JOIN ---------------- */
             case "JOIN": {
                 const decoded = verifyJwt(msg.token);
@@ -211,6 +235,9 @@ export function handleSocket({ socket }) {
             case "PTT_STOP":
                 // Not implemented with mediasoup server shim
                 break;
+
+            default:
+                console.log("[WS] unhandled message", msg.type);
         }
     });
 
