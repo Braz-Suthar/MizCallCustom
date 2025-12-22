@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
 import { generateUserId } from "../../services/id.js";
-import { broadcastCallEvent } from "../../signaling/server.js";
+import { broadcastCallEvent } from "../../signaling/ws.js";
 
 const router = Router();
 

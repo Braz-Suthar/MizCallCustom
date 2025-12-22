@@ -9,6 +9,7 @@ const ROOM_ID = "main-room";
 
 let routerRtpCapabilities = null;
 const peers = new Map();
+let wssInstance = null;
 
 async function ensureRoom() {
   if (routerRtpCapabilities) return;
@@ -22,9 +23,19 @@ async function ensureRoom() {
 export async function startWebSocketServer(httpServer) {
   await ensureRoom();
   const wss = new WebSocketServer({ server: httpServer });
+  wssInstance = wss;
   wss.on("connection", (socket) => {
     handleSocket({ socket });
   });
+}
+
+export function broadcastCallEvent(payload) {
+  const msg = JSON.stringify(payload);
+  for (const peer of peers.values()) {
+    if (peer.socket.readyState === 1 && peer.role === "user") {
+      peer.socket.send(msg);
+    }
+  }
 }
 
 export function handleSocket({ socket }) {
