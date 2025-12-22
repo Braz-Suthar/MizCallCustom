@@ -189,9 +189,9 @@ export function handleSocket({ socket }) {
     socket.on("close", () => {
         if (!peer) return;
 
-        peer.producer?.close();
-        peer.sendTransport?.close();
-        peer.recvTransport?.close();
+        peer.producer = null;
+        peer.sendTransport = null;
+        peer.recvTransport = null;
 
         peers.delete(peer.id);
     });
