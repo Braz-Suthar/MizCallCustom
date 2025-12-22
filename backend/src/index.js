@@ -27,13 +27,12 @@ app.get("/health", (req, res) => {
 // Create HTTP server (required for WS)
 const server = http.createServer(app);
 
-// Start WS signaling
-startWebSocketServer(server);
-
-// Boot sequence
+// Boot sequence (ensure mediasoup first, then WS)
 await runMigrations();
+await connectMediasoup();
 connectRecorder();
-connectMediasoup();
+// Start WS signaling (requires mediasoup connection ready)
+startWebSocketServer(server);
 
 // 🔑 IMPORTANT: use env port
 const PORT = Number(process.env.API_PORT) || 3100;

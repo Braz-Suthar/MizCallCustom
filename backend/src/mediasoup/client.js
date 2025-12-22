@@ -9,18 +9,39 @@ let socket;
 const pending = new Map();
 
 export function connectMediasoup() {
-    socket = new WebSocket(`ws://${MEDIASOUP_HOST}:${MEDIASOUP_PORT}`);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        return Promise.resolve();
+    }
 
-    socket.on("open", () => {
-        console.log("🔗 Connected to mediasoup");
-    });
+    return new Promise((resolve, reject) => {
+        socket = new WebSocket(`ws://${MEDIASOUP_HOST}:${MEDIASOUP_PORT}`);
 
-    socket.on("message", (raw) => {
-        const msg = JSON.parse(raw.toString());
-        if (msg.requestId && pending.has(msg.requestId)) {
-            pending.get(msg.requestId)(msg);
-            pending.delete(msg.requestId);
-        }
+        const onOpen = () => {
+            console.log("🔗 Connected to mediasoup");
+            cleanup();
+            resolve();
+        };
+
+        const onError = (err) => {
+            cleanup();
+            reject(err);
+        };
+
+        const cleanup = () => {
+            socket?.off("open", onOpen);
+            socket?.off("error", onError);
+        };
+
+        socket.on("open", onOpen);
+        socket.on("error", onError);
+
+        socket.on("message", (raw) => {
+            const msg = JSON.parse(raw.toString());
+            if (msg.requestId && pending.has(msg.requestId)) {
+                pending.get(msg.requestId)(msg);
+                pending.delete(msg.requestId);
+            }
+        });
     });
 }
 
