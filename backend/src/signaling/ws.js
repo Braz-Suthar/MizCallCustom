@@ -98,6 +98,17 @@ export function handleSocket({ socket }) {
                 break;
             }
 
+            /* ---------------- ROUTER CAPS REQUEST ---------------- */
+            case "GET_ROUTER_CAPS":
+            case "get-router-caps": {
+                await ensureRoom();
+                socket.send(JSON.stringify({
+                    type: "ROUTER_CAPS",
+                    routerRtpCapabilities
+                }));
+                break;
+            }
+
             /* ---------------- JOIN ---------------- */
             case "JOIN": {
                 const decoded = verifyJwt(msg.token);

@@ -2,7 +2,7 @@ import { AppDispatch, RootState } from "./store";
 import { apiFetch } from "./api";
 import { addParticipant, clearActiveCall, resetParticipants, setActiveCall, setCallError, setCallStatus } from "./callSlice";
 
-const WS_URL = "wss://custom.mizcall.com/ws";
+const WS_URL = "wss://custom.mizcall.com";
 
 let hostCallWs: WebSocket | null = null;
 
@@ -21,12 +21,14 @@ const openHostCallSocket = (token: string, dispatch: AppDispatch, roomId: string
     hostCallWs = ws;
 
     ws.onopen = () => {
+      console.log("[host-call] ws open");
       ws.send(JSON.stringify({ type: "auth", token }));
       ws.send(JSON.stringify({ type: "call-started", roomId }));
       resolve();
     };
 
     ws.onmessage = (event) => {
+      console.log("[host-call] ws message", event.data);
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "user-joined" && msg.userId) {
@@ -41,10 +43,11 @@ const openHostCallSocket = (token: string, dispatch: AppDispatch, roomId: string
     };
 
     ws.onerror = () => {
-      // we keep silent; UI already shows call status
+      console.warn("[host-call] ws error");
     };
 
     ws.onclose = () => {
+      console.log("[host-call] ws close");
       hostCallWs = null;
     };
   });

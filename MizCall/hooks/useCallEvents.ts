@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { setActiveCall } from "../state/callSlice";
 import { useAppDispatch, useAppSelector } from "../state/store";
 
-const WS_URL = "wss://custom.mizcall.com/ws";
+const WS_URL = "wss://custom.mizcall.com";
 
 export function useCallEvents() {
   const dispatch = useAppDispatch();
@@ -17,10 +17,12 @@ export function useCallEvents() {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      console.log("[useCallEvents] ws open");
       ws.send(JSON.stringify({ type: "auth", token }));
     };
 
     ws.onmessage = (event) => {
+      console.log("[useCallEvents] ws message", event.data);
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "call-started") {
@@ -50,7 +52,11 @@ export function useCallEvents() {
     };
 
     ws.onerror = (err) => {
-      console.warn("WS error", err);
+      console.warn("[useCallEvents] WS error", err);
+    };
+
+    ws.onclose = (ev) => {
+      console.log("[useCallEvents] ws close", ev.code, ev.reason);
     };
 
     return () => {

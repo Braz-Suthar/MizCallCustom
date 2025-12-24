@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import { AppButton } from "../../components/ui/AppButton";
 import { useAppDispatch, useAppSelector } from "../../state/store";
 import { endCall, startCall } from "../../state/callActions";
+import { useHostCallMedia } from "../../hooks/useHostCallMedia";
 
 export default function ActiveCallScreen() {
   const { colors } = useTheme();
@@ -15,6 +16,14 @@ export default function ActiveCallScreen() {
   const callStatus = useAppSelector((s) => s.call.status);
   const callError = useAppSelector((s) => s.call.error);
   const participants = useAppSelector((s) => s.call.participants);
+  const token = useAppSelector((s) => s.auth.token);
+  const role = useAppSelector((s) => s.auth.role);
+
+  const { state: mediaState, error: mediaError, micEnabled, setMicEnabled } = useHostCallMedia({
+    token,
+    role,
+    call: activeCall,
+  });
   const [muted, setMuted] = useState(false);
 
   const participantData = useMemo(
@@ -89,19 +98,24 @@ export default function ActiveCallScreen() {
 
           <View style={styles.actions}>
             <AppButton
-              label={muted ? "Unmute" : "Mute"}
-              variant="secondary"
-              onPress={() => setMuted((m) => !m)}
-              fullWidth
-            />
-            <AppButton
               label="End call"
               variant="secondary"
               onPress={onEnd}
               disabled={callStatus === "starting"}
               fullWidth
             />
+            <AppButton
+              label={muted ? "Unmute" : "Mute"}
+              variant="secondary"
+              onPress={() => {
+                setMuted((m) => !m);
+                setMicEnabled(!muted);
+              }}
+              fullWidth
+              disabled={mediaState === "connecting"}
+            />
           </View>
+          {mediaError ? <Text style={[styles.error, { color: colors.text }]}>{mediaError}</Text> : null}
         </View>
       ) : (
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
