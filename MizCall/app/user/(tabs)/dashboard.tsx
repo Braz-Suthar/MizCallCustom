@@ -1,14 +1,14 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import { AppButton } from "../../../components/ui/AppButton";
 import { useAppSelector } from "../../../state/store";
-import { useJoinCall } from "../../../hooks/useJoinCall";
 
 export default function UserDashboard() {
   const { colors } = useTheme();
+  const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
-  const { join, state, error } = useJoinCall();
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -20,12 +20,10 @@ export default function UserDashboard() {
           <Text style={[styles.cardTitle, { color: colors.text }]}>Active call</Text>
           <Text style={[styles.cardSub, { color: colors.text }]}>Room: {activeCall.roomId}</Text>
           <AppButton
-            label={state === "connecting" ? "Joining..." : "Join call"}
-            onPress={join}
-            disabled={state === "connecting"}
+            label="Open call"
+            onPress={() => router.push("/user/active-call")}
             fullWidth
           />
-          {error ? <Text style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
         </View>
       ) : (
         <Text style={[styles.empty, { color: colors.text }]}>No active calls</Text>

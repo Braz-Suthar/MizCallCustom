@@ -2,13 +2,18 @@ import { useEffect, useRef } from "react";
 
 import { CredentialsPayload } from "../state/authSlice";
 import { setActiveCall } from "../state/callSlice";
-import { useAppDispatch } from "../state/store";
+import { useAppDispatch, useAppSelector } from "../state/store";
 
 const WS_URL = "wss://custom.mizcall.com/ws";
 
 export const useSocket = (session: CredentialsPayload | null) => {
   const wsRef = useRef<WebSocket | null>(null);
   const dispatch = useAppDispatch();
+  const activeCall = useAppSelector((s) => s.call.activeCall);
+  const callRef = useRef(activeCall);
+  useEffect(() => {
+    callRef.current = activeCall;
+  }, [activeCall]);
 
   useEffect(() => {
     if (!session?.token) {
@@ -36,10 +41,23 @@ export const useSocket = (session: CredentialsPayload | null) => {
       try {
         const msg = JSON.parse(ev.data);
         if (msg.type === "call-started") {
+          // only set when we have router caps to avoid wiping state
+          if (msg.routerRtpCapabilities) {
+            dispatch(
+              setActiveCall({
+                roomId: msg.roomId ?? "main-room",
+                routerRtpCapabilities: msg.routerRtpCapabilities,
+                hostProducerId: msg.producerId,
+              }),
+            );
+          }
+        }
+        if (msg.type === "NEW_PRODUCER") {
+          const current = callRef.current;
           dispatch(
             setActiveCall({
-              roomId: msg.roomId,
-              routerRtpCapabilities: msg.routerRtpCapabilities,
+              roomId: current?.roomId ?? "main-room",
+              routerRtpCapabilities: current?.routerRtpCapabilities,
               hostProducerId: msg.producerId,
             }),
           );

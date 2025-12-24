@@ -19,6 +19,7 @@ export function useJoinCall() {
   const wsRef = useRef<WebSocket | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const transportRef = useRef<any>(null);
+  const producerIdRef = useRef<string | null>(null);
 
   const cleanup = () => {
     wsRef.current?.close();
@@ -31,9 +32,14 @@ export function useJoinCall() {
   useEffect(() => cleanup, []);
 
   const join = useCallback(async () => {
-    if (!token || role !== "user" || !activeCall?.routerRtpCapabilities) {
-      setError("Missing call info or auth");
+    if (!token || role !== "user") {
+      setError("Missing auth");
       setState("error");
+      return;
+    }
+    if (!activeCall?.routerRtpCapabilities) {
+      setError("Waiting for call info");
+      setState("idle");
       return;
     }
 
@@ -85,9 +91,30 @@ export function useJoinCall() {
             );
             callback();
           });
+
+          // if we already know a producer, consume it
+          if (producerIdRef.current) {
+            ws.send(
+              JSON.stringify({
+                type: "CONSUME",
+                producerId: producerIdRef.current,
+              }),
+            );
+          }
+          // also consume if hostProducerId already stored in state
+          if (!producerIdRef.current && activeCall?.hostProducerId) {
+            producerIdRef.current = activeCall.hostProducerId;
+            ws.send(
+              JSON.stringify({
+                type: "CONSUME",
+                producerId: activeCall.hostProducerId,
+              }),
+            );
+          }
         }
 
         if (msg.type === "NEW_PRODUCER") {
+          producerIdRef.current = msg.producerId;
           ws.send(
             JSON.stringify({
               type: "CONSUME",

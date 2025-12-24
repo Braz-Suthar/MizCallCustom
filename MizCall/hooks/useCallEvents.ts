@@ -27,22 +27,26 @@ export function useCallEvents() {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === "call-started") {
-          dispatch(
-            setActiveCall({
-              roomId: msg.roomId,
-              routerRtpCapabilities: msg.routerRtpCapabilities,
-              hostProducerId: msg.producerId,
-            }),
-          );
+          if (msg.routerRtpCapabilities) {
+            dispatch(
+              setActiveCall({
+                roomId: msg.roomId ?? "main-room",
+                routerRtpCapabilities: msg.routerRtpCapabilities,
+                hostProducerId: msg.producerId,
+              }),
+            );
+          }
         }
         if (msg.type === "host-producer") {
-          dispatch(
-            setActiveCall({
-              roomId: msg.roomId,
-              routerRtpCapabilities: msg.routerRtpCapabilities,
-              hostProducerId: msg.producerId,
-            }),
-          );
+          if (msg.routerRtpCapabilities) {
+            dispatch(
+              setActiveCall({
+                roomId: msg.roomId ?? "main-room",
+                routerRtpCapabilities: msg.routerRtpCapabilities,
+                hostProducerId: msg.producerId,
+              }),
+            );
+          }
         }
         if (msg.type === "call-stopped") {
           dispatch(setActiveCall(null));
