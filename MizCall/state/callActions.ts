@@ -2,7 +2,7 @@ import { AppDispatch, RootState } from "./store";
 import { apiFetch } from "./api";
 import { addParticipant, clearActiveCall, resetParticipants, setActiveCall, setCallError, setCallStatus } from "./callSlice";
 
-const WS_URL = "wss://custom.mizcall.com";
+const WS_URL = "wss://custom.mizcall.com/ws";
 
 let hostCallWs: WebSocket | null = null;
 

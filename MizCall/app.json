@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.MizCall"
+      "bundleIdentifier": "com.anonymous.MizCall",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "MizCall needs microphone access for audio calls."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +24,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.MizCall"
+      "package": "com.anonymous.MizCall",
+      "permissions": ["RECORD_AUDIO"]
     },
     "web": {
       "output": "static",

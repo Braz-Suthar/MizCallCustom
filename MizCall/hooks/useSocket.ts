@@ -4,7 +4,7 @@ import { CredentialsPayload } from "../state/authSlice";
 import { setActiveCall } from "../state/callSlice";
 import { useAppDispatch } from "../state/store";
 
-const WS_URL = "wss://custom.mizcall.com";
+const WS_URL = "wss://custom.mizcall.com/ws";
 
 export const useSocket = (session: CredentialsPayload | null) => {
   const wsRef = useRef<WebSocket | null>(null);

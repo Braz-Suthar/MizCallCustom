@@ -6,7 +6,8 @@ services:
   # ========================
   mediasoup:
     build: ./mediasoup-server
-    network_mode: host
+    ports:
+      - "4000:4000"
     env_file:
       - .env
     environment:
@@ -21,11 +22,15 @@ services:
     build: ./backend
     env_file:
       - .env
+    environment:
+      MEDIASOUP_HOST: mediasoup
+      MEDIASOUP_PORT: 4000
     ports:
       - "127.0.0.1:3100:3100"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
+      - mediasoup
       - postgres
       - redis
     volumes:

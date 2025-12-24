@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 import { RtpCapabilities } from "mediasoup-client/lib/RtpParameters";
+import { PermissionsAndroid, Platform } from "react-native";
 import { mediaDevices, MediaStream } from "react-native-webrtc";
 
 import { ActiveCall } from "../state/callSlice";
 
-const WS_URL = "wss://custom.mizcall.com";
+const WS_URL = "wss://custom.mizcall.com/ws";
 
 type MediaState = "idle" | "connecting" | "connected" | "error";
 
@@ -124,7 +125,8 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
   const createSendTransport = useCallback(
     async (ws: WebSocket, params: any) => {
-      const device = new Device();
+      // Explicit handler for react-native-webrtc 1.0.6
+      const device = new Device({ handlerName: "ReactNative106" as any });
       try {
         await device.load({
           routerRtpCapabilities: routerCapsRef.current as RtpCapabilities,
@@ -162,6 +164,15 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       });
 
       try {
+        if (Platform.OS === "android") {
+          const granted = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          );
+          if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+            throw new Error("Microphone permission denied");
+          }
+        }
+
         const stream = await mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,

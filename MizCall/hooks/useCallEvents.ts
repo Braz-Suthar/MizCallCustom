@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { setActiveCall } from "../state/callSlice";
 import { useAppDispatch, useAppSelector } from "../state/store";
 
-const WS_URL = "wss://custom.mizcall.com";
+const WS_URL = "wss://custom.mizcall.com/ws";
 
 export function useCallEvents() {
   const dispatch = useAppDispatch();

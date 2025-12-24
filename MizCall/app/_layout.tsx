@@ -1,8 +1,10 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack } from "expo-router";
 import { Provider } from "react-redux";
-import { useColorScheme } from "react-native";
+import { useColorScheme, PermissionsAndroid, Platform } from "react-native";
+import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
+import { registerGlobals } from "react-native-webrtc";
 
 import { store, useAppSelector } from "../state/store";
 import { useCallEvents } from "../hooks/useCallEvents";
@@ -13,6 +15,23 @@ function RootLayoutNav() {
   const resolvedScheme = themeMode === "system" ? systemScheme : themeMode;
   const theme = resolvedScheme === "dark" ? DarkTheme : DefaultTheme;
   useCallEvents();
+  registerGlobals();
+
+  // Request mic permission early (Android)
+  useEffect(() => {
+    const requestMic = async () => {
+      if (Platform.OS !== "android") return;
+      try {
+        const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+        if (res !== PermissionsAndroid.RESULTS.GRANTED) {
+          console.warn("[app/_layout] Microphone permission not granted");
+        }
+      } catch (e) {
+        console.warn("[app/_layout] Mic permission request failed", e);
+      }
+    };
+    requestMic();
+  }, []);
 
   return (
     <ThemeProvider value={theme}>

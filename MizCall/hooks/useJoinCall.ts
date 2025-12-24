@@ -5,12 +5,12 @@ import { MediaStream } from "react-native-webrtc";
 
 import { useAppSelector } from "../state/store";
 
-const WS_URL = "wss://custom.mizcall.com";
+const WS_URL = "wss://custom.mizcall.com/ws";
 
 type JoinState = "idle" | "connecting" | "connected" | "error";
 
 export function useJoinCall() {
-  const { token, role, hostId } = useAppSelector((s) => s.auth);
+  const { token, role } = useAppSelector((s) => s.auth);
   const activeCall = useAppSelector((s) => s.call.activeCall);
   const [state, setState] = useState<JoinState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +31,7 @@ export function useJoinCall() {
   useEffect(() => cleanup, []);
 
   const join = useCallback(async () => {
-    if (!token || role !== "user" || !activeCall?.roomId || !activeCall.routerRtpCapabilities) {
+    if (!token || role !== "user" || !activeCall?.routerRtpCapabilities) {
       setError("Missing call info or auth");
       setState("error");
       return;
@@ -67,10 +67,9 @@ export function useJoinCall() {
       console.log("[useJoinCall] ws message", event.data);
       try {
         const msg = JSON.parse(event.data);
-        // Server sends transports on JOIN
         if (msg.type === "RECV_TRANSPORT_CREATED") {
-          const device = new Device();
-          await device.load({ routerRtpCapabilities: activeCall.routerRtpCapabilities as RtpCapabilities });
+          const device = new Device({ handlerName: "ReactNative106" as any });
+          await device.load({ routerRtpCapabilities: (activeCall?.routerRtpCapabilities || {}) as RtpCapabilities });
           deviceRef.current = device;
 
           const transport = device.createRecvTransport(msg.params);
@@ -112,7 +111,7 @@ export function useJoinCall() {
         // ignore parse errors
       }
     };
-  }, [token, role, activeCall?.roomId, activeCall?.routerRtpCapabilities, hostId, state]);
+  }, [token, role, activeCall?.routerRtpCapabilities, state]);
 
   return { join, state, error, remoteStream };
 }
