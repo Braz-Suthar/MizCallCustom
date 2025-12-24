@@ -6,10 +6,16 @@ import { useAppSelector } from "../../../state/store";
 import { useSocket } from "../../../hooks/useSocket";
 
 export default function HostTabsLayout() {
-  const session = useAppSelector((s) =>
-    s.auth.token && s.auth.role === "host"
-      ? { role: s.auth.role, token: s.auth.token, email: s.auth.email ?? undefined }
-      : null,
+  const token = useAppSelector((s) => s.auth.token);
+  const role = useAppSelector((s) => s.auth.role);
+  const email = useAppSelector((s) => s.auth.email);
+
+  const session = useMemo(
+    () =>
+      token && role === "host"
+        ? { role, token, email: email ?? undefined }
+        : null,
+    [token, role, email],
   );
 
   useSocket(useMemo(() => session, [session]));

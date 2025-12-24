@@ -6,11 +6,16 @@ import { useAppSelector } from "../../../state/store";
 import { useSocket } from "../../../hooks/useSocket";
 
 export default function UserTabsLayout() {
-  const session = useAppSelector((s) =>
-    s.auth.token && s.auth.role === "user"
-      ? { role: s.auth.role, token: s.auth.token, userId: s.auth.userId ?? undefined }
-      : null,
-  );
+  const token = useAppSelector((s) => s.auth.token);
+  const role = useAppSelector((s) => s.auth.role);
+  const userId = useAppSelector((s) => s.auth.userId);
+
+  const session = useMemo(() => {
+    if (token && role === "user") {
+      return { role, token, userId: userId ?? undefined };
+    }
+    return null;
+  }, [token, role, userId]);
 
   useSocket(useMemo(() => session, [session]));
 

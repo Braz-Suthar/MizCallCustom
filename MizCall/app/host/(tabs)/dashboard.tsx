@@ -4,10 +4,13 @@ import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
+import { useAppDispatch } from "../../../state/store";
+import { startCall } from "../../../state/callActions";
 
 export default function HostDashboard() {
   const { colors } = useTheme();
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const stats = [
     { label: "Total users", value: "128" },
     { label: "Total calls", value: "342" },
@@ -39,7 +42,18 @@ export default function HostDashboard() {
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick actions</Text>
           <View style={styles.row}>
             <View style={styles.half}>
-              <AppButton label="Start New Call" onPress={() => {}} fullWidth />
+              <AppButton
+                label="Start New Call"
+                onPress={async () => {
+                  try {
+                    const roomId = await dispatch(startCall()).unwrap?.();
+                    router.push("/host/active-call");
+                  } catch (e) {
+                    // ignore here; startCall already handles errors upstream
+                  }
+                }}
+                fullWidth
+              />
             </View>
             <View style={styles.half}>
               <AppButton

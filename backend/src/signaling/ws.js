@@ -85,6 +85,19 @@ export function handleSocket({ socket }) {
                 break;
             }
 
+            /* ---------------- CALL STARTED (notify users) ---------------- */
+            case "CALL_STARTED":
+            case "call-started": {
+                if (!peer || peer.role !== "host") break;
+                await ensureRoom();
+                broadcastCallEvent(peer.hostId, {
+                    type: "call-started",
+                    roomId: ROOM_ID,
+                    routerRtpCapabilities: routerRtpCapabilities ?? {},
+                });
+                break;
+            }
+
             /* ---------------- JOIN ---------------- */
             case "JOIN": {
                 const decoded = verifyJwt(msg.token);

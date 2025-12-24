@@ -29,6 +29,7 @@ export const loginHost =
       );
       const session: CredentialsPayload = {
         email,
+        hostId: res.hostId,
         role: "host",
         token: res.token,
       };
@@ -55,6 +56,7 @@ export const loginUser =
       );
       const session: CredentialsPayload = {
         userId,
+        hostId: res.hostId,
         role: "user",
         token: res.token,
       };
@@ -81,6 +83,7 @@ export const registerUser =
       );
       const session: CredentialsPayload = {
         email,
+        hostId: res.hostId,
         role: "host",
         token: res.token,
       };

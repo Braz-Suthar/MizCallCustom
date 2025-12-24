@@ -4,6 +4,7 @@ export type UserRole = "host" | "user" | null;
 
 type AuthState = {
   userId: string | null;
+  hostId: string | null;
   email: string | null;
   role: UserRole;
   token: string | null;
@@ -13,6 +14,7 @@ type AuthState = {
 
 const initialState: AuthState = {
   userId: null,
+  hostId: null,
   email: null,
   role: null,
   token: null,
@@ -22,6 +24,7 @@ const initialState: AuthState = {
 
 export type CredentialsPayload = {
   userId?: string;
+  hostId?: string;
   email?: string;
   token: string;
   role: Exclude<UserRole, null>;
@@ -33,6 +36,7 @@ const authSlice = createSlice({
   reducers: {
     setCredentials: (state, action: PayloadAction<CredentialsPayload>) => {
       state.userId = action.payload.userId ?? null;
+      state.hostId = action.payload.hostId ?? null;
       state.email = action.payload.email ?? null;
       state.role = action.payload.role;
       state.token = action.payload.token;

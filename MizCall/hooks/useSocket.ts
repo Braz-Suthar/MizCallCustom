@@ -1,41 +1,36 @@
 import { useEffect, useRef } from "react";
-import io, { Socket } from "socket.io-client";
 
 import { CredentialsPayload } from "../state/authSlice";
 
-const SOCKET_URL = "https://custom.mizcall.com";
+const WS_URL = "wss://custom.mizcall.com/ws";
 
 export const useSocket = (session: CredentialsPayload | null) => {
-  const socketRef = useRef<Socket | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     if (!session?.token) {
-      socketRef.current?.disconnect();
-      socketRef.current = null;
+      wsRef.current?.close();
+      wsRef.current = null;
       return;
     }
 
-    const socket = io(SOCKET_URL, {
-      transports: ["websocket"],
-      auth: { token: session.token, role: session.role },
-    });
+    const ws = new WebSocket(WS_URL);
+    wsRef.current = ws;
 
-    socket.on("connect_error", (err) => {
-      console.warn("Socket connect error", err.message);
-    });
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "auth", token: session.token }));
+    };
 
-    socket.on("connect", () => {
-      console.log("Socket connected");
-    });
+    ws.onerror = (err) => {
+      console.warn("Socket connect error", err);
+    };
 
-    socket.on("disconnect", (reason) => {
-      console.log("Socket disconnected", reason);
-    });
-
-    socketRef.current = socket;
-    return () => socket.disconnect();
+    return () => {
+      ws.close();
+      wsRef.current = null;
+    };
   }, [session]);
 
-  return socketRef.current;
+  return wsRef.current;
 };
 

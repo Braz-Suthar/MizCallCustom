@@ -5,12 +5,14 @@ import { useColorScheme } from "react-native";
 import { StatusBar } from "expo-status-bar";
 
 import { store, useAppSelector } from "../state/store";
+import { useCallEvents } from "../hooks/useCallEvents";
 
 function RootLayoutNav() {
   const themeMode = useAppSelector((state) => state.theme.mode);
   const systemScheme = useColorScheme() ?? "light";
   const resolvedScheme = themeMode === "system" ? systemScheme : themeMode;
   const theme = resolvedScheme === "dark" ? DarkTheme : DefaultTheme;
+  useCallEvents();
 
   return (
     <ThemeProvider value={theme}>
