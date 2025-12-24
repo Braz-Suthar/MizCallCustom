@@ -17,6 +17,8 @@ export const useSocket = (session: CredentialsPayload | null) => {
       return;
     }
 
+    if (wsRef.current) return;
+
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
@@ -52,6 +54,7 @@ export const useSocket = (session: CredentialsPayload | null) => {
 
     ws.onclose = (ev) => {
       console.log("[useSocket] ws close", ev.code, ev.reason);
+      wsRef.current = null;
     };
 
     return () => {

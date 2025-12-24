@@ -58,6 +58,7 @@ export function useJoinCall() {
 
     ws.onclose = (ev) => {
       console.log("[useJoinCall] ws close", ev.code, ev.reason);
+      wsRef.current = null;
       if (state !== "connected") {
         setState("idle");
       }
@@ -111,7 +112,7 @@ export function useJoinCall() {
         // ignore parse errors
       }
     };
-  }, [token, role, activeCall?.routerRtpCapabilities, state]);
+  }, [token, role, activeCall?.routerRtpCapabilities]);
 
   return { join, state, error, remoteStream };
 }

@@ -12,6 +12,7 @@ export function useCallEvents() {
 
   useEffect(() => {
     if (!token || !role) return;
+    if (wsRef.current) return;
 
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
@@ -57,6 +58,7 @@ export function useCallEvents() {
 
     ws.onclose = (ev) => {
       console.log("[useCallEvents] ws close", ev.code, ev.reason);
+      wsRef.current = null;
     };
 
     return () => {

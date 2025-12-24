@@ -47,12 +47,14 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       return;
     }
 
+    // Avoid spinning multiple sockets
+    if (wsRef.current) return;
+
     let cancelled = false;
 
     const start = async () => {
       setState("connecting");
       setError(null);
-      setMicEnabled(false);
 
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
@@ -74,6 +76,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
       ws.onclose = (ev) => {
         console.log("[useHostCallMedia] ws close", ev.code, ev.reason);
+        wsRef.current = null;
         if (!cancelled && state !== "connected") {
           setState("idle");
         }
@@ -85,7 +88,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           const msg = JSON.parse(event.data);
 
           if (msg.type === "TURN_CONFIG") {
-            // no-op for now; mediasoup transports already include ICE candidates
+            // no-op
           }
 
           if (msg.type === "ROUTER_CAPS") {
@@ -121,7 +124,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       cancelled = true;
       cleanup();
     };
-  }, [token, role, call, cleanup, micEnabled, state]);
+  }, [token, role, call, cleanup]);
 
   const createSendTransport = useCallback(
     async (ws: WebSocket, params: any) => {
