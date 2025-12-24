@@ -23,6 +23,7 @@ const openHostCallSocket = (token: string, dispatch: AppDispatch, roomId: string
     ws.onopen = () => {
       console.log("[host-call] ws open");
       ws.send(JSON.stringify({ type: "auth", token }));
+      // align with backend: notify call-started (roomId ignored server-side)
       ws.send(JSON.stringify({ type: "call-started", roomId }));
       resolve();
     };

@@ -103,24 +103,10 @@ wss.on("connection", async (socket) => {
             room.producers ??= new Map();
             room.producers.set(msg.ownerId, producer);
 
-            /* 2️⃣ Create PlainTransport for Recorder */
-            const plainTransport = await createPlainTransport(room.router);
-
-            room.recorderTransports ??= new Map();
-            room.recorderTransports.set(msg.ownerId, plainTransport);
-
-            /* 3️⃣ Pipe producer → recorder */
-            await producer.pipeTo(plainTransport);
-
-            /* 4️⃣ Respond back with recorder RTP info */
             socket.send(JSON.stringify({
                 requestId: msg.requestId,
                 producerId: producer.id,
-                recorder: {
-                    ip: plainTransport.tuple.localIp,
-                    port: plainTransport.tuple.localPort,
-                    rtcpPort: plainTransport.rtcpTuple.localPort
-                }
+                recorder: null
             }));
         }
 
