@@ -73,17 +73,56 @@ class WebRTCService {
   Future<Map<String, dynamic>> getDtlsParameters() async {
     if (_cachedDtls != null) return _cachedDtls!;
 
-    Map<String, dynamic> _reportsToDtls(Iterable reports) {
-      final cert = reports.firstWhere(
-        (r) =>
-            (r is Map && r['type'] == 'certificate') ||
-            ((r is Object) && (r as dynamic?)?.type == 'certificate'),
-        orElse: () => throw StateError('No certificate stats available'),
-      );
+    String? _fingerprintFromSdp(String sdp) {
+      final lines = sdp.split(RegExp(r'\r?\n'));
+      for (final line in lines) {
+        if (line.toLowerCase().startsWith('a=fingerprint:')) {
+          final parts = line.split(RegExp(r'\s+'));
+          if (parts.length >= 2) {
+            return parts.sublist(1).join(' ').trim();
+          }
+        }
+      }
+      return null;
+    }
 
-      final values = (cert is Map)
-          ? cert
-          : (cert as dynamic?)?.values as Map? ?? const {};
+    Map<String, dynamic> _dtlsFromFingerprint(String fpLine) {
+      final firstSpace = fpLine.indexOf(' ');
+      final algorithm = fpLine.substring(0, firstSpace).toLowerCase();
+      final value = fpLine.substring(firstSpace + 1).trim();
+      return {
+        'role': 'auto',
+        'fingerprints': [
+          {
+            'algorithm': algorithm,
+            'value': value,
+          }
+        ],
+      };
+    }
+
+    Future<Map<String, dynamic>> _dtlsFromStats() async {
+      final reports = await pc.getStats();
+      Map values = const {};
+      try {
+        for (final r in reports) {
+          try {
+            final dyn = r as dynamic;
+            if (dyn.type == 'certificate') {
+              values = (dyn.values as Map?) ?? const {};
+              break;
+            }
+          } catch (_) {
+            continue;
+          }
+        }
+      } catch (_) {
+        // ignore
+      }
+
+      if (values.isEmpty) {
+        throw StateError('No certificate stats available');
+      }
 
       final fingerprint =
           (values['fingerprint'] as String?) ??
@@ -92,11 +131,9 @@ class WebRTCService {
           (values['fingerprintAlgorithm'] as String?) ??
               (values['algorithm'] as String?) ??
               'sha-256';
-
       if (fingerprint == null) {
         throw StateError('No DTLS fingerprint found');
       }
-
       return {
         'role': 'auto',
         'fingerprints': [
@@ -108,23 +145,22 @@ class WebRTCService {
       };
     }
 
-    try {
-      final stats = await pc.getStats();
-      _cachedDtls = _reportsToDtls(stats);
-      return _cachedDtls!;
-    } catch (_) {
-      // Some platforms need an SDP to generate certificate stats; create a quick offer.
-      if (pc.getLocalDescription() == null) {
-        final offer = await pc.createOffer({
-          'offerToReceiveAudio': true,
-          'offerToReceiveVideo': false,
-        });
-        await pc.setLocalDescription(offer);
-      }
-      final stats = await pc.getStats();
-      _cachedDtls = _reportsToDtls(stats);
+    // Always create a fresh offer and use its SDP to extract fingerprint; fallback to stats.
+    final offer = await pc.createOffer({
+      'offerToReceiveAudio': true,
+      'offerToReceiveVideo': false,
+    });
+    await pc.setLocalDescription(offer);
+    final sdp = offer.sdp ?? '';
+    final fp = _fingerprintFromSdp(sdp);
+    if (fp != null && fp.contains(' ')) {
+      _cachedDtls = _dtlsFromFingerprint(fp);
       return _cachedDtls!;
     }
+
+    // Fallback to stats-based fingerprint
+    _cachedDtls = await _dtlsFromStats();
+    return _cachedDtls!;
 
   }
 

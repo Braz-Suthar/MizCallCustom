@@ -5,21 +5,23 @@ import { generateHostId } from "../../services/id.js";
 
 const router = Router();
 
-/* HOST LOGIN */
+/* HOST LOGIN (by hostId or name/email) */
 router.post("/host/login", async (req, res) => {
   const { hostId } = req.body;
-  if (!hostId) return res.status(400).json({ error: "hostId required" });
+  const identifier = hostId?.trim();
+  if (!identifier) return res.status(400).json({ error: "hostId required" });
 
   const result = await query(
-    "SELECT id FROM hosts WHERE id = $1",
-    [hostId]
+    "SELECT id FROM hosts WHERE id = $1 OR name = $1",
+    [identifier]
   );
 
   if (result.rowCount === 0)
     return res.status(401).json({ error: "Invalid host" });
 
-  const token = signToken({ role: "host", hostId });
-  res.json({ token });
+  const id = result.rows[0].id;
+  const token = signToken({ role: "host", hostId: id });
+  res.json({ token, hostId: id });
 });
 
 /* HOST REGISTRATION (name only) */
