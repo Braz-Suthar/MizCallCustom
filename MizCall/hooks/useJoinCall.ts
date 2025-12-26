@@ -98,6 +98,7 @@ export function useJoinCall() {
               JSON.stringify({
                 type: "CONSUME",
                 producerId: producerIdRef.current,
+                rtpCapabilities: device.rtpCapabilities,
               }),
             );
           }
@@ -108,6 +109,7 @@ export function useJoinCall() {
               JSON.stringify({
                 type: "CONSUME",
                 producerId: activeCall.hostProducerId,
+                rtpCapabilities: device.rtpCapabilities,
               }),
             );
           }
@@ -119,21 +121,29 @@ export function useJoinCall() {
             JSON.stringify({
               type: "CONSUME",
               producerId: msg.producerId,
+              rtpCapabilities: deviceRef.current?.rtpCapabilities,
             }),
           );
         }
 
         if (msg.type === "CONSUMER_CREATED") {
           if (!transportRef.current || !deviceRef.current) return;
-          const consumer = await transportRef.current.consume({
-            id: msg.params.id,
-            producerId: msg.params.producerId,
-            kind: msg.params.kind,
-            rtpParameters: msg.params.rtpParameters,
-          });
-          const stream = new MediaStream([consumer.track]);
-          setRemoteStream(stream);
-          setState("connected");
+          try {
+            const consumer = await transportRef.current.consume({
+              id: msg.params.id,
+              producerId: msg.params.producerId,
+              // Backend currently omits kind; default to audio to avoid failing consume
+              kind: msg.params.kind ?? "audio",
+              rtpParameters: msg.params.rtpParameters,
+            });
+            const stream = new MediaStream([consumer.track]);
+            setRemoteStream(stream);
+            setState("connected");
+          } catch (err: any) {
+            console.warn("[useJoinCall] consume error", err);
+            setError(err?.message ?? "Failed to consume audio");
+            setState("error");
+          }
         }
       } catch {
         // ignore parse errors

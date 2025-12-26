@@ -236,13 +236,13 @@ export function handleSocket({ socket }) {
                   msg.producerOwnerId ??
                   producerIdToOwner.get(msg.producerId) ??
                   msg.producerId; // fallback
+                const caps = msg.rtpCapabilities || routerRtpCapabilities || {};
                 const res = await sendMediasoup({
                     type: MS.CONSUME,
                     roomId: ROOM_ID,
                     transportId: requirePeer().recvTransport.id,
                     producerOwnerId: ownerId,
-                    // Use router caps since legacy client doesn't send rtpCapabilities
-                    rtpCapabilities: routerRtpCapabilities ?? {},
+                    rtpCapabilities: caps,
                 });
                 console.log("[WS] CONSUME", { consumerId: res.id, producerOwnerId: msg.producerOwnerId });
 

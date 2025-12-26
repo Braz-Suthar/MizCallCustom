@@ -15,7 +15,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
   const [state, setState] = useState<MediaState>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [micEnabled, setMicEnabled] = useState(false);
+  const [micEnabled, setMicEnabled] = useState(true);
 
   const wsRef = useRef<WebSocket | null>(null);
   const deviceRef = useRef<Device | null>(null);
