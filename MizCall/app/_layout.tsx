@@ -5,6 +5,7 @@ import { useColorScheme, PermissionsAndroid, Platform } from "react-native";
 import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { registerGlobals } from "react-native-webrtc";
+import { setAudioModeAsync } from "expo-audio";
 
 import { store, useAppSelector } from "../state/store";
 import { useCallEvents } from "../hooks/useCallEvents";
@@ -31,6 +32,24 @@ function RootLayoutNav() {
       }
     };
     requestMic();
+  }, []);
+
+  // Configure audio to allow simultaneous record/playback and speaker output
+  useEffect(() => {
+    const configureAudio = async () => {
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          interruptionMode: "doNotMix",
+          allowsRecording: true,
+          shouldPlayInBackground: false,
+          shouldRouteThroughEarpiece: false,
+        });
+      } catch (e) {
+        console.warn("[app/_layout] Audio mode config failed", e);
+      }
+    };
+    configureAudio();
   }, []);
 
   return (

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { RTCView } from "react-native-webrtc";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 
@@ -11,7 +12,7 @@ export default function UserActiveCallScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
-  const { join, state, error } = useJoinCall();
+  const { join, state, error, remoteStream, audioLevel } = useJoinCall();
   const hasJoinedRef = useRef(false);
 
   useEffect(() => {
@@ -49,6 +50,33 @@ export default function UserActiveCallScreen() {
             />
             <AppButton label="Leave" variant="secondary" onPress={onLeave} fullWidth />
             {error ? <Text style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
+            {remoteStream ? (
+              <>
+                <Text style={[styles.status, { color: colors.text }]}>Audio receiving…</Text>
+                <View style={styles.meterRow}>
+                  <View style={[styles.meterTrack, { borderColor: colors.border }]}>
+                    <View
+                      style={[
+                        styles.meterFill,
+                        {
+                          backgroundColor: audioLevel > 0.05 ? "#22c55e" : "#f59e0b",
+                          width: `${Math.min(100, Math.max(5, Math.round(audioLevel * 100)))}%`,
+                        },
+                      ]}
+                    />
+                  </View>
+                  <Text style={[styles.meterLabel, { color: colors.text }]}>
+                    {Math.round(audioLevel * 100)}%
+                  </Text>
+                </View>
+                <RTCView
+                  streamURL={remoteStream.toURL()}
+                  style={styles.hiddenRtc}
+                  mirror={false}
+                  objectFit="cover"
+                />
+              </>
+            ) : null}
           </>
         ) : (
           <>
@@ -96,6 +124,34 @@ const styles = StyleSheet.create({
   },
   error: {
     color: "#ef4444",
+  },
+  hiddenRtc: {
+    width: 1,
+    height: 1,
+    opacity: 0,
+  },
+  meterRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 4,
+  },
+  meterTrack: {
+    flex: 1,
+    height: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: "hidden",
+    backgroundColor: "#11111111",
+  },
+  meterFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  meterLabel: {
+    width: 48,
+    textAlign: "right",
+    fontVariant: ["tabular-nums"],
   },
 });
 

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
-import { RtpCapabilities } from "mediasoup-client/lib/RtpParameters";
 import { PermissionsAndroid, Platform } from "react-native";
 import { mediaDevices, MediaStream } from "react-native-webrtc";
 
@@ -22,7 +21,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const sendTransportRef = useRef<any>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const pendingProduceResolve = useRef<((id: string) => void) | null>(null);
-  const routerCapsRef = useRef<RtpCapabilities | null>(null);
+  const routerCapsRef = useRef<any>(null);
   const pendingSendParamsRef = useRef<any>(null);
 
   const cleanup = useCallback(() => {
@@ -92,7 +91,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }
 
           if (msg.type === "ROUTER_CAPS") {
-            routerCapsRef.current = (msg.routerRtpCapabilities || {}) as RtpCapabilities;
+      routerCapsRef.current = msg.routerRtpCapabilities || {};
             if (pendingSendParamsRef.current) {
               await createSendTransport(ws, pendingSendParamsRef.current);
               pendingSendParamsRef.current = null;
@@ -132,11 +131,17 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       const device = new Device({ handlerName: "ReactNative106" as any });
       try {
         await device.load({
-          routerRtpCapabilities: routerCapsRef.current as RtpCapabilities,
+          routerRtpCapabilities: routerCapsRef.current,
         });
       } catch (e) {
         console.warn("[useHostCallMedia] device load failed", e);
         setError("Device load failed");
+        setState("error");
+        return;
+      }
+      if (!device.canProduce("audio")) {
+        console.warn("[useHostCallMedia] cannot produce audio with current device");
+        setError("Cannot produce audio on this device");
         setState("error");
         return;
       }
@@ -153,6 +158,10 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }),
         );
         callback();
+      });
+
+      transport.on("connectionstatechange", (state: any) => {
+        console.log("[useHostCallMedia] send transport state", state);
       });
 
       transport.on("produce", ({ kind, rtpParameters }, callback) => {
@@ -177,16 +186,17 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         }
 
         const stream = await mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
+          audio: true,
           video: false,
         });
         micStreamRef.current = stream;
-        const track = stream.getAudioTracks()[0];
+        const track = stream.getAudioTracks()[0] as any;
         track.enabled = micEnabled;
+        console.log("[useHostCallMedia] mic track", {
+          enabled: track.enabled,
+          readyState: track.readyState,
+          settings: track.getSettings?.(),
+        });
         await transport.produce({ track });
         setState("connected");
       } catch (err: any) {

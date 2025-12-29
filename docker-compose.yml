@@ -8,11 +8,14 @@ services:
     build: ./mediasoup-server
     ports:
       - "4000:4000"
+      - "40000-40500:40000-40500/udp"
+      - "40000-40500:40000-40500/tcp"
     env_file:
       - .env
     environment:
       MEDIASOUP_RTC_MIN_PORT: 40000
       MEDIASOUP_RTC_MAX_PORT: 40500
+      MEDIASOUP_ANNOUNCED_IP: 94.136.184.246
     restart: always
 
   # ========================

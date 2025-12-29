@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 import { RtpCapabilities } from "mediasoup-client/lib/RtpParameters";
-import { MediaStream } from "react-native-webrtc";
+import { MediaStream, mediaDevices } from "react-native-webrtc";
+import InCallManager from "react-native-incall-manager";
 
 import { useAppSelector } from "../state/store";
 
@@ -15,18 +16,35 @@ export function useJoinCall() {
   const [state, setState] = useState<JoinState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const transportRef = useRef<any>(null);
   const producerIdRef = useRef<string | null>(null);
+  const consumerRef = useRef<any>(null);
+  const meterIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const zeroLevelCountRef = useRef(0);
 
   const cleanup = () => {
+    try {
+      InCallManager.stop();
+      InCallManager.setForceSpeakerphoneOn(false);
+    } catch {
+      // ignore
+    }
     wsRef.current?.close();
     wsRef.current = null;
     transportRef.current?.close?.();
     transportRef.current = null;
     deviceRef.current = null;
+    consumerRef.current = null;
+    if (meterIntervalRef.current) {
+      clearInterval(meterIntervalRef.current);
+      meterIntervalRef.current = null;
+    }
+    setAudioLevel(0);
+    zeroLevelCountRef.current = 0;
   };
 
   useEffect(() => cleanup, []);
@@ -52,6 +70,12 @@ export function useJoinCall() {
 
     ws.onopen = async () => {
       console.log("[useJoinCall] ws open");
+      try {
+        InCallManager.start({ media: "audio" });
+        InCallManager.setForceSpeakerphoneOn(true);
+      } catch {
+        // best effort
+      }
       ws.send(JSON.stringify({ type: "auth", token }));
       ws.send(JSON.stringify({ type: "JOIN", token }));
     };
@@ -90,6 +114,10 @@ export function useJoinCall() {
               }),
             );
             callback();
+          });
+
+          transport.on("connectionstatechange", (state) => {
+            console.log("[useJoinCall] recv transport state", state);
           });
 
           // if we already know a producer, consume it
@@ -136,8 +164,87 @@ export function useJoinCall() {
               kind: msg.params.kind ?? "audio",
               rtpParameters: msg.params.rtpParameters,
             });
+            consumerRef.current = consumer;
+            // Resume to ensure audio flows
+            await consumer.resume?.();
             const stream = new MediaStream([consumer.track]);
+            // Route to speaker on mobile for clarity
+            try {
+              await mediaDevices.setSpeakerphoneOn?.(true);
+            } catch {
+              // best effort; ignore if not supported
+            }
+            // Ensure track is enabled
+            consumer.track.enabled = true;
+            console.log("[useJoinCall] consumer track", {
+              id: consumer?.id,
+              kind: consumer?.kind,
+              enabled: consumer?.track?.enabled,
+              readyState: consumer?.track?.readyState,
+              settings: consumer?.track?.getSettings?.(),
+            });
+            const audioTrack = stream.getAudioTracks?.()[0];
+            console.log("[useJoinCall] remote stream tracks", {
+              audioCount: stream.getAudioTracks?.().length,
+              videoCount: stream.getVideoTracks?.().length,
+              audioEnabled: audioTrack?.enabled,
+              audioReadyState: audioTrack?.readyState,
+              audioSettings: audioTrack?.getSettings?.(),
+            });
+            if (audioTrack) {
+              audioTrack.enabled = true;
+              audioTrack.onunmute = () => {
+                console.log("[useJoinCall] audio track unmuted");
+              };
+              audioTrack.onmute = () => {
+                console.log("[useJoinCall] audio track muted");
+              };
+            }
             setRemoteStream(stream);
+            try {
+              InCallManager.start({ media: "audio" });
+              InCallManager.setForceSpeakerphoneOn(true);
+              // some devices prefer this older API
+              InCallManager.setSpeakerphoneOn(true);
+            } catch {
+              // best effort
+            }
+            if (!meterIntervalRef.current) {
+              meterIntervalRef.current = setInterval(async () => {
+                try {
+                  const stats = await consumerRef.current?.getStats?.();
+                  if (!stats) return;
+                  let level = 0;
+                  stats.forEach((report: any) => {
+                    if (report.type === "inbound-rtp" || report.type === "track" || report.type === "remote-inbound-rtp") {
+                      if (typeof report.audioLevel === "number") {
+                        level = Math.max(level, report.audioLevel);
+                      }
+                      if (
+                        typeof report.totalAudioEnergy === "number" &&
+                        typeof report.totalSamplesDuration === "number" &&
+                        report.totalSamplesDuration > 0
+                      ) {
+                        const energy = report.totalAudioEnergy / report.totalSamplesDuration;
+                        level = Math.max(level, Math.sqrt(energy));
+                      }
+                    }
+                  });
+                  if (level === 0) {
+                    zeroLevelCountRef.current += 1;
+                    if (zeroLevelCountRef.current === 4) {
+                      // log once after a few zero samples to debug stats availability
+                      console.log("[useJoinCall] inbound stats sample", Array.from(stats.values?.() ?? stats));
+                    }
+                  } else {
+                    zeroLevelCountRef.current = 0;
+                  }
+                  setAudioLevel(level);
+                } catch {
+                  // ignore meter errors
+                }
+              }, 700);
+            }
             setState("connected");
           } catch (err: any) {
             console.warn("[useJoinCall] consume error", err);
@@ -151,6 +258,6 @@ export function useJoinCall() {
     };
   }, [token, role, activeCall?.routerRtpCapabilities]);
 
-  return { join, state, error, remoteStream };
+  return { join, state, error, remoteStream, audioLevel };
 }
 
