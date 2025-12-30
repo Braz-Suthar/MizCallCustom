@@ -18,7 +18,7 @@ export const loginHost =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; hostId?: string }>(
+      const res = await apiFetch<{ token: string; hostId?: string; name?: string; avatarUrl?: string }>(
         "/auth/host/login",
         "",
         {
@@ -30,6 +30,9 @@ export const loginHost =
       const session: CredentialsPayload = {
         email,
         hostId: res.hostId,
+        displayName: res.name ?? email,
+        password,
+        avatarUrl: res.avatarUrl,
         role: "host",
         token: res.token,
       };
@@ -45,7 +48,7 @@ export const loginUser =
   (userId: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; hostId?: string }>(
+      const res = await apiFetch<{ token: string; hostId?: string; name?: string; avatarUrl?: string }>(
         "/auth/user/login",
         "",
         {
@@ -57,6 +60,9 @@ export const loginUser =
       const session: CredentialsPayload = {
         userId,
         hostId: res.hostId,
+        displayName: res.name ?? userId,
+        password,
+        avatarUrl: res.avatarUrl,
         role: "user",
         token: res.token,
       };

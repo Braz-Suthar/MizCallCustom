@@ -33,6 +33,26 @@ class _UserDashboardScreenState extends State<UserDashboardScreen> {
   String? _wsStatus;
   String? _wsError;
 
+  @override
+  void initState() {
+    super.initState();
+    _logSession();
+  }
+
+  Future<void> _logSession() async {
+    final stored = await Session.load();
+    final propTokenShort =
+        widget.jwtToken.length > 8 ? "${widget.jwtToken.substring(0, 8)}..." : widget.jwtToken;
+    debugPrint("[UserDash] prop token=$propTokenShort wsUrl=${widget.wsUrl}");
+    if (stored != null) {
+      final storedTokenShort =
+          stored.token.length > 8 ? "${stored.token.substring(0, 8)}..." : stored.token;
+      debugPrint("[UserDash] stored session token=$storedTokenShort role=${stored.role} hostId=${stored.hostId ?? 'unknown'}");
+    } else {
+      debugPrint("[UserDash] no stored session found");
+    }
+  }
+
   List<_TabSpec> get _tabs => [
         _TabSpec(
           label: 'Dashboard',

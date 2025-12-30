@@ -66,12 +66,57 @@ class WebRTCService {
   /// Extract RTP parameters for mediasoup PRODUCE
   Map<String, dynamic> getRtpParameters() {
     final params = _audioSender!.parameters;
-    return params.toMap();
+
+    // Convert existing params defensively (different flutter_webrtc versions expose different types)
+    List<Map<String, dynamic>> codecs = (params.codecs ?? [])
+        .map((c) => (c as dynamic).toMap?.call() ?? <String, dynamic>{})
+        .where((m) => m.isNotEmpty)
+        .cast<Map<String, dynamic>>()
+        .toList();
+    if (codecs.isEmpty) {
+      // Fallback to a basic Opus codec
+      codecs = [
+        {
+          'mimeType': 'audio/opus',
+          'clockRate': 48000,
+          'channels': 2,
+          'payloadType': 111,
+          'sdpFmtpLine': 'minptime=10;useinbandfec=1',
+        }
+      ];
+    }
+
+    List<Map<String, dynamic>> encodings = (params.encodings ?? [])
+        .map((e) => (e as dynamic).toMap?.call() ?? <String, dynamic>{})
+        .where((m) => m.isNotEmpty)
+        .cast<Map<String, dynamic>>()
+        .toList();
+    if (encodings.isEmpty) {
+      encodings = [
+        {'ssrc': DateTime.now().millisecondsSinceEpoch}
+      ];
+    }
+
+    final headerExtensions = (params.headerExtensions ?? [])
+        .map((h) => (h as dynamic).toMap?.call() ?? <String, dynamic>{})
+        .where((m) => m.isNotEmpty)
+        .cast<Map<String, dynamic>>()
+        .toList();
+
+    return {
+      'codecs': codecs,
+      'encodings': encodings,
+      'headerExtensions': headerExtensions,
+      'rtcp': {
+        'cname': localStream.id,
+        'reducedSize': true,
+      },
+      'mid': '0',
+    };
   }
 
-  /// Extract DTLS parameters for CONNECT_TRANSPORT
-  Future<Map<String, dynamic>> getDtlsParameters() async {
-    if (_cachedDtls != null) return _cachedDtls!;
+  Future<void> _ensureDtlsFingerprint() async {
+    if (_cachedDtls != null) return;
 
     String? _fingerprintFromSdp(String sdp) {
       final lines = sdp.split(RegExp(r'\r?\n'));
@@ -101,67 +146,100 @@ class WebRTCService {
       };
     }
 
-    Future<Map<String, dynamic>> _dtlsFromStats() async {
-      final reports = await pc.getStats();
-      Map values = const {};
+    // Helper to read certificate stats from a connection
+    Future<Map<String, dynamic>?> _tryStats(RTCPeerConnection target) async {
       try {
+        final reports = await target.getStats();
         for (final r in reports) {
           try {
             final dyn = r as dynamic;
             if (dyn.type == 'certificate') {
-              values = (dyn.values as Map?) ?? const {};
-              break;
+              final values = (dyn.values as Map?) ?? const {};
+              final fingerprint = (values['fingerprint'] as String?) ??
+                  (values['fingerprintValue'] as String?);
+              final algorithm = (values['fingerprintAlgorithm'] as String?) ??
+                  (values['algorithm'] as String?) ??
+                  'sha-256';
+              if (fingerprint != null) {
+                return {
+                  'role': 'auto',
+                  'fingerprints': [
+                    {'algorithm': algorithm, 'value': fingerprint}
+                  ],
+                };
+              }
             }
           } catch (_) {
             continue;
           }
         }
-      } catch (_) {
-        // ignore
-      }
-
-      if (values.isEmpty) {
-        throw StateError('No certificate stats available');
-      }
-
-      final fingerprint =
-          (values['fingerprint'] as String?) ??
-              (values['fingerprintValue'] as String?);
-      final algorithm =
-          (values['fingerprintAlgorithm'] as String?) ??
-              (values['algorithm'] as String?) ??
-              'sha-256';
-      if (fingerprint == null) {
-        throw StateError('No DTLS fingerprint found');
-      }
-      return {
-        'role': 'auto',
-        'fingerprints': [
-          {
-            'algorithm': algorithm,
-            'value': fingerprint,
-          }
-        ],
-      };
+      } catch (_) {}
+      return null;
     }
 
-    // Always create a fresh offer and use its SDP to extract fingerprint; fallback to stats.
-    final offer = await pc.createOffer({
-      'offerToReceiveAudio': true,
-      'offerToReceiveVideo': false,
-    });
-    await pc.setLocalDescription(offer);
-    final sdp = offer.sdp ?? '';
-    final fp = _fingerprintFromSdp(sdp);
-    if (fp != null && fp.contains(' ')) {
-      _cachedDtls = _dtlsFromFingerprint(fp);
-      return _cachedDtls!;
+    // 1) Try stats on the main PC (no SDP mutation)
+    final mainStats = await _tryStats(pc);
+    if (mainStats != null) {
+      _cachedDtls = mainStats;
+      return;
     }
 
-    // Fallback to stats-based fingerprint
-    _cachedDtls = await _dtlsFromStats();
+    // 2) Try creating an offer (without setting it) and parse fingerprint directly
+    try {
+      final offer = await pc.createOffer({
+        'offerToReceiveAudio': false,
+        'offerToReceiveVideo': false,
+      });
+      final sdp = offer.sdp ?? '';
+      final fp = _fingerprintFromSdp(sdp);
+      if (fp != null && fp.contains(' ')) {
+        _cachedDtls = _dtlsFromFingerprint(fp);
+        return;
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    // 3) Fallback: use a temporary RTCPeerConnection to obtain a fingerprint
+    try {
+      final tmp = await createPeerConnection({
+        'sdpSemantics': 'unified-plan',
+      });
+      final offer = await tmp.createOffer({
+        'offerToReceiveAudio': false,
+        'offerToReceiveVideo': false,
+      });
+      try {
+        await tmp.setLocalDescription(offer);
+      } catch (_) {}
+
+      final sdp = offer.sdp ?? '';
+      final fp = _fingerprintFromSdp(sdp);
+      if (fp != null && fp.contains(' ')) {
+        _cachedDtls = _dtlsFromFingerprint(fp);
+        await tmp.close();
+        return;
+      }
+
+      final tmpStats = await _tryStats(tmp);
+      await tmp.close();
+      if (tmpStats != null) {
+        _cachedDtls = tmpStats;
+        return;
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    throw StateError('Unable to obtain DTLS fingerprint');
+  }
+
+  /// Extract DTLS parameters for CONNECT_TRANSPORT
+  Future<Map<String, dynamic>> getDtlsParameters() async {
+    if (_cachedDtls == null) {
+      await _ensureDtlsFingerprint();
+    }
     return _cachedDtls!;
-
   }
 
   /// Close everything

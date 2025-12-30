@@ -7,16 +7,33 @@ type Props = {
   onPress: (event: GestureResponderEvent) => void;
   disabled?: boolean;
   loading?: boolean;
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "danger";
   fullWidth?: boolean;
+  size?: "sm" | "md";
 };
 
-export function AppButton({ label, onPress, disabled, loading, variant = "primary", fullWidth }: Props) {
+export function AppButton({ label, onPress, disabled, loading, variant = "primary", fullWidth, size = "md" }: Props) {
   const { colors } = useTheme();
   const isPrimary = variant === "primary";
+  const isDanger = variant === "danger";
+  const verticalPadding = size === "sm" ? 10 : 14;
+  const fontSize = size === "sm" ? 14 : 16;
   const content = (
     <View style={[styles.content, isPrimary ? undefined : styles.contentSecondary]}>
-      {loading ? <ActivityIndicator color={isPrimary ? "#fff" : colors.text } /> : <Text style={[styles.label, !isPrimary && styles.labelSecondary, !isPrimary && { color: colors.text }]}>{label}</Text>}
+      {loading ? (
+        <ActivityIndicator color={isPrimary || isDanger ? "#fff" : colors.text} />
+      ) : (
+        <Text
+          style={[
+            styles.label,
+            { fontSize },
+            !isPrimary && !isDanger && styles.labelSecondary,
+            !isPrimary && !isDanger && { color: colors.text },
+          ]}
+        >
+          {label}
+        </Text>
+      )}
     </View>
   );
 
@@ -38,8 +55,11 @@ export function AppButton({ label, onPress, disabled, loading, variant = "primar
 
   const baseStyle = [
     styles.pressable,
+    { paddingVertical: verticalPadding },
     isPrimary
       ? [styles.primary, { backgroundColor: colors.primary }]
+      : isDanger
+      ? [styles.danger]
       : [styles.secondary, { borderColor: colors.border, backgroundColor: colors.card }],
     (disabled || loading) && styles.disabled,
     fullWidth && styles.fullWidth,
@@ -62,7 +82,6 @@ export function AppButton({ label, onPress, disabled, loading, variant = "primar
 const styles = StyleSheet.create({
   pressable: {
     borderRadius: 14,
-    paddingVertical: 14,
     paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -77,6 +96,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
+  danger: {
+    backgroundColor: "#ef4444",
+    shadowColor: "#b91c1c",
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
   content: {
     flexDirection: "row",
     justifyContent: "center",
@@ -88,7 +115,6 @@ const styles = StyleSheet.create({
   },
   label: {
     color: "#fff",
-    fontSize: 16,
     fontWeight: "600",
     letterSpacing: 0.2,
   },

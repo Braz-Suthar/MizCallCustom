@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { registerGlobals } from "react-native-webrtc";
 import { setAudioModeAsync } from "expo-audio";
+import Toast from "react-native-toast-message";
 
 import { store, useAppSelector } from "../state/store";
 import { useCallEvents } from "../hooks/useCallEvents";
@@ -60,6 +61,7 @@ function RootLayoutNav() {
           headerShown: false,
         }}
       />
+      <Toast />
     </ThemeProvider>
   );
 }

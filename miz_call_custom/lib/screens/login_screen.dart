@@ -46,6 +46,13 @@ class _LoginScreenState extends State<LoginScreen> {
       final id = _idController.text.trim();
       final password = _passwordController.text;
 
+      // If a session already exists, log it
+      final existing = await Session.load();
+      if (existing != null) {
+        debugPrint(
+            "[Login] existing session token=${existing.token.substring(0, 8)}... role=${existing.role} hostId=${existing.hostId ?? 'unknown'}");
+      }
+
       if (!_isValidHostId(id) && !_isValidUserId(id)) {
         throw Exception('ID must start with H or U followed by 6 digits');
       }
@@ -62,6 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final result = await _auth.loginUser(id, password);
         token = result.token;
         hostId = result.hostId;
+        debugPrint("[Login] user login success userId=$id hostId=${hostId ?? 'unknown'}");
         await Session.save(token: token, role: 'user', hostId: hostId);
       }
 

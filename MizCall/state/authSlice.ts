@@ -6,6 +6,10 @@ type AuthState = {
   userId: string | null;
   hostId: string | null;
   email: string | null;
+  displayName: string | null;
+  password: string | null;
+  avatarUrl: string | null;
+  callBackground: string | null;
   role: UserRole;
   token: string | null;
   status: "idle" | "loading" | "authenticated";
@@ -16,6 +20,10 @@ const initialState: AuthState = {
   userId: null,
   hostId: null,
   email: null,
+  displayName: null,
+  password: null,
+  avatarUrl: null,
+  callBackground: null,
   role: null,
   token: null,
   status: "idle",
@@ -26,6 +34,10 @@ export type CredentialsPayload = {
   userId?: string;
   hostId?: string;
   email?: string;
+  displayName?: string;
+  password?: string;
+  avatarUrl?: string;
+  callBackground?: string;
   token: string;
   role: Exclude<UserRole, null>;
 };
@@ -38,6 +50,10 @@ const authSlice = createSlice({
       state.userId = action.payload.userId ?? null;
       state.hostId = action.payload.hostId ?? null;
       state.email = action.payload.email ?? null;
+      state.displayName = action.payload.displayName ?? null;
+      state.password = action.payload.password ?? null;
+      state.avatarUrl = action.payload.avatarUrl ?? null;
+      state.callBackground = action.payload.callBackground ?? null;
       state.role = action.payload.role;
       state.token = action.payload.token;
       state.status = "authenticated";
@@ -49,9 +65,15 @@ const authSlice = createSlice({
     setHydrated: (state, action: PayloadAction<boolean>) => {
       state.hydrated = action.payload;
     },
+    setCallBackground: (state, action: PayloadAction<string | null>) => {
+      state.callBackground = action.payload;
+    },
+    setAvatarUrl: (state, action: PayloadAction<string | null>) => {
+      state.avatarUrl = action.payload;
+    },
   },
 });
 
-export const { setCredentials, logout, setStatus, setHydrated } = authSlice.actions;
+export const { setCredentials, logout, setStatus, setHydrated, setCallBackground, setAvatarUrl } = authSlice.actions;
 export default authSlice.reducer;
 

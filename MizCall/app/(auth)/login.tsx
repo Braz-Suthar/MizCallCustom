@@ -24,10 +24,10 @@ export default function Login() {
   const onSubmit = async () => {
     try {
       if (mode === "host") {
-        await dispatch(loginHost(email.trim(), password)).unwrap?.();
+        await dispatch(loginHost(email.trim(), password));
         router.replace("/host/dashboard");
       } else {
-        await dispatch(loginUser(userId.trim(), password)).unwrap?.();
+        await dispatch(loginUser(userId.trim(), password));
         router.replace("/user/dashboard");
       }
     } catch (e) {
@@ -40,7 +40,7 @@ export default function Login() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>
       <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled">
-        <View style={[styles.card, { backgroundColor: colors.card }]}>
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.title, { color: colors.text }]}>Sign in</Text>
           <Text style={[styles.subtitle, { color: colors.text }]}>Choose your role to continue</Text>
 
@@ -97,31 +97,27 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     padding: 24,
-    backgroundColor: "#f7f8fb",
     justifyContent: "center",
   },
   card: {
-    backgroundColor: "#fff",
     borderRadius: 20,
     padding: 20,
     gap: 14,
+    borderWidth: 1,
     shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
   },
   title: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#111",
   },
   subtitle: {
     fontSize: 14,
-    color: "#5c5c61",
   },
   helper: {
     textAlign: "center",
-    color: "#6b7280",
     fontSize: 13,
   },
 });
