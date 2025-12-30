@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="200" viewBox="0 0 400 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="400" height="200" fill="#FFFFFF" rx="8"/>
+  
+  <!-- Bar Chart -->
+  <rect x="40" y="140" width="30" height="40" fill="#4F46E5" fill-opacity="0.3"/>
+  <rect x="90" y="100" width="30" height="80" fill="#4F46E5" fill-opacity="0.5"/>
+  <rect x="140" y="120" width="30" height="60" fill="#4F46E5" fill-opacity="0.3"/>
+  <rect x="190" y="80" width="30" height="100" fill="#4F46E5" fill-opacity="0.5"/>
+  <rect x="240" y="140" width="30" height="40" fill="#4F46E5" fill-opacity="0.3"/>
+  <rect x="290" y="60" width="30" height="120" fill="#4F46E5" fill-opacity="0.5"/>
+  
+  <!-- Line Chart -->
+  <path d="M40 100 L90 80 L140 120 L190 60 L240 100 L290 40 L340 80" 
+        stroke="#4F46E5" 
+        stroke-width="2" 
+        fill="none"/>
+  
+  <!-- Dots -->
+  <circle cx="40" cy="100" r="3" fill="#4F46E5"/>
+  <circle cx="90" cy="80" r="3" fill="#4F46E5"/>
+  <circle cx="140" cy="120" r="3" fill="#4F46E5"/>
+  <circle cx="190" cy="60" r="3" fill="#4F46E5"/>
+  <circle cx="240" cy="100" r="3" fill="#4F46E5"/>
+  <circle cx="290" cy="40" r="3" fill="#4F46E5"/>
+  <circle cx="340" cy="80" r="3" fill="#4F46E5"/>
+</svg> 

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="600" height="350" viewBox="0 0 600 350" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <!-- <rect width="600" height="350" rx="32" fill="#EEF2FF"/> -->
+
+  <!-- Main device (laptop/tablet) -->
+  <rect x="100" y="60" width="400" height="230" rx="24" fill="#fff" stroke="#6366F1" stroke-width="3"/>
+  <rect x="120" y="90" width="360" height="170" rx="16" fill="#F1F5F9"/>
+
+  <!-- Main avatar -->
+  <circle cx="300" cy="175" r="38" fill="#6366F1"/>
+  <circle cx="300" cy="175" r="30" fill="#fff"/>
+  <circle cx="300" cy="175" r="18" fill="#818CF8"/>
+  <ellipse cx="300" cy="200" rx="14" ry="6" fill="#E0E7FF"/>
+
+  <!-- Secondary avatars (participants) -->
+  <circle cx="180" cy="120" r="18" fill="#FBBF24"/>
+  <circle cx="420" cy="120" r="18" fill="#10B981"/>
+  <circle cx="180" cy="230" r="14" fill="#F472B6"/>
+  <circle cx="420" cy="230" r="14" fill="#60A5FA"/>
+
+  <!-- Chat bubbles -->
+  <rect x="360" y="110" width="60" height="22" rx="11" fill="#fff" stroke="#6366F1" stroke-width="1.5"/>
+  <rect x="180" y="210" width="50" height="18" rx="9" fill="#fff" stroke="#F472B6" stroke-width="1.5"/>
+  <rect x="370" y="210" width="40" height="16" rx="8" fill="#fff" stroke="#60A5FA" stroke-width="1.5"/>
+
+  <!-- Call controls -->
+  <circle cx="300" cy="285" r="18" fill="#F1F5F9"/>
+  <circle cx="300" cy="285" r="12" fill="#EF4444"/>
+  <rect x="290" y="282" width="20" height="6" rx="3" fill="#fff"/>
+  <rect x="320" y="282" width="6" height="12" rx="3" fill="#10B981"/>
+  <rect x="274" y="282" width="6" height="12" rx="3" fill="#6366F1"/>
+
+  <!-- Title text (for visual balance, not for real use) -->
+  <!-- <text x="300" y="50" text-anchor="middle" font-size="28" fill="#6366F1" font-family="Arial" font-weight="bold">Audio &amp; Video Call</text> -->
+</svg> 

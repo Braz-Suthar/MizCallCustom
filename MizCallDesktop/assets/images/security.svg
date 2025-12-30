@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="200" viewBox="0 0 400 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="400" height="200" fill="#FFFFFF" rx="8"/>
+  
+  <!-- Shield -->
+  <path d="M200 40 L320 80 V120 C320 160 260 180 200 180 C140 180 80 160 80 120 V80 L200 40Z" 
+        fill="#4F46E5" 
+        fill-opacity="0.1" 
+        stroke="#4F46E5" 
+        stroke-width="2"/>
+  
+  <!-- Lock -->
+  <rect x="180" y="100" width="40" height="30" rx="4" fill="#4F46E5"/>
+  <rect x="190" y="80" width="20" height="20" rx="4" fill="#4F46E5"/>
+  
+  <!-- Decorative Elements -->
+  <circle cx="200" cy="115" r="5" fill="#FFFFFF"/>
+  <rect x="195" y="110" width="10" height="10" rx="2" fill="#FFFFFF"/>
+</svg> 

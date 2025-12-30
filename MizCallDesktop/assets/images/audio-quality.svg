@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="400" height="200" viewBox="0 0 400 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="400" height="200" fill="#FFFFFF" rx="8"/>
+  
+  <!-- Audio Waveform -->
+  <path d="M20 100 L40 60 L60 140 L80 40 L100 160 L120 20 L140 180 L160 60 L180 140 L200 80 L220 120 L240 40 L260 160 L280 60 L300 140 L320 20 L340 180 L360 40 L380 120" 
+        stroke="#4F46E5" 
+        stroke-width="4" 
+        fill="none"/>
+  
+  <!-- Decorative Elements -->
+  <circle cx="200" cy="100" r="30" fill="#4F46E5" fill-opacity="0.1"/>
+  <circle cx="200" cy="100" r="20" fill="#4F46E5" fill-opacity="0.2"/>
+  <circle cx="200" cy="100" r="10" fill="#4F46E5" fill-opacity="0.3"/>
+</svg> 

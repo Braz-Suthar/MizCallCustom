@@ -5,15 +5,17 @@ import { generateHostId } from "../../services/id.js";
 
 const router = Router();
 
-/* HOST LOGIN (by hostId or name/email) */
+/* HOST LOGIN (by hostId or email) */
 router.post("/host/login", async (req, res) => {
-  const { hostId } = req.body;
-  const identifier = hostId?.trim();
-  if (!identifier) return res.status(400).json({ error: "hostId required" });
+  const { hostId, email } = req.body;
+  const identifier = (hostId || email)?.trim();
+  if (!identifier) return res.status(400).json({ error: "hostId or email required" });
+
+  const normalizedEmail = identifier.includes("@") ? identifier.toLowerCase() : null;
 
   const result = await query(
-    "SELECT id FROM hosts WHERE id = $1 OR name = $1",
-    [identifier]
+    "SELECT id FROM hosts WHERE id = $1 OR email = $2",
+    [identifier, normalizedEmail]
   );
 
   if (result.rowCount === 0)
