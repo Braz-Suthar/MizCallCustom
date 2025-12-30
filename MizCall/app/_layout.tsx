@@ -35,9 +35,10 @@ function RootLayoutNav() {
     requestMic();
   }, []);
 
-  // Configure audio to allow simultaneous record/playback and speaker output
+  // Configure audio to allow simultaneous record/playback and speaker output (mobile only)
   useEffect(() => {
     const configureAudio = async () => {
+      if (Platform.OS !== "ios" && Platform.OS !== "android") return;
       try {
         await setAudioModeAsync({
           playsInSilentMode: true,

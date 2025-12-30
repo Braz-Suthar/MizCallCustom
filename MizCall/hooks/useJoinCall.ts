@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 import { RtpCapabilities } from "mediasoup-client/lib/RtpParameters";
 import { MediaStream, mediaDevices } from "react-native-webrtc";
-import InCallManager from "react-native-incall-manager";
 
 import { useAppSelector } from "../state/store";
+import { disableSpeakerphone, enableSpeakerphone, isMobilePlatform, startCallAudio, stopCallAudio } from "../utils/callAudio";
 
 const WS_URL = "wss://custom.mizcall.com/ws";
 
@@ -28,8 +28,8 @@ export function useJoinCall() {
 
   const cleanup = () => {
     try {
-      InCallManager.stop();
-      InCallManager.setForceSpeakerphoneOn(false);
+      stopCallAudio();
+      disableSpeakerphone();
     } catch {
       // ignore
     }
@@ -71,8 +71,8 @@ export function useJoinCall() {
     ws.onopen = async () => {
       console.log("[useJoinCall] ws open");
       try {
-        InCallManager.start({ media: "audio" });
-        InCallManager.setForceSpeakerphoneOn(true);
+        startCallAudio();
+        enableSpeakerphone();
       } catch {
         // best effort
       }
@@ -170,7 +170,9 @@ export function useJoinCall() {
             const stream = new MediaStream([consumer.track]);
             // Route to speaker on mobile for clarity
             try {
-              await mediaDevices.setSpeakerphoneOn?.(true);
+              if (isMobilePlatform) {
+                await mediaDevices.setSpeakerphoneOn?.(true);
+              }
             } catch {
               // best effort; ignore if not supported
             }
@@ -202,10 +204,8 @@ export function useJoinCall() {
             }
             setRemoteStream(stream);
             try {
-              InCallManager.start({ media: "audio" });
-              InCallManager.setForceSpeakerphoneOn(true);
-              // some devices prefer this older API
-              InCallManager.setSpeakerphoneOn(true);
+              startCallAudio();
+              enableSpeakerphone();
             } catch {
               // best effort
             }

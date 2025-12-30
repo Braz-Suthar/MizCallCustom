@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { RTCView } from "react-native-webrtc";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -69,12 +69,14 @@ export default function UserActiveCallScreen() {
                     {Math.round(audioLevel * 100)}%
                   </Text>
                 </View>
-                <RTCView
-                  streamURL={remoteStream.toURL()}
-                  style={styles.hiddenRtc}
-                  mirror={false}
-                  objectFit="cover"
-                />
+                {Platform.OS === "ios" || Platform.OS === "android" ? (
+                  <RTCView
+                    streamURL={remoteStream.toURL()}
+                    style={styles.hiddenRtc}
+                    mirror={false}
+                    objectFit="cover"
+                  />
+                ) : null}
               </>
             ) : null}
           </>

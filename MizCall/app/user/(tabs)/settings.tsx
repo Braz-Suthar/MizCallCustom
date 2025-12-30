@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
@@ -42,6 +42,10 @@ export default function UserSettings() {
       }),
     );
   const onChangeAvatar = async () => {
+    if (Platform.OS !== "ios" && Platform.OS !== "android") {
+      Alert.alert("Unsupported", "Profile pictures are currently mobile-only.");
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       Alert.alert("Permission needed", "Please allow photo library access to pick a profile picture.");
