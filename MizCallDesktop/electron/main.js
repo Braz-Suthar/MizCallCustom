@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme } from "electron";
+import { app, BrowserWindow, nativeTheme, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const isDev = !app.isPackaged;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const createWindow = () => {
+const createWindow = (opts = {}) => {
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
@@ -17,6 +17,7 @@ const createWindow = () => {
       sandbox: false,
     },
     title: "MizCall Desktop",
+    ...opts,
   });
 
   if (isDev) {
@@ -25,10 +26,19 @@ const createWindow = () => {
   } else {
     win.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   }
+
+  return win;
 };
 
 app.whenReady().then(() => {
   createWindow();
+
+  ipcMain.on("open-active-call-window", (_event, payload) => {
+    const callWin = createWindow({ width: 1280, height: 800, title: "MizCall - Active Call" });
+    callWin.webContents.once("did-finish-load", () => {
+      callWin.webContents.send("active-call-context", payload);
+    });
+  });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

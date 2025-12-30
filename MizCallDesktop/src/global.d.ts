@@ -14,6 +14,8 @@ declare global {
         name?: string;
         avatarUrl?: string;
       }>;
+      openActiveCallWindow?: (payload: any) => void;
+      onActiveCallContext?: (cb: (data: any) => void) => () => void;
     };
   }
 }

@@ -1,4 +1,4 @@
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
 const API_BASE = "https://custom.mizcall.com";
 
@@ -27,6 +27,14 @@ const bridge = {
       throw new Error(text || `User login failed (${res.status})`);
     }
     return res.json();
+  },
+  openActiveCallWindow(payload) {
+    ipcRenderer.send("open-active-call-window", payload);
+  },
+  onActiveCallContext(cb) {
+    const listener = (_event, data) => cb?.(data);
+    ipcRenderer.on("active-call-context", listener);
+    return () => ipcRenderer.removeListener("active-call-context", listener);
   },
 };
 

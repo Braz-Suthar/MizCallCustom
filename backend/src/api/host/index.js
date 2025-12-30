@@ -31,13 +31,32 @@ router.patch(
   requireAuth,
   requireHost,
   async (req, res) => {
-    const { enabled } = req.body;
+    const { enabled, password } = req.body;
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (enabled !== undefined) {
+      updates.push(`enabled = $${idx++}`);
+      values.push(enabled);
+    }
+
+    if (password) {
+      updates.push(`password = $${idx++}`);
+      values.push(password);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "no fields to update" });
+    }
+
+    values.push(req.params.userId, req.hostId);
 
     await query(
       `UPDATE users 
-       SET enabled = $1 
-       WHERE id = $2 AND host_id = $3`,
-      [enabled, req.params.userId, req.hostId]
+       SET ${updates.join(", ")} 
+       WHERE id = $${idx++} AND host_id = $${idx}`,
+      values
     );
 
     res.sendStatus(204);
