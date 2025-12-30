@@ -5,7 +5,7 @@ import { generateHostId } from "../../services/id.js";
 
 const router = Router();
 
-/* HOST LOGIN (by hostId or email) */
+/* HOST LOGIN (by hostId or email; email is stored in hosts.name for now) */
 router.post("/host/login", async (req, res) => {
   const { hostId, email } = req.body;
   const identifier = (hostId || email)?.trim();
@@ -14,7 +14,7 @@ router.post("/host/login", async (req, res) => {
   const normalizedEmail = identifier.includes("@") ? identifier.toLowerCase() : null;
 
   const result = await query(
-    "SELECT id FROM hosts WHERE id = $1 OR email = $2",
+    "SELECT id FROM hosts WHERE id = $1 OR lower(name) = $2",
     [identifier, normalizedEmail]
   );
 
@@ -28,15 +28,16 @@ router.post("/host/login", async (req, res) => {
 
 /* HOST REGISTRATION (name only) */
 router.post("/host/register", async (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.status(400).json({ error: "name required" });
+  const { name, email } = req.body;
+  const hostName = (name || email || "").trim();
+  if (!hostName) return res.status(400).json({ error: "name or email required" });
 
   const hostId = await generateHostId();
 
   await query(
     `INSERT INTO hosts (id, name)
      VALUES ($1, $2)`,
-    [hostId, name]
+    [hostId, hostName]
   );
 
   const token = signToken({ role: "host", hostId });
