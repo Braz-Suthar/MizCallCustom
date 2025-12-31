@@ -17,14 +17,19 @@ export function useJoinCall() {
   const [error, setError] = useState<string | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [speaking, setSpeaking] = useState(false);
+  const [pttReady, setPttReady] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const deviceRef = useRef<Device | null>(null);
-  const transportRef = useRef<any>(null);
+  const recvTransportRef = useRef<any>(null);
+  const sendTransportRef = useRef<any>(null);
   const producerIdRef = useRef<string | null>(null);
+  const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
   const meterIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const zeroLevelCountRef = useRef(0);
+  const localStreamRef = useRef<MediaStream | null>(null);
 
   const cleanup = () => {
     try {
@@ -35,8 +40,20 @@ export function useJoinCall() {
     }
     wsRef.current?.close();
     wsRef.current = null;
-    transportRef.current?.close?.();
-    transportRef.current = null;
+    recvTransportRef.current?.close?.();
+    recvTransportRef.current = null;
+    sendTransportRef.current?.close?.();
+    sendTransportRef.current = null;
+    try {
+      producerRef.current?.close?.();
+    } catch {
+      // ignore
+    }
+    producerRef.current = null;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
     deviceRef.current = null;
     consumerRef.current = null;
     if (meterIntervalRef.current) {
@@ -98,13 +115,50 @@ export function useJoinCall() {
       console.log("[useJoinCall] ws message", event.data);
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === "RECV_TRANSPORT_CREATED") {
+        if (msg.type === "SEND_TRANSPORT_CREATED") {
           const device = new Device({ handlerName: "ReactNative106" as any });
           await device.load({ routerRtpCapabilities: (activeCall?.routerRtpCapabilities || {}) as RtpCapabilities });
           deviceRef.current = device;
+          const transport = device.createSendTransport(msg.params);
+          sendTransportRef.current = transport;
+          transport.on("connect", ({ dtlsParameters }, callback, errback) => {
+            try {
+              ws.send(
+                JSON.stringify({
+                  type: "CONNECT_SEND_TRANSPORT",
+                  dtlsParameters,
+                }),
+              );
+              callback();
+            } catch (err) {
+              errback?.(err as Error);
+            }
+          });
+          transport.on("produce", ({ rtpParameters }, callback, errback) => {
+            try {
+              ws.send(
+                JSON.stringify({
+                  type: "PRODUCE",
+                  rtpParameters,
+                }),
+              );
+              callback({ id: String(Date.now()) });
+            } catch (err) {
+              errback?.(err as Error);
+            }
+          });
+          setPttReady(true);
+        }
+
+        if (msg.type === "RECV_TRANSPORT_CREATED") {
+          const device = deviceRef.current || new Device({ handlerName: "ReactNative106" as any });
+          if (!device.loaded) {
+            await device.load({ routerRtpCapabilities: (activeCall?.routerRtpCapabilities || {}) as RtpCapabilities });
+          }
+          deviceRef.current = device;
 
           const transport = device.createRecvTransport(msg.params);
-          transportRef.current = transport;
+          recvTransportRef.current = transport;
 
           transport.on("connect", ({ dtlsParameters }, callback) => {
             ws.send(
@@ -155,9 +209,9 @@ export function useJoinCall() {
         }
 
         if (msg.type === "CONSUMER_CREATED") {
-          if (!transportRef.current || !deviceRef.current) return;
+          if (!recvTransportRef.current || !deviceRef.current) return;
           try {
-            const consumer = await transportRef.current.consume({
+            const consumer = await recvTransportRef.current.consume({
               id: msg.params.id,
               producerId: msg.params.producerId,
               // Backend currently omits kind; default to audio to avoid failing consume
@@ -258,6 +312,34 @@ export function useJoinCall() {
     };
   }, [token, role, activeCall?.routerRtpCapabilities]);
 
-  return { join, state, error, remoteStream, audioLevel };
+  const startSpeaking = useCallback(async () => {
+    if (!pttReady || !sendTransportRef.current || speaking) return;
+    try {
+      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      const track = stream.getAudioTracks()[0];
+      producerRef.current = await sendTransportRef.current.produce({ track });
+      setSpeaking(true);
+    } catch (err: any) {
+      console.warn("[useJoinCall] startSpeaking error", err);
+      setError(err?.message ?? "Mic unavailable");
+    }
+  }, [pttReady, speaking]);
+
+  const stopSpeaking = useCallback(() => {
+    try {
+      producerRef.current?.close?.();
+    } catch {
+      // ignore
+    }
+    producerRef.current = null;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    setSpeaking(false);
+  }, []);
+
+  return { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady };
 }
 

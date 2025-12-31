@@ -32,6 +32,7 @@
     }
   };
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Device } from "mediasoup-client";
 import {
   FiHome,
   FiMic,
@@ -451,7 +452,7 @@ function App() {
   const [emailOtpDigits, setEmailOtpDigits] = useState(["", "", "", "", "", ""]);
   const emailOtpRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [emailCurrentPassword, setEmailCurrentPassword] = useState("");
-  const [activeCall, setActiveCall] = useState<{ id: string; started_at: string } | null>(null);
+  const [activeCall, setActiveCall] = useState<{ id: string; started_at: string; routerRtpCapabilities?: any } | null>(null);
   const [activeParticipants, setActiveParticipants] = useState<
     Array<{
       id: string;
@@ -465,6 +466,20 @@ function App() {
   >([]);
   const [callMuted, setCallMuted] = useState(false);
   const [callVolume, setCallVolume] = useState(70);
+  const [remoteAudioStream, setRemoteAudioStream] = useState<MediaStream | null>(null);
+  const [callJoinState, setCallJoinState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
+  const [callError, setCallError] = useState<string | null>(null);
+  const callSocketRef = useRef<WebSocket | null>(null);
+  const deviceRef = useRef<Device | null>(null);
+  const sendTransportRef = useRef<any>(null);
+  const recvTransportRef = useRef<any>(null);
+  const producerRef = useRef<any>(null);
+  const consumerRef = useRef<any>(null);
+  const hostProducerIdRef = useRef<string | null>(null);
+  const routerCapsRef = useRef<any>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioElRef = useRef<HTMLAudioElement | null>(null);
+  const [pttActive, setPttActive] = useState(false);
   const activeCallListenerRef = useRef<null | (() => void)>(null);
 
   useEffect(() => {
@@ -693,78 +708,13 @@ function App() {
       const data = await res.json();
       const now = new Date().toISOString();
       setCalls((prev) => [{ id: data.roomId, status: "started", started_at: now, ended_at: null }, ...prev]);
-      setActiveCall({ id: data.roomId, started_at: now });
-      const seededParticipants = [
-        {
-          id: "U123456",
-          name: "Alice Lee",
-          role: "User" as const,
-          status: "connected" as const,
-          muted: false,
-          speaking: true,
-          avatarUrl: "https://ui-avatars.com/api/?background=0D8ABC&color=fff&name=Alice+Lee",
-        },
-        {
-          id: "U987654",
-          name: "Bob Patel",
-          role: "User" as const,
-          status: "connected" as const,
-          muted: true,
-          speaking: false,
-          avatarUrl: "https://ui-avatars.com/api/?background=F97316&color=fff&name=Bob+Patel",
-        },
-        {
-          id: "U555000",
-          name: "Charlie Zhang",
-          role: "User" as const,
-          status: "connecting" as const,
-          muted: false,
-          speaking: false,
-          avatarUrl: "https://ui-avatars.com/api/?background=7C3AED&color=fff&name=Charlie+Zhang",
-        },
-        {
-          id: "U332211",
-          name: "Dana Smith",
-          role: "User" as const,
-          status: "connected" as const,
-          muted: false,
-          speaking: false,
-          avatarUrl: "https://ui-avatars.com/api/?background=10B981&color=fff&name=Dana+Smith",
-        },
-        {
-          id: "U778899",
-          name: "Evan Torres",
-          role: "User" as const,
-          status: "connected" as const,
-          muted: true,
-          speaking: false,
-          avatarUrl: "https://ui-avatars.com/api/?background=F59E0B&color=fff&name=Evan+Torres",
-        },
-        {
-          id: "U445566",
-          name: "Farah Khan",
-          role: "User" as const,
-          status: "connecting" as const,
-          muted: false,
-          speaking: false,
-          avatarUrl: "https://ui-avatars.com/api/?background=6366F1&color=fff&name=Farah+Khan",
-        },
-        {
-          id: "U889900",
-          name: "Gabe Young",
-          role: "User" as const,
-          status: "connected" as const,
-          muted: false,
-          speaking: true,
-          avatarUrl: "https://ui-avatars.com/api/?background=EC4899&color=fff&name=Gabe+Young",
-        },
-      ];
-      setActiveParticipants(seededParticipants);
+      setActiveCall({ id: data.roomId, started_at: now, routerRtpCapabilities: data.routerRtpCapabilities ?? null });
+      setActiveParticipants([]);
       if (window.mizcall?.openActiveCallWindow) {
         const payload = {
           session,
-          call: { id: data.roomId, started_at: now },
-          participants: seededParticipants,
+          call: { id: data.roomId, started_at: now, routerRtpCapabilities: data.routerRtpCapabilities ?? null },
+          participants: [],
         };
         window.mizcall.openActiveCallWindow(payload);
         setTab("calls"); // keep main window on calls; new window handles active call
@@ -796,6 +746,275 @@ function App() {
     } catch (e) {
       showToast(e instanceof Error ? e.message : "End call failed", "error");
     }
+  };
+
+  const cleanupCallMedia = () => {
+    try {
+      producerRef.current?.close?.();
+    } catch {
+      // ignore
+    }
+    producerRef.current = null;
+    try {
+      consumerRef.current?.close?.();
+    } catch {
+      // ignore
+    }
+    consumerRef.current = null;
+    try {
+      sendTransportRef.current?.close?.();
+      recvTransportRef.current?.close?.();
+    } catch {
+      // ignore
+    }
+    sendTransportRef.current = null;
+    recvTransportRef.current = null;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    if (remoteAudioElRef.current) {
+      remoteAudioElRef.current.srcObject = null;
+    }
+    setRemoteAudioStream(null);
+    callSocketRef.current?.close?.();
+    callSocketRef.current = null;
+    deviceRef.current = null;
+    hostProducerIdRef.current = null;
+    routerCapsRef.current = null;
+    setCallJoinState("idle");
+    setCallError(null);
+    setPttActive(false);
+  };
+
+  const attachRemoteStream = (stream: MediaStream) => {
+    setRemoteAudioStream(stream);
+    if (!remoteAudioElRef.current) {
+      remoteAudioElRef.current = new Audio();
+      remoteAudioElRef.current.autoplay = true;
+    }
+    remoteAudioElRef.current.srcObject = stream;
+    remoteAudioElRef.current.volume = callVolume / 100;
+    remoteAudioElRef.current.play().catch(() => {});
+  };
+
+  const ensureDeviceLoaded = async () => {
+    if (deviceRef.current) return deviceRef.current;
+    const caps = routerCapsRef.current || activeCall?.routerRtpCapabilities;
+    if (!caps) throw new Error("Missing router capabilities");
+    const device = new Device();
+    await device.load({ routerRtpCapabilities: caps });
+    deviceRef.current = device;
+    return device;
+  };
+
+  const requestConsume = (producerId: string) => {
+    if (!recvTransportRef.current || !deviceRef.current || !callSocketRef.current || !activeCall) return;
+    callSocketRef.current.send(
+      JSON.stringify({
+        type: "CONSUME",
+        producerId,
+        rtpCapabilities: deviceRef.current.rtpCapabilities,
+        roomId: activeCall.id,
+      })
+    );
+  };
+
+  const startHostProducer = async () => {
+    if (producerRef.current || !sendTransportRef.current || session?.role !== "host") return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      const track = stream.getAudioTracks()[0];
+      const producer = await sendTransportRef.current.produce({ track });
+      producerRef.current = producer;
+      track.enabled = !callMuted;
+      producer.on("trackended", () => setCallMuted(true));
+      setCallJoinState("connected");
+    } catch (err) {
+      console.error("host produce error", err);
+      setCallError("Microphone not available");
+    }
+  };
+
+  const startUserPtt = async () => {
+    if (session?.role !== "user" || pttActive) return;
+    if (callJoinState !== "connected") {
+      showToast("Audio not ready yet", "error");
+      return;
+    }
+    if (!sendTransportRef.current) {
+      showToast("Audio not ready yet", "error");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      const track = stream.getAudioTracks()[0];
+      const producer = await sendTransportRef.current.produce({ track });
+      producerRef.current = producer;
+      setPttActive(true);
+    } catch (err) {
+      console.error("ptt error", err);
+      showToast("Cannot access microphone", "error");
+    }
+  };
+
+  const stopUserPtt = () => {
+    if (session?.role !== "user") return;
+    try {
+      producerRef.current?.close?.();
+    } catch {
+      // ignore
+    }
+    producerRef.current = null;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+    setPttActive(false);
+  };
+
+  const joinActiveCall = async () => {
+    if (!session || !activeCall) return;
+    cleanupCallMedia();
+    setCallJoinState("connecting");
+    setCallError(null);
+    routerCapsRef.current = activeCall.routerRtpCapabilities ?? null;
+
+    const ws = new WebSocket("wss://custom.mizcall.com/ws");
+    callSocketRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "AUTH", token: session.token }));
+      ws.send(JSON.stringify({ type: "CALL_STARTED", roomId: activeCall.id }));
+      ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS", roomId: activeCall.id }));
+      ws.send(JSON.stringify({ type: "JOIN", token: session.token, roomId: activeCall.id }));
+    };
+
+    ws.onerror = () => {
+      setCallJoinState("error");
+      setCallError("WebSocket error");
+    };
+
+    ws.onclose = () => {
+      setCallJoinState((prev) => (prev === "connected" ? prev : "idle"));
+    };
+
+    ws.onmessage = async (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === "ROUTER_CAPS") {
+          routerCapsRef.current = msg.routerRtpCapabilities;
+        }
+
+        if (msg.type === "SEND_TRANSPORT_CREATED") {
+          const device = await ensureDeviceLoaded();
+          const transport = device.createSendTransport(msg.params);
+          transport.on("connect", ({ dtlsParameters }, callback) => {
+            ws.send(JSON.stringify({ type: "CONNECT_SEND_TRANSPORT", dtlsParameters, roomId: activeCall.id }));
+            callback();
+          });
+          transport.on("produce", ({ kind, rtpParameters }, callback, errback) => {
+            try {
+              ws.send(JSON.stringify({ type: "PRODUCE", kind, rtpParameters, roomId: activeCall.id }));
+              const randomId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+              callback({ id: randomId });
+            } catch (err) {
+              errback?.(err as Error);
+            }
+          });
+          sendTransportRef.current = transport;
+          if (session.role === "host") {
+            startHostProducer();
+          }
+        }
+
+        if (msg.type === "RECV_TRANSPORT_CREATED") {
+          const device = await ensureDeviceLoaded();
+          const transport = device.createRecvTransport(msg.params);
+          transport.on("connect", ({ dtlsParameters }, callback) => {
+            ws.send(JSON.stringify({ type: "CONNECT_RECV_TRANSPORT", dtlsParameters, roomId: activeCall.id }));
+            callback();
+          });
+          recvTransportRef.current = transport;
+
+          if (session.role === "user" && hostProducerIdRef.current) {
+            requestConsume(hostProducerIdRef.current);
+          }
+        }
+
+        if (msg.type === "HOST_PRODUCER") {
+          hostProducerIdRef.current = msg.producerId;
+          if (session.role === "user" && msg.producerId) {
+            requestConsume(msg.producerId);
+          }
+        }
+
+        if (msg.type === "NEW_PRODUCER") {
+          if (session.role === "host" && msg.ownerRole === "user") {
+            setActiveParticipants((prev) => {
+              const exists = prev.some((p) => p.id === (msg.userId || "unknown"));
+              if (exists) return prev;
+              return [
+                ...prev,
+                {
+                  id: msg.userId || msg.producerId,
+                  name: msg.userId || "User",
+                  role: "User" as const,
+                  status: "connected" as const,
+                  muted: false,
+                  speaking: false,
+                },
+              ];
+            });
+            requestConsume(msg.producerId);
+          }
+          if (session.role === "user" && msg.ownerRole === "host") {
+            requestConsume(msg.producerId);
+          }
+        }
+
+        if (msg.type === "CONSUMER_CREATED") {
+          if (!recvTransportRef.current) return;
+          const consumer = await recvTransportRef.current.consume({
+            id: msg.params.id,
+            producerId: msg.params.producerId,
+            kind: msg.params.kind ?? "audio",
+            rtpParameters: msg.params.rtpParameters,
+          });
+          consumerRef.current = consumer;
+          await consumer.resume?.();
+          const stream = new MediaStream([consumer.track]);
+          attachRemoteStream(stream);
+          setCallJoinState("connected");
+        }
+
+        if (msg.type === "USER_JOINED") {
+          setActiveParticipants((prev) => {
+            if (prev.some((p) => p.id === msg.userId)) return prev;
+            return [
+              ...prev,
+              {
+                id: msg.userId,
+                name: msg.userId,
+                role: "User" as const,
+                status: "connected" as const,
+                muted: true,
+                speaking: false,
+              },
+            ];
+          });
+        }
+
+        if (msg.type === "USER_LEFT") {
+          setActiveParticipants((prev) => prev.filter((p) => p.id !== msg.userId));
+        }
+      } catch (err) {
+        console.error("ws message error", err);
+      }
+    };
   };
 
   const formatDateTime = (iso: string | null) => {
@@ -931,6 +1150,36 @@ function App() {
     };
   }, [tab, session?.token, session?.role]);
 
+  useEffect(() => {
+    if (!session || !activeCall || tab !== "call-active") {
+      if (tab !== "call-active") {
+        cleanupCallMedia();
+      }
+      return;
+    }
+    joinActiveCall();
+    return () => {
+      cleanupCallMedia();
+    };
+  }, [session?.token, session?.role, activeCall?.id, tab]);
+
+  useEffect(() => {
+    if (!remoteAudioStream) return;
+    if (!remoteAudioElRef.current) {
+      remoteAudioElRef.current = new Audio();
+      remoteAudioElRef.current.autoplay = true;
+    }
+    remoteAudioElRef.current.srcObject = remoteAudioStream;
+    remoteAudioElRef.current.volume = callMuted ? 0 : callVolume / 100;
+    remoteAudioElRef.current.play().catch(() => {});
+  }, [remoteAudioStream, callVolume, callMuted]);
+
+  useEffect(() => {
+    if (session?.role === "host" && producerRef.current?.track) {
+      producerRef.current.track.enabled = !callMuted;
+    }
+  }, [callMuted, session?.role]);
+
   const showToast = (message: string, kind: "info" | "success" | "error" = "info") => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast({ message, kind });
@@ -988,14 +1237,6 @@ function App() {
     const userId = session.userId ?? session.hostId ?? "N/A";
 
     const renderActiveCall = () => {
-      if (session.role !== "host") {
-        return (
-          <div className="card stack gap-sm">
-            <p className="muted strong">Active Call</p>
-            <p className="muted">Only hosts can view active calls.</p>
-          </div>
-        );
-      }
       if (!activeCall) {
         return (
           <div className="card stack gap-sm">
@@ -1004,6 +1245,60 @@ function App() {
           </div>
         );
       }
+
+      if (session.role === "user") {
+        return (
+          <div className="stack gap-sm">
+            <div className="card stack gap-sm">
+              <div className="row-inline between">
+                <div className="stack gap-xxs">
+                  <p className="muted strong">Active Call</p>
+                  <p className="muted small">Call ID: {activeCall.id}</p>
+                </div>
+                <span className="muted small">
+                  {callJoinState === "connected" ? "Audio connected" : callJoinState === "connecting" ? "Connecting…" : callError || "Idle"}
+                </span>
+              </div>
+              <p className="muted small">You will only hear the host. Press and hold to speak.</p>
+              <div className="participants-grid">
+                <div className="participant-card">
+                  <div className="participant-header">
+                    <div className="avatar-sm">{(session.hostId || "H")[0]}</div>
+                    <div className="stack gap-xxs">
+                      <strong>Host</strong>
+                      <span className="muted small">Broadcasting</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card call-footer">
+              <button
+                className={`mute-btn ${pttActive ? "unmuted" : "muted"}`}
+                onPointerDown={startUserPtt}
+                onPointerUp={stopUserPtt}
+                onPointerLeave={stopUserPtt}
+              >
+                {pttActive ? <FiVolume2 /> : <FiMic />}
+                <span>{pttActive ? "Talking…" : "Hold to talk"}</span>
+              </button>
+              <div className="volume-control">
+                <span className="muted small">Volume</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={callVolume}
+                  onChange={(e) => setCallVolume(Number(e.target.value))}
+                />
+                <span className="muted small">{callVolume}%</span>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="stack gap-sm">
           <div className="card stack gap-sm">
@@ -1023,7 +1318,9 @@ function App() {
           <div className="card stack gap-sm">
             <div className="row-inline between">
               <p className="muted strong">Participants</p>
-              <Button label="Refresh" variant="ghost" onClick={() => showToast("Refresh participants (stub)", "info")} />
+              <span className="muted small">
+                {callJoinState === "connected" ? "Audio connected" : callJoinState === "connecting" ? "Connecting…" : callError || "Idle"}
+              </span>
             </div>
             <div className="participants-grid">
               {activeParticipants.filter((p) => p.role === "User").map((p) => (

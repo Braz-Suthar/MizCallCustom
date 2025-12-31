@@ -12,7 +12,7 @@ export default function UserActiveCallScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
-  const { join, state, error, remoteStream, audioLevel } = useJoinCall();
+  const { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady } = useJoinCall();
   const hasJoinedRef = useRef(false);
 
   useEffect(() => {
@@ -49,6 +49,13 @@ export default function UserActiveCallScreen() {
               fullWidth
             />
             <AppButton label="Leave" variant="secondary" onPress={onLeave} fullWidth />
+            <AppButton
+              label={speaking ? "Release to mute" : "Hold to talk"}
+              onPressIn={startSpeaking}
+              onPressOut={stopSpeaking}
+              disabled={!pttReady || state !== "connected"}
+              fullWidth
+            />
             {error ? <Text style={[styles.error, { color: colors.text }]}>{error}</Text> : null}
             {remoteStream ? (
               <>

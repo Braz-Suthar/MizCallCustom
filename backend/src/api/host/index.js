@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
 import { generateUserId } from "../../services/id.js";
-import { broadcastCallEvent } from "../../signaling/ws.js";
+import { broadcastCallEvent, ensureMediasoupRoom } from "../../signaling/ws.js";
 
 const router = Router();
 
@@ -100,13 +100,23 @@ router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
     [roomId, req.hostId]
   );
 
-  res.json({ roomId });
+  const room = await ensureMediasoupRoom(roomId);
+  if (room && !room.hostId) {
+    room.hostId = req.hostId;
+  }
 
-  broadcastCallEvent(req.hostId, {
-    type: "call-started",
-    roomId,
-    hostId: req.hostId,
-  });
+  res.json({ roomId, routerRtpCapabilities: room?.routerRtpCapabilities ?? {} });
+
+  broadcastCallEvent(
+    req.hostId,
+    {
+      type: "call-started",
+      roomId,
+      hostId: req.hostId,
+      routerRtpCapabilities: room?.routerRtpCapabilities ?? {},
+    },
+    roomId
+  );
 });
 
 /* LIST CALLS FOR HOST */

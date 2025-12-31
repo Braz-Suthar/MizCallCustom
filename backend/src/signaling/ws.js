@@ -5,24 +5,37 @@ import { sendMediasoup } from "../mediasoup/client.js";
 import { MS } from "../mediasoup/commands.js";
 import { v4 as uuid } from "uuid";
 
-const ROOM_ID = "main-room";
-
-let routerRtpCapabilities = null;
 const peers = new Map();
 let wssInstance = null;
-const producerIdToOwner = new Map();
 
-async function ensureRoom() {
-  if (routerRtpCapabilities) return;
+// roomId -> { routerRtpCapabilities, peers: Map<peerId, Peer>, producerIdToOwner: Map, hostProducerId?: string, hostId?: string }
+const rooms = new Map();
+
+function getRoom(roomId) {
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, {
+      routerRtpCapabilities: null,
+      peers: new Map(),
+      producerIdToOwner: new Map(),
+      hostProducerId: null,
+      hostId: null,
+    });
+  }
+  return rooms.get(roomId);
+}
+
+export async function ensureMediasoupRoom(roomId) {
+  const room = getRoom(roomId);
+  if (room.routerRtpCapabilities) return room;
   const res = await sendMediasoup({
     type: MS.CREATE_ROOM,
-    roomId: ROOM_ID,
+    roomId,
   });
-  routerRtpCapabilities = res?.rtpCapabilities ?? null;
+  room.routerRtpCapabilities = res?.rtpCapabilities ?? null;
+  return room;
 }
 
 export async function startWebSocketServer(httpServer) {
-  await ensureRoom();
   const wss = new WebSocketServer({ server: httpServer });
   wssInstance = wss;
   wss.on("connection", (socket) => {
@@ -31,8 +44,15 @@ export async function startWebSocketServer(httpServer) {
   });
 }
 
-export function broadcastCallEvent(hostId, payload) {
+export function broadcastCallEvent(hostId, payload, roomId = null) {
   console.log("[WS] broadcast event", payload, "hostId", hostId);
+  // attach router caps if we already have them for this room
+  if (roomId) {
+    const room = rooms.get(roomId);
+    if (room?.routerRtpCapabilities && !payload.routerRtpCapabilities) {
+      payload.routerRtpCapabilities = room.routerRtpCapabilities;
+    }
+  }
   const msg = JSON.stringify(payload);
   let sent = 0;
   for (const peer of peers.values()) {
@@ -89,22 +109,30 @@ export function handleSocket({ socket }) {
             case "CALL_STARTED":
             case "call-started": {
                 if (!peer || peer.role !== "host") break;
-                await ensureRoom();
+                // host can pass roomId; fallback to hostId scoped room
+                const roomId = msg.roomId || peer.roomId || peer.hostId || "main-room";
+                peer.roomId = roomId;
+                const room = await ensureMediasoupRoom(roomId);
+                if (!room.hostId) {
+                  room.hostId = peer.hostId;
+                }
                 broadcastCallEvent(peer.hostId, {
                     type: "call-started",
-                    roomId: ROOM_ID,
-                    routerRtpCapabilities: routerRtpCapabilities ?? {},
-                });
+                    roomId,
+                    routerRtpCapabilities: room.routerRtpCapabilities ?? {},
+                }, roomId);
                 break;
             }
 
             /* ---------------- ROUTER CAPS REQUEST ---------------- */
             case "GET_ROUTER_CAPS":
             case "get-router-caps": {
-                await ensureRoom();
+                // a roomId is required; default to peer room or hostId bucket
+                const roomId = msg.roomId || peer?.roomId || peer?.hostId || "main-room";
+                const room = await ensureMediasoupRoom(roomId);
                 socket.send(JSON.stringify({
                     type: "ROUTER_CAPS",
-                    routerRtpCapabilities
+                    routerRtpCapabilities: room.routerRtpCapabilities
                 }));
                 break;
             }
@@ -118,21 +146,25 @@ export function handleSocket({ socket }) {
                 const id = role === "host" ? hostId : userId;
                 console.log("[WS] JOIN", { id, role, hostId, userId });
 
+                const roomId = msg.roomId || msg.roomID || peer?.roomId || hostId || "main-room";
+                const room = await ensureMediasoupRoom(roomId);
+
                 peer = new Peer({
                     id,
                     socket,
-                    role
+                    role,
+                    hostId
                 });
+                peer.roomId = roomId;
                 peer.hostId = hostId;
 
                 peers.set(peer.id, peer);
-
-                await ensureRoom();
+                getRoom(roomId).peers.set(peer.id, peer);
 
                 // SEND transport via mediasoup-server
                 const sendT = await sendMediasoup({
                     type: MS.CREATE_TRANSPORT,
-                    roomId: ROOM_ID,
+                    roomId,
                 });
                 peer.sendTransport = { id: sendT.id };
 
@@ -149,7 +181,7 @@ export function handleSocket({ socket }) {
                 // RECV transport
                 const recvT = await sendMediasoup({
                     type: MS.CREATE_TRANSPORT,
-                    roomId: ROOM_ID,
+                    roomId,
                 });
                 peer.recvTransport = { id: recvT.id };
 
@@ -174,14 +206,35 @@ export function handleSocket({ socket }) {
                     ]
                   }));
 
+                // tell a newly joined user about existing host producer if present
+                if (peer.role === "user" && room.hostProducerId) {
+                  socket.send(JSON.stringify({
+                    type: "HOST_PRODUCER",
+                    producerId: room.hostProducerId,
+                  }));
+                }
+
+                // notify hosts when a user joins so UI can update
+                if (peer.role === "user") {
+                  for (const other of room.peers.values()) {
+                    if (other.role === "host" && other.socket.readyState === 1) {
+                      other.socket.send(JSON.stringify({
+                        type: "USER_JOINED",
+                        userId: id,
+                      }));
+                    }
+                  }
+                }
+
                 break;
             }
 
             /* -------- CONNECT SEND TRANSPORT -------- */
             case "CONNECT_SEND_TRANSPORT": {
+                const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
                 await sendMediasoup({
                     type: MS.CONNECT_TRANSPORT,
-                    roomId: ROOM_ID,
+                    roomId,
                     transportId: requirePeer().sendTransport.id,
                     dtlsParameters: msg.dtlsParameters,
                 });
@@ -190,9 +243,10 @@ export function handleSocket({ socket }) {
 
             /* -------- CONNECT RECV TRANSPORT -------- */
             case "CONNECT_RECV_TRANSPORT": {
+                const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
                 await sendMediasoup({
                     type: MS.CONNECT_TRANSPORT,
-                    roomId: ROOM_ID,
+                    roomId,
                     transportId: requirePeer().recvTransport.id,
                     dtlsParameters: msg.dtlsParameters,
                 });
@@ -201,23 +255,38 @@ export function handleSocket({ socket }) {
 
             /* ---------------- PRODUCE ---------------- */
             case "PRODUCE": {
+                const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
+                const room = await ensureMediasoupRoom(roomId);
                 const res = await sendMediasoup({
                     type: MS.PRODUCE,
-                    roomId: ROOM_ID,
+                    roomId,
                     transportId: requirePeer().sendTransport.id,
                     rtpParameters: msg.rtpParameters,
                     ownerId: peer.id,
                 });
                 peer.producer = { id: res.producerId };
-                producerIdToOwner.set(res.producerId, peer.id);
+                room.producerIdToOwner.set(res.producerId, peer.id);
+                if (peer.role === "host") {
+                  room.hostProducerId = res.producerId;
+                }
                 console.log("[WS] PRODUCE", { ownerId: peer.id, producerId: res.producerId });
 
-                // Notify other peers
-                for (const other of peers.values()) {
-                    if (other.id !== peer.id) {
+                // Notify other peers in same room based on role (users hear host; host hears everyone)
+                for (const other of room.peers.values()) {
+                    if (other.id === peer.id || other.socket.readyState !== 1) continue;
+                    if (peer.role === "host" && other.role === "user") {
                         other.socket.send(JSON.stringify({
                             type: "NEW_PRODUCER",
                             producerId: peer.producer.id,
+                            ownerRole: "host",
+                        }));
+                    }
+                    if (peer.role === "user" && other.role === "host") {
+                        other.socket.send(JSON.stringify({
+                            type: "NEW_PRODUCER",
+                            producerId: peer.producer.id,
+                            ownerRole: "user",
+                            userId: peer.id,
                         }));
                     }
                 }
@@ -232,14 +301,16 @@ export function handleSocket({ socket }) {
 
             /* ---------------- CONSUME ---------------- */
             case "CONSUME": {
+                const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
+                const room = getRoom(roomId);
                 const ownerId =
                   msg.producerOwnerId ??
-                  producerIdToOwner.get(msg.producerId) ??
+                  room?.producerIdToOwner.get(msg.producerId) ??
                   msg.producerId; // fallback
-                const caps = msg.rtpCapabilities || routerRtpCapabilities || {};
+                const caps = msg.rtpCapabilities || room?.routerRtpCapabilities || {};
                 const res = await sendMediasoup({
                     type: MS.CONSUME,
-                    roomId: ROOM_ID,
+                    roomId,
                     transportId: requirePeer().recvTransport.id,
                     producerOwnerId: ownerId,
                     rtpCapabilities: caps,
@@ -280,5 +351,20 @@ export function handleSocket({ socket }) {
         peer.recvTransport = null;
 
         peers.delete(peer.id);
+        if (peer.roomId) {
+          const room = rooms.get(peer.roomId);
+          room?.peers.delete(peer.id);
+          // notify host when user disconnects
+          if (peer.role === "user" && room) {
+            for (const other of room.peers.values()) {
+              if (other.role === "host" && other.socket.readyState === 1) {
+                other.socket.send(JSON.stringify({
+                  type: "USER_LEFT",
+                  userId: peer.id,
+                }));
+              }
+            }
+          }
+        }
     });
 }
