@@ -249,6 +249,7 @@ export function handleSocket({ socket }) {
             /* -------- CONNECT SEND TRANSPORT -------- */
             case "CONNECT_SEND_TRANSPORT": {
                 const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
+                console.log("[WS] CONNECT_SEND_TRANSPORT", { roomId, id: requirePeer().id });
                 await sendMediasoup({
                     type: MS.CONNECT_TRANSPORT,
                     roomId,
@@ -261,6 +262,7 @@ export function handleSocket({ socket }) {
             /* -------- CONNECT RECV TRANSPORT -------- */
             case "CONNECT_RECV_TRANSPORT": {
                 const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
+                console.log("[WS] CONNECT_RECV_TRANSPORT", { roomId, id: requirePeer().id });
                 await sendMediasoup({
                     type: MS.CONNECT_TRANSPORT,
                     roomId,

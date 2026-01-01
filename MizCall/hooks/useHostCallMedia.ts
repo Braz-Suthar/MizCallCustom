@@ -62,6 +62,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         console.log("[useHostCallMedia] ws open");
         ws.send(JSON.stringify({ type: "auth", token }));
         ws.send(JSON.stringify({ type: "JOIN", token, roomId: call.roomId }));
+        ws.send(JSON.stringify({ type: "CALL_STARTED", roomId: call.roomId }));
         ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS", roomId: call.roomId }));
       };
 
@@ -167,6 +168,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
       transport.on("produce", ({ kind, rtpParameters }, callback) => {
         pendingProduceResolve.current = (id: string) => callback({ id });
+        console.log("[useHostCallMedia] producing kind", kind, "room", call.roomId);
         ws.send(
           JSON.stringify({
             type: "PRODUCE",
@@ -200,6 +202,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           settings: track.getSettings?.(),
         });
         await transport.produce({ track });
+        console.log("[useHostCallMedia] produce request sent");
         setState("connected");
       } catch (err: any) {
         console.warn("[useHostCallMedia] mic/produce error", err);
