@@ -276,6 +276,7 @@ export function handleSocket({ socket }) {
             case "PRODUCE": {
                 const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
                 const room = await ensureMediasoupRoom(roomId);
+                console.log("[WS] PRODUCE incoming", { roomId, owner: peer.id, hasSend: !!peer.sendTransport });
                 const res = await sendMediasoup({
                     type: MS.PRODUCE,
                     roomId,

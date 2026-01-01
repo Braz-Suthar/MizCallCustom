@@ -105,12 +105,14 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
               ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS", roomId: call.roomId }));
               return;
             }
+            console.log("[useHostCallMedia] createSendTransport now");
             await createSendTransport(ws, msg.params);
           }
 
           if (msg.type === "PRODUCER_CREATED" && pendingProduceResolve.current) {
             pendingProduceResolve.current(msg.producerId);
             pendingProduceResolve.current = null;
+            console.log("[useHostCallMedia] PRODUCER_CREATED", msg.producerId);
           }
         } catch (e) {
           console.warn("[useHostCallMedia] message parse error", e);
@@ -134,6 +136,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         await device.load({
           routerRtpCapabilities: routerCapsRef.current,
         });
+        console.log("[useHostCallMedia] device loaded");
       } catch (e) {
         console.warn("[useHostCallMedia] device load failed", e);
         setError("Device load failed");
@@ -148,6 +151,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       }
       deviceRef.current = device;
 
+      console.log("[useHostCallMedia] creating send transport");
       const transport = device.createSendTransport(params);
       sendTransportRef.current = transport;
 
