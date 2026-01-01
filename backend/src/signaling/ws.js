@@ -163,6 +163,7 @@ export function handleSocket({ socket }) {
 
                 const roomId = msg.roomId || msg.roomID || peer?.roomId || hostId || "main-room";
                 const room = await ensureMediasoupRoom(roomId);
+                console.log("[WS] JOIN resolve room", { id, role, roomId });
 
                 peer = new Peer({
                     id,
@@ -280,6 +281,7 @@ export function handleSocket({ socket }) {
                     rtpParameters: msg.rtpParameters,
                     ownerId: peer.id,
                 });
+                console.log("[WS] PRODUCE room", roomId, "peer", peer.id);
                 peer.producer = { id: res.producerId };
                 room.producerIdToOwner.set(res.producerId, peer.id);
                 if (peer.role === "host") {

@@ -983,6 +983,10 @@ function App() {
       ws.send(JSON.stringify({ type: "CALL_STARTED", roomId: activeCall.id }));
       ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS", roomId: activeCall.id }));
       ws.send(JSON.stringify({ type: "JOIN", token: session.token, roomId: activeCall.id }));
+      if (session.role === "user") {
+        console.log("[desktop] call-ws send REQUEST_HOST_PRODUCER on open");
+        ws.send(JSON.stringify({ type: "REQUEST_HOST_PRODUCER", roomId: activeCall.id }));
+      }
     };
 
     ws.onerror = () => {
@@ -1008,6 +1012,9 @@ function App() {
             if (session.role === "user") {
               requestConsume(msg.hostProducerId);
             }
+          } else if (session.role === "user" && !msg.hostProducerId) {
+            console.log("[desktop] ROUTER_CAPS missing host producer; requesting");
+            ws.send(JSON.stringify({ type: "REQUEST_HOST_PRODUCER", roomId: activeCall.id }));
           }
         }
 
@@ -1046,6 +1053,7 @@ function App() {
             console.log("[desktop] requesting consume host producer", hostProducerIdRef.current);
             requestConsume(hostProducerIdRef.current);
           } else if (session.role === "user") {
+            console.log("[desktop] RECV created; requesting host producer");
             ws.send(JSON.stringify({ type: "REQUEST_HOST_PRODUCER", roomId: activeCall.id }));
           }
           drainPendingConsumes();
@@ -1054,6 +1062,9 @@ function App() {
         if (msg.type === "HOST_PRODUCER") {
           hostProducerIdRef.current = msg.producerId;
           console.log("[desktop] host producer received", msg.producerId);
+          if (msg.routerRtpCapabilities) {
+            routerCapsRef.current = msg.routerRtpCapabilities;
+          }
           if (session.role === "user" && msg.producerId) {
             requestConsume(msg.producerId);
           }

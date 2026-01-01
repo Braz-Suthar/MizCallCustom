@@ -61,8 +61,8 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       ws.onopen = () => {
         console.log("[useHostCallMedia] ws open");
         ws.send(JSON.stringify({ type: "auth", token }));
-        ws.send(JSON.stringify({ type: "JOIN", token }));
-        ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS" }));
+        ws.send(JSON.stringify({ type: "JOIN", token, roomId: call.roomId }));
+        ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS", roomId: call.roomId }));
       };
 
       ws.onerror = (err) => {
@@ -91,7 +91,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }
 
           if (msg.type === "ROUTER_CAPS") {
-      routerCapsRef.current = msg.routerRtpCapabilities || {};
+            routerCapsRef.current = msg.routerRtpCapabilities || {};
             if (pendingSendParamsRef.current) {
               await createSendTransport(ws, pendingSendParamsRef.current);
               pendingSendParamsRef.current = null;
@@ -101,7 +101,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           if (msg.type === "SEND_TRANSPORT_CREATED") {
             if (!routerCapsRef.current) {
               pendingSendParamsRef.current = msg.params;
-              ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS" }));
+              ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS", roomId: call.roomId }));
               return;
             }
             await createSendTransport(ws, msg.params);
@@ -155,6 +155,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           JSON.stringify({
             type: "CONNECT_SEND_TRANSPORT",
             dtlsParameters,
+            roomId: call.roomId,
           }),
         );
         callback();
@@ -171,6 +172,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
             type: "PRODUCE",
             kind,
             rtpParameters,
+            roomId: call.roomId,
           }),
         );
       });
