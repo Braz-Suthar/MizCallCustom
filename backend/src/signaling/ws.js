@@ -284,6 +284,18 @@ export function handleSocket({ socket }) {
                 room.producerIdToOwner.set(res.producerId, peer.id);
                 if (peer.role === "host") {
                   room.hostProducerId = res.producerId;
+                  // notify all users in the room about the host producer
+                  for (const other of room.peers.values()) {
+                    if (other.role === "user" && other.socket.readyState === 1) {
+                      other.socket.send(
+                        JSON.stringify({
+                          type: "HOST_PRODUCER",
+                          producerId: res.producerId,
+                          routerRtpCapabilities: room.routerRtpCapabilities ?? null,
+                        })
+                      );
+                    }
+                  }
                 }
                 console.log("[WS] PRODUCE", { ownerId: peer.id, producerId: res.producerId });
 
