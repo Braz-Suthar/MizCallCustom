@@ -282,32 +282,37 @@ export function handleSocket({ socket }) {
                 const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
                 const room = await ensureMediasoupRoom(roomId);
                 console.log("[WS] PRODUCE incoming", { roomId, owner: peer.id, hasSend: !!peer.sendTransport });
-                const res = await sendMediasoup({
-                    type: MS.PRODUCE,
-                    roomId,
-                    transportId: requirePeer().sendTransport.id,
-                    rtpParameters: msg.rtpParameters,
-                    ownerId: peer.id,
-                });
-                console.log("[WS] PRODUCE room", roomId, "peer", peer.id);
-                peer.producer = { id: res.producerId };
-                room.producerIdToOwner.set(res.producerId, peer.id);
-                if (peer.role === "host") {
-                  room.hostProducerId = res.producerId;
-                  // notify all users in the room about the host producer
-                  for (const other of room.peers.values()) {
-                    if (other.role === "user" && other.socket.readyState === 1) {
-                      other.socket.send(
-                        JSON.stringify({
-                          type: "HOST_PRODUCER",
-                          producerId: res.producerId,
-                          routerRtpCapabilities: room.routerRtpCapabilities ?? null,
-                        })
-                      );
+                try {
+                    const res = await sendMediasoup({
+                        type: MS.PRODUCE,
+                        roomId,
+                        transportId: requirePeer().sendTransport.id,
+                        rtpParameters: msg.rtpParameters,
+                        ownerId: peer.id,
+                    });
+                    console.log("[WS] PRODUCE room", roomId, "peer", peer.id);
+                    peer.producer = { id: res.producerId };
+                    room.producerIdToOwner.set(res.producerId, peer.id);
+                    if (peer.role === "host") {
+                      room.hostProducerId = res.producerId;
+                      // notify all users in the room about the host producer
+                      for (const other of room.peers.values()) {
+                        if (other.role === "user" && other.socket.readyState === 1) {
+                          other.socket.send(
+                            JSON.stringify({
+                              type: "HOST_PRODUCER",
+                              producerId: res.producerId,
+                              routerRtpCapabilities: room.routerRtpCapabilities ?? null,
+                            })
+                          );
+                        }
+                      }
                     }
-                  }
+                    console.log("[WS] PRODUCE", { ownerId: peer.id, producerId: res.producerId });
+                } catch (e) {
+                    console.error("[WS] PRODUCE failed", e?.message || e);
+                    socket.send(JSON.stringify({ type: "PRODUCE_ERROR", error: e?.message || "produce failed" }));
                 }
-                console.log("[WS] PRODUCE", { ownerId: peer.id, producerId: res.producerId });
 
                 // Notify other peers in same room based on role (users hear host; host hears everyone)
                 for (const other of room.peers.values()) {

@@ -130,8 +130,8 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
   const createSendTransport = useCallback(
     async (ws: WebSocket, params: any) => {
-      // Explicit handler for react-native-webrtc 1.0.6
-      const device = new Device({ handlerName: "ReactNative106" as any });
+      // Let mediasoup-client pick the correct handler for RN
+      const device = new Device();
       try {
         await device.load({
           routerRtpCapabilities: routerCapsRef.current,
@@ -155,16 +155,21 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       const transport = device.createSendTransport(params);
       sendTransportRef.current = transport;
 
-      transport.on("connect", ({ dtlsParameters }, callback) => {
+      transport.on("connect", ({ dtlsParameters }, callback, errback) => {
         console.log("[useHostCallMedia] CONNECT_SEND_TRANSPORT", { roomId: call.roomId });
-        ws.send(
-          JSON.stringify({
-            type: "CONNECT_SEND_TRANSPORT",
-            dtlsParameters,
-            roomId: call.roomId,
-          }),
-        );
-        callback();
+        try {
+          ws.send(
+            JSON.stringify({
+              type: "CONNECT_SEND_TRANSPORT",
+              dtlsParameters,
+              roomId: call.roomId,
+            }),
+          );
+          callback();
+        } catch (err) {
+          console.warn("[useHostCallMedia] connect send failed", err);
+          errback?.(err as any);
+        }
       });
 
       transport.on("connectionstatechange", (state: any) => {
@@ -207,9 +212,16 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           settings: track.getSettings?.(),
         });
         console.log("[useHostCallMedia] calling produce()");
-        await transport.produce({ track });
-        console.log("[useHostCallMedia] produce request sent");
-        setState("connected");
+        try {
+          await transport.produce({ track });
+          console.log("[useHostCallMedia] produce request sent");
+          setState("connected");
+        } catch (err: any) {
+          console.warn("[useHostCallMedia] produce failed", err?.message || err);
+          setError("Produce failed");
+          setState("error");
+          return;
+        }
       } catch (err: any) {
         console.warn("[useHostCallMedia] mic/produce error", err);
         setError("Microphone/produce failed");
