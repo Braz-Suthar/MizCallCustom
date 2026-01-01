@@ -156,6 +156,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       sendTransportRef.current = transport;
 
       transport.on("connect", ({ dtlsParameters }, callback) => {
+        console.log("[useHostCallMedia] CONNECT_SEND_TRANSPORT", { roomId: call.roomId });
         ws.send(
           JSON.stringify({
             type: "CONNECT_SEND_TRANSPORT",
@@ -205,6 +206,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           readyState: track.readyState,
           settings: track.getSettings?.(),
         });
+        console.log("[useHostCallMedia] calling produce()");
         await transport.produce({ track });
         console.log("[useHostCallMedia] produce request sent");
         setState("connected");

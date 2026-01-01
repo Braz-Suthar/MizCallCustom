@@ -1055,6 +1055,9 @@ function App() {
           } else if (session.role === "user") {
             console.log("[desktop] RECV created; requesting host producer");
             ws.send(JSON.stringify({ type: "REQUEST_HOST_PRODUCER", roomId: activeCall.id }));
+            // Mark as ready even if host producer not yet available; we'll consume when it arrives
+            setCallJoinState("connected");
+            setCallError(null);
           }
           drainPendingConsumes();
         }
@@ -1482,7 +1485,13 @@ function App() {
                   <p className="muted small">Call ID: {activeCall.id}</p>
                 </div>
                 <span className="muted small">
-                  {callJoinState === "connected" ? "Audio connected" : callJoinState === "connecting" ? "Connecting…" : callError || "Idle"}
+                  {callJoinState === "connected"
+                    ? hostProducerIdRef.current
+                      ? "Audio connected"
+                      : "Ready (waiting for host audio)"
+                    : callJoinState === "connecting"
+                    ? "Connecting…"
+                    : callError || "Idle"}
                 </span>
               </div>
               <p className="muted small">You will only hear the host. Press and hold to speak.</p>

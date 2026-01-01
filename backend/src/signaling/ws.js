@@ -78,6 +78,11 @@ export function handleSocket({ socket }) {
 
     socket.on("message", async (raw) => {
         const msg = JSON.parse(raw.toString());
+        try {
+            console.log("[WS] message", msg.type, "from", peer?.id || "unauth");
+        } catch {
+            // ignore log errors
+        }
 
         switch (msg.type) {
 
