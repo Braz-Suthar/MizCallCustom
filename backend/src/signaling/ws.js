@@ -132,8 +132,23 @@ export function handleSocket({ socket }) {
                 const room = await ensureMediasoupRoom(roomId);
                 socket.send(JSON.stringify({
                     type: "ROUTER_CAPS",
-                    routerRtpCapabilities: room.routerRtpCapabilities
+                    routerRtpCapabilities: room.routerRtpCapabilities,
+                    hostProducerId: room.hostProducerId,
                 }));
+                break;
+            }
+
+            /* ---------------- REQUEST HOST PRODUCER ---------------- */
+            case "REQUEST_HOST_PRODUCER": {
+                const roomId = msg.roomId || peer?.roomId || peer?.hostId || "main-room";
+                const room = getRoom(roomId);
+                if (room?.hostProducerId) {
+                    socket.send(JSON.stringify({
+                        type: "HOST_PRODUCER",
+                        producerId: room.hostProducerId,
+                        routerRtpCapabilities: room.routerRtpCapabilities ?? null,
+                    }));
+                }
                 break;
             }
 
@@ -211,6 +226,7 @@ export function handleSocket({ socket }) {
                   socket.send(JSON.stringify({
                     type: "HOST_PRODUCER",
                     producerId: room.hostProducerId,
+                    routerRtpCapabilities: room.routerRtpCapabilities ?? null,
                   }));
                 }
 

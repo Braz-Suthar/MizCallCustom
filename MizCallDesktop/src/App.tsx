@@ -479,8 +479,13 @@ function App() {
   const routerCapsRef = useRef<any>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioElRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const [pttActive, setPttActive] = useState(false);
+  const pendingConsumeRef = useRef<Array<{ producerId: string; ownerId?: string }>>([]);
   const activeCallListenerRef = useRef<null | (() => void)>(null);
+  const userWsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -776,6 +781,22 @@ function App() {
     if (remoteAudioElRef.current) {
       remoteAudioElRef.current.srcObject = null;
     }
+    try {
+      audioSourceRef.current?.disconnect();
+    } catch {
+      //
+    }
+    try {
+      gainNodeRef.current?.disconnect();
+    } catch {
+      //
+    }
+    audioSourceRef.current = null;
+    gainNodeRef.current = null;
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
     setRemoteAudioStream(null);
     callSocketRef.current?.close?.();
     callSocketRef.current = null;
@@ -792,10 +813,53 @@ function App() {
     if (!remoteAudioElRef.current) {
       remoteAudioElRef.current = new Audio();
       remoteAudioElRef.current.autoplay = true;
+      remoteAudioElRef.current.controls = false;
+      remoteAudioElRef.current.muted = false;
+      remoteAudioElRef.current.style.display = "none";
+      document.body.appendChild(remoteAudioElRef.current);
+    }
+    try {
+      remoteAudioElRef.current.pause();
+    } catch {
+      // ignore
     }
     remoteAudioElRef.current.srcObject = stream;
-    remoteAudioElRef.current.volume = callVolume / 100;
-    remoteAudioElRef.current.play().catch(() => {});
+    remoteAudioElRef.current.muted = false;
+    remoteAudioElRef.current.volume = Math.max(0.1, callVolume / 100);
+    try {
+      remoteAudioElRef.current.load();
+    } catch {
+      // ignore
+    }
+    remoteAudioElRef.current.play().catch((err) => {
+      console.warn("[desktop] audio play failed", err);
+      // retry once after a short delay to avoid AbortError race
+      setTimeout(() => {
+        remoteAudioElRef.current?.play().catch((err2) => console.warn("[desktop] audio play retry failed", err2));
+      }, 200);
+    });
+
+    // Web Audio fallback to force playback in Electron
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      // resume if suspended
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+      audioSourceRef.current?.disconnect();
+      gainNodeRef.current?.disconnect();
+      audioSourceRef.current = ctx.createMediaStreamSource(stream);
+      gainNodeRef.current = ctx.createGain();
+      gainNodeRef.current.gain.value = callVolume / 100;
+      audioSourceRef.current.connect(gainNodeRef.current);
+      gainNodeRef.current.connect(ctx.destination);
+      console.log("[desktop] audio context wired", { state: ctx.state, volume: gainNodeRef.current.gain.value });
+    } catch (err) {
+      console.warn("[desktop] audio ctx wiring failed", err);
+    }
   };
 
   const ensureDeviceLoaded = async () => {
@@ -808,12 +872,34 @@ function App() {
     return device;
   };
 
-  const requestConsume = (producerId: string) => {
+  const drainPendingConsumes = () => {
     if (!recvTransportRef.current || !deviceRef.current || !callSocketRef.current || !activeCall) return;
+    const pending = [...pendingConsumeRef.current];
+    pendingConsumeRef.current = [];
+    pending.forEach(({ producerId, ownerId }) => {
+      callSocketRef.current?.send(
+        JSON.stringify({
+          type: "CONSUME",
+          producerId,
+          producerOwnerId: ownerId,
+          rtpCapabilities: deviceRef.current?.rtpCapabilities,
+          roomId: activeCall.id,
+        })
+      );
+    });
+  };
+
+  const requestConsume = (producerId: string, producerOwnerId?: string) => {
+    if (!callSocketRef.current || !activeCall) return;
+    if (!recvTransportRef.current || !deviceRef.current) {
+      pendingConsumeRef.current.push({ producerId, ownerId: producerOwnerId });
+      return;
+    }
     callSocketRef.current.send(
       JSON.stringify({
         type: "CONSUME",
         producerId,
+        producerOwnerId,
         rtpCapabilities: deviceRef.current.rtpCapabilities,
         roomId: activeCall.id,
       })
@@ -881,11 +967,18 @@ function App() {
     setCallJoinState("connecting");
     setCallError(null);
     routerCapsRef.current = activeCall.routerRtpCapabilities ?? null;
+    console.log("[desktop] joinActiveCall", {
+      role: session.role,
+      roomId: activeCall.id,
+      hasCaps: !!routerCapsRef.current,
+      hostProducer: hostProducerIdRef.current,
+    });
 
     const ws = new WebSocket("wss://custom.mizcall.com/ws");
     callSocketRef.current = ws;
 
     ws.onopen = () => {
+      console.log("[desktop] call-ws open");
       ws.send(JSON.stringify({ type: "AUTH", token: session.token }));
       ws.send(JSON.stringify({ type: "CALL_STARTED", roomId: activeCall.id }));
       ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS", roomId: activeCall.id }));
@@ -893,20 +986,29 @@ function App() {
     };
 
     ws.onerror = () => {
+      console.warn("[desktop] call-ws error");
       setCallJoinState("error");
       setCallError("WebSocket error");
     };
 
     ws.onclose = () => {
+      console.log("[desktop] call-ws close");
       setCallJoinState((prev) => (prev === "connected" ? prev : "idle"));
     };
 
     ws.onmessage = async (event) => {
       try {
         const msg = JSON.parse(event.data);
+        console.log("[desktop] call-ws message", msg.type, msg);
 
         if (msg.type === "ROUTER_CAPS") {
           routerCapsRef.current = msg.routerRtpCapabilities;
+          if (!hostProducerIdRef.current && msg.hostProducerId) {
+            hostProducerIdRef.current = msg.hostProducerId;
+            if (session.role === "user") {
+              requestConsume(msg.hostProducerId);
+            }
+          }
         }
 
         if (msg.type === "SEND_TRANSPORT_CREATED") {
@@ -941,12 +1043,17 @@ function App() {
           recvTransportRef.current = transport;
 
           if (session.role === "user" && hostProducerIdRef.current) {
+            console.log("[desktop] requesting consume host producer", hostProducerIdRef.current);
             requestConsume(hostProducerIdRef.current);
+          } else if (session.role === "user") {
+            ws.send(JSON.stringify({ type: "REQUEST_HOST_PRODUCER", roomId: activeCall.id }));
           }
+          drainPendingConsumes();
         }
 
         if (msg.type === "HOST_PRODUCER") {
           hostProducerIdRef.current = msg.producerId;
+          console.log("[desktop] host producer received", msg.producerId);
           if (session.role === "user" && msg.producerId) {
             requestConsume(msg.producerId);
           }
@@ -969,7 +1076,7 @@ function App() {
                 },
               ];
             });
-            requestConsume(msg.producerId);
+            requestConsume(msg.producerId, msg.userId);
           }
           if (session.role === "user" && msg.ownerRole === "host") {
             requestConsume(msg.producerId);
@@ -978,6 +1085,12 @@ function App() {
 
         if (msg.type === "CONSUMER_CREATED") {
           if (!recvTransportRef.current) return;
+          console.log("[desktop] CONSUMER_CREATED", msg.params);
+          try {
+            consumerRef.current?.close?.();
+          } catch {
+            // ignore
+          }
           const consumer = await recvTransportRef.current.consume({
             id: msg.params.id,
             producerId: msg.params.producerId,
@@ -987,6 +1100,20 @@ function App() {
           consumerRef.current = consumer;
           await consumer.resume?.();
           const stream = new MediaStream([consumer.track]);
+          console.log("[desktop] attaching remote audio", {
+            id: consumer?.id,
+            kind: consumer?.kind,
+            enabled: consumer?.track?.enabled,
+            readyState: consumer?.track?.readyState,
+            settings: consumer?.track?.getSettings?.(),
+          });
+          const track = consumer?.track as any;
+          if (track) {
+            track.enabled = true;
+            track.onended = () => console.log("[desktop] consumer track ended");
+            track.onmute = () => console.log("[desktop] consumer track mute");
+            track.onunmute = () => console.log("[desktop] consumer track unmute");
+          }
           attachRemoteStream(stream);
           setCallJoinState("connected");
         }
@@ -1151,6 +1278,82 @@ function App() {
   }, [tab, session?.token, session?.role]);
 
   useEffect(() => {
+    if (!session || session.role !== "user") {
+      userWsRef.current?.close();
+      userWsRef.current = null;
+      return;
+    }
+    if (userWsRef.current) return;
+
+    const ws = new WebSocket("wss://custom.mizcall.com/ws");
+    userWsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log("[desktop:user-ws] open");
+      ws.send(JSON.stringify({ type: "auth", token: session.token }));
+    };
+    ws.onmessage = (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        console.log("[desktop:user-ws] message", msg.type, msg);
+        if (msg.type === "call-started") {
+          routerCapsRef.current = msg.routerRtpCapabilities ?? null;
+          setActiveCall({
+            id: msg.roomId ?? "main-room",
+            started_at: new Date().toISOString(),
+            routerRtpCapabilities: msg.routerRtpCapabilities ?? null,
+          });
+          if (!msg.routerRtpCapabilities && msg.roomId) {
+            ws.send(JSON.stringify({ type: "get-router-caps", roomId: msg.roomId }));
+          }
+        }
+        if (msg.type === "call-stopped") {
+          setActiveCall(null);
+          setActiveParticipants([]);
+        }
+        if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "host") {
+          hostProducerIdRef.current = msg.producerId;
+          if (msg.routerRtpCapabilities) {
+            routerCapsRef.current = msg.routerRtpCapabilities;
+            setActiveCall((prev) => (prev ? { ...prev, routerRtpCapabilities: msg.routerRtpCapabilities } : prev));
+          } else if (activeCall?.id) {
+            ws.send(JSON.stringify({ type: "get-router-caps", roomId: activeCall.id }));
+          }
+          requestConsume(msg.producerId);
+        }
+        if (msg.type === "HOST_PRODUCER" && msg.producerId) {
+          hostProducerIdRef.current = msg.producerId;
+           if (msg.routerRtpCapabilities) {
+             routerCapsRef.current = msg.routerRtpCapabilities;
+             setActiveCall((prev) => (prev ? { ...prev, routerRtpCapabilities: msg.routerRtpCapabilities } : prev));
+           } else if (activeCall?.id) {
+             ws.send(JSON.stringify({ type: "get-router-caps", roomId: activeCall.id }));
+           }
+          requestConsume(msg.producerId);
+        }
+        if (msg.type === "ROUTER_CAPS") {
+          routerCapsRef.current = msg.routerRtpCapabilities ?? null;
+          setActiveCall((prev) => (prev ? { ...prev, routerRtpCapabilities: msg.routerRtpCapabilities ?? null } : prev));
+        }
+      } catch {
+        // ignore malformed
+      }
+    };
+    ws.onerror = () => {
+      console.warn("[desktop:user-ws] error");
+    };
+    ws.onclose = () => {
+      console.log("[desktop:user-ws] close");
+      userWsRef.current = null;
+    };
+
+    return () => {
+      ws.close();
+      userWsRef.current = null;
+    };
+  }, [session?.token, session?.role]);
+
+  useEffect(() => {
     if (!session || !activeCall || tab !== "call-active") {
       if (tab !== "call-active") {
         cleanupCallMedia();
@@ -1168,10 +1371,22 @@ function App() {
     if (!remoteAudioElRef.current) {
       remoteAudioElRef.current = new Audio();
       remoteAudioElRef.current.autoplay = true;
+      remoteAudioElRef.current.controls = false;
+      remoteAudioElRef.current.style.display = "none";
+      document.body.appendChild(remoteAudioElRef.current);
     }
     remoteAudioElRef.current.srcObject = remoteAudioStream;
-    remoteAudioElRef.current.volume = callMuted ? 0 : callVolume / 100;
-    remoteAudioElRef.current.play().catch(() => {});
+    remoteAudioElRef.current.muted = false;
+    remoteAudioElRef.current.volume = callVolume / 100;
+    remoteAudioElRef.current.play().catch((err) => console.warn("[desktop] audio play failed", err));
+
+    // keep gain node in sync
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = callVolume / 100;
+    }
+    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => {});
+    }
   }, [remoteAudioStream, callVolume, callMuted]);
 
   useEffect(() => {
@@ -1399,6 +1614,21 @@ function App() {
                 </div>
               </div>
             ) : null}
+
+            {session.role === "user" && activeCall ? (
+              <div className="card stack gap-sm">
+                <p className="muted strong">Active call</p>
+                <div className="row-inline between">
+                  <div className="stack gap-xxs">
+                    <strong>Room: {activeCall.id}</strong>
+                    <span className="muted small">Host: {session.hostId ?? "Host"}</span>
+                    <span className="muted small">Status: {callJoinState === "connected" ? "Connected" : "Ready"}</span>
+                  </div>
+                  <Button label="Join call" variant="primary" onClick={() => setTab("call-active")} />
+                </div>
+              </div>
+            ) : null}
+
             <div className="stats-grid">
               <div className="card stat-card">
                 <p className="muted strong">Total Users</p>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
-import { RtpCapabilities } from "mediasoup-client/lib/RtpParameters";
+type RtpCapabilities = any;
 import { MediaStream, mediaDevices } from "react-native-webrtc";
 
 import { useAppSelector } from "../state/store";
@@ -20,6 +20,8 @@ export function useJoinCall() {
   const [speaking, setSpeaking] = useState(false);
   const [pttReady, setPttReady] = useState(false);
 
+  const roomId = activeCall?.roomId || (activeCall as any)?.id;
+
   const wsRef = useRef<WebSocket | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const recvTransportRef = useRef<any>(null);
@@ -27,7 +29,7 @@ export function useJoinCall() {
   const producerIdRef = useRef<string | null>(null);
   const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
-  const meterIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const meterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zeroLevelCountRef = useRef(0);
   const localStreamRef = useRef<MediaStream | null>(null);
 
@@ -66,9 +68,26 @@ export function useJoinCall() {
 
   useEffect(() => cleanup, []);
 
+  const sendConsume = (producerId: string) => {
+    if (!producerId || !deviceRef.current || !wsRef.current) return;
+    wsRef.current.send(
+      JSON.stringify({
+        type: "CONSUME",
+        producerId,
+        rtpCapabilities: deviceRef.current.rtpCapabilities,
+        roomId,
+      }),
+    );
+  };
+
   const join = useCallback(async () => {
     if (!token || role !== "user") {
       setError("Missing auth");
+      setState("error");
+      return;
+    }
+    if (!roomId) {
+      setError("Missing room");
       setState("error");
       return;
     }
@@ -94,7 +113,7 @@ export function useJoinCall() {
         // best effort
       }
       ws.send(JSON.stringify({ type: "auth", token }));
-      ws.send(JSON.stringify({ type: "JOIN", token }));
+      ws.send(JSON.stringify({ type: "JOIN", token, roomId }));
     };
 
     ws.onerror = (e) => {
@@ -127,6 +146,7 @@ export function useJoinCall() {
                 JSON.stringify({
                   type: "CONNECT_SEND_TRANSPORT",
                   dtlsParameters,
+                  roomId,
                 }),
               );
               callback();
@@ -140,6 +160,7 @@ export function useJoinCall() {
                 JSON.stringify({
                   type: "PRODUCE",
                   rtpParameters,
+                  roomId,
                 }),
               );
               callback({ id: String(Date.now()) });
@@ -165,6 +186,7 @@ export function useJoinCall() {
               JSON.stringify({
                 type: "CONNECT_RECV_TRANSPORT",
                 dtlsParameters,
+                roomId,
               }),
             );
             callback();
@@ -181,6 +203,7 @@ export function useJoinCall() {
                 type: "CONSUME",
                 producerId: producerIdRef.current,
                 rtpCapabilities: device.rtpCapabilities,
+                roomId,
               }),
             );
           }
@@ -192,6 +215,7 @@ export function useJoinCall() {
                 type: "CONSUME",
                 producerId: activeCall.hostProducerId,
                 rtpCapabilities: device.rtpCapabilities,
+                roomId,
               }),
             );
           }
@@ -199,13 +223,12 @@ export function useJoinCall() {
 
         if (msg.type === "NEW_PRODUCER") {
           producerIdRef.current = msg.producerId;
-          ws.send(
-            JSON.stringify({
-              type: "CONSUME",
-              producerId: msg.producerId,
-              rtpCapabilities: deviceRef.current?.rtpCapabilities,
-            }),
-          );
+          sendConsume(msg.producerId);
+        }
+
+        if (msg.type === "HOST_PRODUCER") {
+          producerIdRef.current = msg.producerId;
+          sendConsume(msg.producerId);
         }
 
         if (msg.type === "CONSUMER_CREATED") {
@@ -225,7 +248,8 @@ export function useJoinCall() {
             // Route to speaker on mobile for clarity
             try {
               if (isMobilePlatform) {
-                await mediaDevices.setSpeakerphoneOn?.(true);
+                // setSpeakerphoneOn available on react-native-webrtc; TS def may be missing
+                await (mediaDevices as any).setSpeakerphoneOn?.(true);
               }
             } catch {
               // best effort; ignore if not supported
@@ -249,10 +273,10 @@ export function useJoinCall() {
             });
             if (audioTrack) {
               audioTrack.enabled = true;
-              audioTrack.onunmute = () => {
+              (audioTrack as any).onunmute = () => {
                 console.log("[useJoinCall] audio track unmuted");
               };
-              audioTrack.onmute = () => {
+              (audioTrack as any).onmute = () => {
                 console.log("[useJoinCall] audio track muted");
               };
             }
@@ -320,6 +344,7 @@ export function useJoinCall() {
       const track = stream.getAudioTracks()[0];
       producerRef.current = await sendTransportRef.current.produce({ track });
       setSpeaking(true);
+      console.log("[useJoinCall] started speaking");
     } catch (err: any) {
       console.warn("[useJoinCall] startSpeaking error", err);
       setError(err?.message ?? "Mic unavailable");
@@ -338,6 +363,7 @@ export function useJoinCall() {
       localStreamRef.current = null;
     }
     setSpeaking(false);
+    console.log("[useJoinCall] stopped speaking");
   }, []);
 
   return { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady };

@@ -41,23 +41,22 @@ export const useSocket = (session: CredentialsPayload | null) => {
       try {
         const msg = JSON.parse(ev.data);
         if (msg.type === "call-started") {
-          // only set when we have router caps to avoid wiping state
-          if (msg.routerRtpCapabilities) {
-            dispatch(
-              setActiveCall({
-                roomId: msg.roomId ?? "main-room",
-                routerRtpCapabilities: msg.routerRtpCapabilities,
-                hostProducerId: msg.producerId,
-              }),
-            );
-          }
+          const current = callRef.current;
+          // merge in router caps/room; keep any existing producer id
+          dispatch(
+            setActiveCall({
+              roomId: msg.roomId ?? current?.roomId ?? "main-room",
+              routerRtpCapabilities: msg.routerRtpCapabilities ?? current?.routerRtpCapabilities,
+              hostProducerId: current?.hostProducerId,
+            }),
+          );
         }
         if (msg.type === "NEW_PRODUCER") {
           const current = callRef.current;
           dispatch(
             setActiveCall({
-              roomId: current?.roomId ?? "main-room",
-              routerRtpCapabilities: current?.routerRtpCapabilities,
+              roomId: current?.roomId ?? msg.roomId ?? "main-room",
+              routerRtpCapabilities: current?.routerRtpCapabilities ?? msg.routerRtpCapabilities,
               hostProducerId: msg.producerId,
             }),
           );

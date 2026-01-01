@@ -53,6 +53,13 @@ export default function UserActiveCallScreen() {
               label={speaking ? "Release to mute" : "Hold to talk"}
               onPressIn={startSpeaking}
               onPressOut={stopSpeaking}
+              onPress={() => {
+                if (speaking) {
+                  stopSpeaking();
+                } else {
+                  startSpeaking();
+                }
+              }}
               disabled={!pttReady || state !== "connected"}
               fullWidth
             />
