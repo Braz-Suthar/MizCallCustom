@@ -1518,6 +1518,7 @@ function App() {
                 {pttActive ? <FiVolume2 /> : <FiMic />}
                 <span>{pttActive ? "Talking…" : "Hold to talk"}</span>
               </button>
+              <Button label="Leave call" variant="secondary" onClick={() => endCall(activeCall.id)} />
               <div className="volume-control">
                 <span className="muted small">Volume</span>
                 <input
