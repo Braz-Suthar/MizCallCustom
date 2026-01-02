@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { pool } from "../db/pool.js";
 
 const RECORDER_WS = "ws://recorder:7000";
 let socket = null;
@@ -18,7 +19,7 @@ export function connectRecorder() {
     const msg = JSON.parse(raw.toString());
 
     if (msg.type === "CLIP_FINALIZED") {
-      await db.query(
+      await pool.query(
         `INSERT INTO recordings
        (id, host_id, user_id, meeting_id, started_at, ended_at, file_path)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
