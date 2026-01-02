@@ -10,9 +10,9 @@ const rooms = new Map();
 /*
 roomId -> {
   router,
-  webrtcTransports,
+  transports,
   producers,
-  recorderTransports: Map<userId, PlainTransport>
+  recorderTransports: Map<key, { plain, consumer }>
 }
 */
 
@@ -126,6 +126,43 @@ wss.on("connection", async (socket) => {
                 id: consumer.id,
                 producerId: producer.id,
                 rtpParameters: consumer.rtpParameters
+            }));
+        }
+
+        if (msg.type === "create-recorder") {
+            const room = rooms.get(msg.roomId);
+            room.recorderTransports ??= new Map();
+
+            const producer = room.producers.get(msg.producerOwnerId);
+            if (!producer) {
+                socket.send(JSON.stringify({
+                    requestId: msg.requestId,
+                    ok: false,
+                    error: "producer not found"
+                }));
+                return;
+            }
+
+            const plain = await createPlainTransport(room.router);
+            await plain.connect({
+                ip: msg.remoteIp || process.env.RECORDER_IP || "recorder",
+                port: msg.remotePort
+            });
+
+            const consumer = await plain.consume({
+                producerId: producer.id,
+                rtpCapabilities: room.router.rtpCapabilities,
+                paused: false
+            });
+
+            const key = `${msg.producerOwnerId}:${msg.remotePort}`;
+            room.recorderTransports.set(key, { plain, consumer });
+
+            socket.send(JSON.stringify({
+                requestId: msg.requestId,
+                ok: true,
+                plainTransportId: plain.id,
+                consumerId: consumer.id
             }));
         }
     });

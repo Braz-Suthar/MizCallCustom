@@ -4,12 +4,24 @@ import { Peer } from "./peer.js";
 import { sendMediasoup } from "../mediasoup/client.js";
 import { MS } from "../mediasoup/commands.js";
 import { v4 as uuid } from "uuid";
+import { sendRecorder } from "../recorder/client.js";
+import { EVENTS } from "./protocol.js";
 
 const peers = new Map();
 let wssInstance = null;
 
 // roomId -> { routerRtpCapabilities, peers: Map<peerId, Peer>, producerIdToOwner: Map, hostProducerId?: string, hostId?: string }
 const rooms = new Map();
+
+const RECORDER_PORT_START = Number(process.env.RECORDER_PORT_START || 50000);
+let recorderPortCursor = RECORDER_PORT_START;
+function allocRecorderPort() {
+  const port = recorderPortCursor++;
+  if (recorderPortCursor > RECORDER_PORT_START + 1000) {
+    recorderPortCursor = RECORDER_PORT_START;
+  }
+  return port;
+}
 
 function getRoom(roomId) {
   if (!rooms.has(roomId)) {
@@ -70,6 +82,51 @@ export function broadcastCallEvent(hostId, payload, roomId = null) {
 
 export function handleSocket({ socket }) {
     let peer = null;
+
+    async function startRecorderForUser(roomId, room, peer) {
+        const userPort = allocRecorderPort();
+        const hostPort = allocRecorderPort();
+        const remoteIp = process.env.RECORDER_IP || "recorder";
+
+        sendRecorder({
+            type: "START_USER",
+            hostId: peer.hostId,
+            userId: peer.id,
+            meetingId: roomId,
+            userPort,
+            hostPort,
+            userPreSeconds: 2,
+            hostPreSeconds: 5,
+            userPostSeconds: 2,
+            hostPostSeconds: 5,
+        });
+        sendRecorder({
+            type: "START_CLIP",
+            userId: peer.id
+        });
+
+        try {
+            await sendMediasoup({
+                type: MS.CREATE_RECORDER,
+                roomId,
+                producerOwnerId: peer.id,
+                remotePort: userPort,
+                remoteIp
+            });
+
+            if (room.hostProducerId) {
+                await sendMediasoup({
+                    type: MS.CREATE_RECORDER,
+                    roomId,
+                    producerOwnerId: peer.hostId,
+                    remotePort: hostPort,
+                    remoteIp
+                });
+            }
+        } catch (err) {
+            console.error("[WS] recorder plain transport failed", err?.message || err);
+        }
+    }
 
     const requirePeer = () => {
         if (!peer) throw new Error("Peer not initialized");
@@ -309,6 +366,10 @@ export function handleSocket({ socket }) {
                       }
                     }
                     console.log("[WS] PRODUCE", { ownerId: peer.id, producerId: res.producerId });
+
+                    if (peer.role === "user") {
+                        await startRecorderForUser(roomId, room, peer);
+                    }
                 } catch (e) {
                     console.error("[WS] PRODUCE failed", e?.message || e);
                     socket.send(JSON.stringify({ type: "PRODUCE_ERROR", error: e?.message || "produce failed" }));
@@ -369,6 +430,16 @@ export function handleSocket({ socket }) {
                         rtpParameters: res.rtpParameters,
                     }
                 }));
+                break;
+            }
+
+            /* ---------------- SPEAKING STOP ---------------- */
+            case EVENTS.SPEAKING_STOP:
+            case "SPEAKING_STOP":
+            case "speaking-stop": {
+                if (!peer) break;
+                sendRecorder({ type: "STOP_CLIP", userId: peer.id });
+                sendRecorder({ type: "STOP_USER", userId: peer.id });
                 break;
             }
 

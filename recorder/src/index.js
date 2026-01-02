@@ -27,7 +27,13 @@ wss.on("connection", (socket) => {
                     startUserRecording({
                         hostId: msg.hostId,
                         userId: msg.userId,
-                        port: msg.port
+                        meetingId: msg.meetingId,
+                        userPort: msg.userPort,
+                        hostPort: msg.hostPort,
+                        userPreSeconds: msg.userPreSeconds,
+                        hostPreSeconds: msg.hostPreSeconds,
+                        userPostSeconds: msg.userPostSeconds,
+                        hostPostSeconds: msg.hostPostSeconds,
                     });
                     break;
 

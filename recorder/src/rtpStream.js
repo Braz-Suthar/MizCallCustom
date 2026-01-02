@@ -23,7 +23,9 @@ export class RtpStream {
             this.ffmpeg.stdin.write(packet.slice(12));
         });
 
-        this.socket.bind(port);
+        this.socket.bind(port, () => {
+            this.port = this.socket.address().port;
+        });
     }
 
     close() {

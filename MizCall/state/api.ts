@@ -1,4 +1,4 @@
-const API_BASE = "https://custom.mizcall.com";
+export const API_BASE = "https://custom.mizcall.com";
 
 export async function apiFetch<T>(
   path: string,

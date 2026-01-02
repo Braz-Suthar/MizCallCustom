@@ -3,12 +3,30 @@ import { ClipController } from "./clipController.js";
 import { sendToBackend } from "./ws.js";
 
 const streams = new Map();
-// userId → { stream, controller }
+// userId → { userStream, hostStream, controller }
 
-export function startUserRecording({ hostId, userId, port }) {
+export function startUserRecording({
+    hostId,
+    userId,
+    meetingId,
+    userPort,
+    hostPort,
+    userPreSeconds = 2,
+    hostPreSeconds = 5,
+    userPostSeconds = 2,
+    hostPostSeconds = 5,
+}) {
     if (streams.has(userId)) return;
 
-    const controller = new ClipController({ hostId, userId, meetingId });
+    const controller = new ClipController({
+        hostId,
+        userId,
+        meetingId,
+        userPreSeconds,
+        hostPreSeconds,
+        userPostSeconds,
+        hostPostSeconds,
+    });
 
     controller.onFinalized = (meta) => {
         sendToBackend({
@@ -17,12 +35,17 @@ export function startUserRecording({ hostId, userId, port }) {
         });
     };
 
-    const stream = new RtpStream({
-        port,
-        onPcm: (pcm) => controller.onPcm(pcm)
+    const userStream = new RtpStream({
+        port: userPort,
+        onPcm: (pcm) => controller.onUserPcm(pcm)
     });
 
-    streams.set(userId, { stream, controller });
+    const hostStream = new RtpStream({
+        port: hostPort,
+        onPcm: (pcm) => controller.onHostPcm(pcm)
+    });
+
+    streams.set(userId, { userStream, hostStream, controller });
 }
 
 export function startClip(userId) {
@@ -37,6 +60,7 @@ export function stopUserRecording(userId) {
     const entry = streams.get(userId);
     if (!entry) return;
 
-    entry.stream.close();
+    entry.userStream.close();
+    entry.hostStream.close();
     streams.delete(userId);
 }

@@ -3,5 +3,6 @@ export const MS = {
     CREATE_TRANSPORT: "create-transport",
     CONNECT_TRANSPORT: "connect-transport",
     PRODUCE: "produce",
-    CONSUME: "consume"
+    CONSUME: "consume",
+    CREATE_RECORDER: "create-recorder",
 };
