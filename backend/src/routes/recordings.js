@@ -11,7 +11,7 @@ router.get("/host/recordings", async (req, res) => {
   }
 
   const { rows } = await pool.query(
-    `SELECT r.*, u.name AS user_name
+    `SELECT r.*, u.username AS user_name
      FROM recordings r
      JOIN users u ON u.id = r.user_id
      WHERE r.host_id = $1
