@@ -34,6 +34,15 @@ export default function HostRecordings() {
 
   useEffect(() => {
     let mounted = true;
+    // ensure audio plays even in silent mode (iOS)
+    Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      interruptionModeIOS: Audio.INTERRUPTION_MODE_IOS_DO_NOT_MIX,
+      interruptionModeAndroid: Audio.INTERRUPTION_MODE_ANDROID_DO_NOT_MIX,
+    }).catch(() => {});
+
     const load = async () => {
       if (!token) return;
       setLoading(true);
@@ -76,8 +85,9 @@ export default function HostRecordings() {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
+      const streamUrl = `${API_BASE}/recordings/${item.id}/stream?token=${encodeURIComponent(token)}`;
       const { sound } = await Audio.Sound.createAsync(
-        { uri: `${API_BASE}/recordings/${item.id}/stream`, headers: { Authorization: `Bearer ${token}` } },
+        { uri: streamUrl },
         { shouldPlay: true }
       );
       soundRef.current = sound;
@@ -85,10 +95,13 @@ export default function HostRecordings() {
       sound.setOnPlaybackStatusUpdate((status) => {
         if ((status as AVPlaybackStatusSuccess).didJustFinish) {
           setPlayingId(null);
+        } else if (!status.isLoaded && "error" in status && status.error) {
+          setError(status.error);
+          setPlayingId(null);
         }
       });
     } catch (e) {
-      setError("Playback failed");
+      setError(e instanceof Error ? e.message : "Playback failed");
       setPlayingId(null);
     }
   };
