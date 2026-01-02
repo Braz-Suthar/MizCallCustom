@@ -12,7 +12,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.anonymous.MizCall",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "MizCall needs microphone access for audio calls."
+        "NSMicrophoneUsageDescription": "MizCall needs microphone access for audio calls.",
+        "NSLocalNetworkUsageDescription": "Allow this app to discover development servers on your local network."
       }
     },
     "android": {
@@ -27,7 +28,9 @@
       "package": "com.anonymous.MizCall",
       "permissions": [
         "RECORD_AUDIO",
-        "WAKE_LOCK"
+        "WAKE_LOCK",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
@@ -53,6 +56,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0aa170c5-60bd-47c2-8015-cebd6a3717b6"
+      }
     }
   }
 }
