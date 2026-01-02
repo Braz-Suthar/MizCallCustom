@@ -5,6 +5,7 @@ import authRoutes from "./api/auth/index.js";
 import hostRoutes from "./api/host/index.js";
 import recordingRoutes from "./api/recordings/index.js";
 import recordingsRoutes from "./routes/recordings.js";
+import { requireAuth } from "./middleware/auth.js";
 
 import { startWebSocketServer } from "./signaling/ws.js";
 import { connectMediasoup } from "./mediasoup/client.js";
@@ -29,7 +30,7 @@ app.use((req, res, next) => {
 });
 
 // Routes
-app.use(recordingsRoutes);
+app.use(requireAuth, recordingsRoutes);
 app.use("/auth", authRoutes);
 app.use("/host", hostRoutes);
 app.use("/recordings", recordingRoutes);
