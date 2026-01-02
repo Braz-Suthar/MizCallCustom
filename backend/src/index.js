@@ -30,8 +30,8 @@ app.use((req, res, next) => {
 });
 
 // Routes
-app.use(requireAuth, recordingsRoutes);
 app.use("/auth", authRoutes);
+app.use(requireAuth, recordingsRoutes);
 app.use("/host", hostRoutes);
 app.use("/recordings", recordingRoutes);
 
