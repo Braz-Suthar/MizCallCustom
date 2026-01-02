@@ -470,6 +470,10 @@ export function handleSocket({ socket }) {
           room?.peers.delete(peer.id);
           // notify host when user disconnects
           if (peer.role === "user" && room) {
+            // finalize any pending recording for this user
+            sendRecorder({ type: "STOP_CLIP", userId: peer.id });
+            sendRecorder({ type: "STOP_USER", userId: peer.id });
+
             for (const other of room.peers.values()) {
               if (other.role === "host" && other.socket.readyState === 1) {
                 other.socket.send(JSON.stringify({
