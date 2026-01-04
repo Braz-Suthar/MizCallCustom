@@ -1,41 +1,135 @@
-import React, { useState } from "react";
-import { Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import { useTheme } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Fab } from "../../../components/ui/Fab";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { startCall } from "../../../state/callActions";
 import { setThemeMode } from "../../../state/themeSlice";
+import { apiFetch } from "../../../state/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Consistent primary blue color for the entire app
 const PRIMARY_BLUE = "#5B9FFF";
 
+type DashboardData = {
+  stats: {
+    totalUsers: number;
+    activeUsers: number;
+    totalCalls: number;
+    activeCalls: number;
+  };
+  recentActivity: Array<{
+    type: "call" | "user";
+    id: string;
+    status: string;
+    createdAt: string;
+    username?: string;
+  }>;
+};
+
 export default function HostDashboard() {
   const { colors } = useTheme();
   const router = useRouter();
   const dispatch = useAppDispatch();
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [networkLatency, setNetworkLatency] = useState<number | null>(null);
   const themeMode = useAppSelector((state) => state.theme.mode);
-  
+  const { token, role } = useAppSelector((state) => state.auth);
+  const connectionStatus = { connected: networkLatency !== null && networkLatency < 1000 };
+
+  const loadDashboardData = async () => {
+    if (!token || role !== "host") return;
+
+    try {
+      const startTime = Date.now();
+      const data = await apiFetch<DashboardData>("/host/dashboard", token);
+      const endTime = Date.now();
+      const latency = endTime - startTime;
+
+      setDashboardData(data);
+      setNetworkLatency(latency);
+    } catch (error) {
+      console.error("Failed to load dashboard data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load data on mount and when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      loadDashboardData();
+    }, [token, role])
+  );
+
   const stats = [
-    { label: "Total Users", value: "3", icon: "people" },
-    { label: "Total Calls", value: "313", icon: "call" },
-    { label: "Active Users", value: "3", icon: "person" },
-    { label: "Network Status", value: "497ms", icon: "wifi", isLatency: true },
+    { 
+      label: "Total Users", 
+      value: dashboardData?.stats.totalUsers?.toString() || "0", 
+      icon: "people" as const
+    },
+    { 
+      label: "Total Calls", 
+      value: dashboardData?.stats.totalCalls?.toString() || "0", 
+      icon: "call" as const
+    },
+    { 
+      label: "Active Users", 
+      value: dashboardData?.stats.activeUsers?.toString() || "0", 
+      icon: "person" as const
+    },
+    { 
+      label: "Network Status", 
+      value: networkLatency ? `${networkLatency}ms` : "---", 
+      icon: "wifi" as const, 
+      isLatency: true 
+    },
   ];
   
-  const recent = [
-    { title: "Call M272664 ended", detail: "04/12/2025 - 19:03", icon: "call-outline" },
-  ];
+  const formatActivityTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getActivityTitle = (activity: DashboardData["recentActivity"][0]) => {
+    if (activity.type === "call") {
+      return `Call ${activity.id.slice(0, 6)} ${activity.status}`;
+    } else {
+      return `User ${activity.username || activity.id} ${activity.status}`;
+    }
+  };
+
+  const getActivityIcon = (activity: DashboardData["recentActivity"][0]): "call" | "call-outline" | "person" | "person-outline" => {
+    if (activity.type === "call") {
+      return activity.status === "started" ? "call" : "call-outline";
+    } else {
+      return activity.status === "active" ? "person" : "person-outline";
+    }
+  };
   
-  const connectionStatus = { connected: true };
+  const recent = dashboardData?.recentActivity.map(activity => ({
+    title: getActivityTitle(activity),
+    detail: formatActivityTime(activity.createdAt),
+    icon: getActivityIcon(activity),
+  })) || [];
 
   const handleStartCall = async () => {
     try {
-      const roomId = await dispatch(startCall()).unwrap?.();
+      const result = await dispatch(startCall()) as any;
+      if (result && typeof result.unwrap === 'function') {
+        await result.unwrap();
+      }
       router.push("/host/active-call");
     } catch (e) {
       // ignore here; startCall already handles errors upstream
@@ -44,8 +138,7 @@ export default function HostDashboard() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Simulate refresh - replace with actual data fetching logic
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await loadDashboardData();
     setRefreshing(false);
   };
 
@@ -87,19 +180,25 @@ export default function HostDashboard() {
           </View>
         </View>
 
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={PRIMARY_BLUE}
-              colors={[PRIMARY_BLUE]}
-            />
-          }
-        >
+        {loading && !dashboardData ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={PRIMARY_BLUE} />
+            <Text style={[styles.loadingText, { color: colors.text }]}>Loading dashboard...</Text>
+          </View>
+        ) : (
+          <ScrollView 
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={PRIMARY_BLUE}
+                colors={[PRIMARY_BLUE]}
+              />
+            }
+          >
           {/* Quick Actions */}
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
@@ -164,6 +263,7 @@ export default function HostDashboard() {
             </View>
           </View>
         </ScrollView>
+        )}
       </View>
       <Fab
         icon="logo-whatsapp"
@@ -177,6 +277,16 @@ export default function HostDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 15,
+    opacity: 0.7,
   },
   header: {
     flexDirection: "row",

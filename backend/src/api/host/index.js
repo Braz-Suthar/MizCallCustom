@@ -7,6 +7,82 @@ import { broadcastCallEvent, ensureMediasoupRoom } from "../../signaling/ws.js";
 
 const router = Router();
 
+/* DASHBOARD STATS */
+router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
+  try {
+    // Get total users count
+    const totalUsersResult = await query(
+      `SELECT COUNT(*) as total FROM users WHERE host_id = $1`,
+      [req.hostId]
+    );
+
+    // Get active users count (enabled users)
+    const activeUsersResult = await query(
+      `SELECT COUNT(*) as total FROM users WHERE host_id = $1 AND enabled = true`,
+      [req.hostId]
+    );
+
+    // Get total calls count
+    const totalCallsResult = await query(
+      `SELECT COUNT(*) as total FROM rooms WHERE host_id = $1`,
+      [req.hostId]
+    );
+
+    // Get active calls count
+    const activeCallsResult = await query(
+      `SELECT COUNT(*) as total FROM rooms WHERE host_id = $1 AND status = 'started'`,
+      [req.hostId]
+    );
+
+    // Get recent activity (last 10 events)
+    const recentActivityResult = await query(
+      `(
+        SELECT 
+          'call' as type,
+          id,
+          status,
+          started_at as created_at,
+          NULL as username
+        FROM rooms
+        WHERE host_id = $1
+      )
+      UNION ALL
+      (
+        SELECT 
+          'user' as type,
+          id,
+          CASE WHEN enabled THEN 'active' ELSE 'disabled' END as status,
+          created_at,
+          username
+        FROM users
+        WHERE host_id = $1
+      )
+      ORDER BY created_at DESC
+      LIMIT 10`,
+      [req.hostId]
+    );
+
+    res.json({
+      stats: {
+        totalUsers: parseInt(totalUsersResult.rows[0].total),
+        activeUsers: parseInt(activeUsersResult.rows[0].total),
+        totalCalls: parseInt(totalCallsResult.rows[0].total),
+        activeCalls: parseInt(activeCallsResult.rows[0].total),
+      },
+      recentActivity: recentActivityResult.rows.map(row => ({
+        type: row.type,
+        id: row.id,
+        status: row.status,
+        createdAt: row.created_at,
+        username: row.username,
+      })),
+    });
+  } catch (error) {
+    console.error("Dashboard stats error:", error);
+    res.status(500).json({ error: "Failed to fetch dashboard data" });
+  }
+});
+
 /* CREATE USER */
 router.post("/users", requireAuth, requireHost, async (req, res) => {
   const id = await generateUserId();
