@@ -71,6 +71,8 @@ export function useJoinCall() {
 
   const sendConsume = (producerId: string) => {
     if (!producerId || !deviceRef.current || !socketRef.current) return;
+    
+    console.log("[useJoinCall] Sending CONSUME request for producer:", producerId);
     socketRef.current.emit("CONSUME", {
       type: "CONSUME",
       producerId,
@@ -115,6 +117,11 @@ export function useJoinCall() {
 
     socketRef.current = socket;
 
+    // Debug: Listen to all events
+    socket.onAny((eventName, ...args) => {
+      console.log(`[useJoinCall] Socket event: ${eventName}`, args);
+    });
+
     socket.on("connect", async () => {
       console.log("[useJoinCall] Socket.IO connected:", socket.id);
       try {
@@ -153,9 +160,9 @@ export function useJoinCall() {
           transport.on("connect", ({ dtlsParameters }, callback, errback) => {
             try {
               socket.emit("CONNECT_SEND_TRANSPORT", {
-                type: "CONNECT_SEND_TRANSPORT",
-                dtlsParameters,
-                roomId,
+                  type: "CONNECT_SEND_TRANSPORT",
+                  dtlsParameters,
+                  roomId,
               });
               callback();
             } catch (err) {
@@ -165,9 +172,9 @@ export function useJoinCall() {
           transport.on("produce", ({ rtpParameters }, callback, errback) => {
             try {
               socket.emit("PRODUCE", {
-                type: "PRODUCE",
-                rtpParameters,
-                roomId,
+                  type: "PRODUCE",
+                  rtpParameters,
+                  roomId,
               });
               callback({ id: String(Date.now()) });
             } catch (err) {
@@ -178,6 +185,7 @@ export function useJoinCall() {
         }
 
         if (msg.type === "RECV_TRANSPORT_CREATED") {
+          console.log("[useJoinCall] RECV_TRANSPORT_CREATED received");
           const device = deviceRef.current || new Device({ handlerName: "ReactNative106" as any });
           if (!device.loaded) {
             await device.load({ routerRtpCapabilities: (activeCall?.routerRtpCapabilities || {}) as RtpCapabilities });
@@ -188,6 +196,7 @@ export function useJoinCall() {
           recvTransportRef.current = transport;
 
           transport.on("connect", ({ dtlsParameters }, callback) => {
+            console.log("[useJoinCall] recv transport connecting...");
             socket.emit("CONNECT_RECV_TRANSPORT", {
               type: "CONNECT_RECV_TRANSPORT",
               dtlsParameters,
@@ -197,20 +206,22 @@ export function useJoinCall() {
           });
 
           transport.on("connectionstatechange", (state) => {
-            console.log("[useJoinCall] recv transport state", state);
+            console.log("[useJoinCall] recv transport state:", state);
           });
 
-          // if we already know a producer, consume it
+          console.log("[useJoinCall] Recv transport created, sending CONSUME requests");
+          
+          // Immediately send consume requests (transport will connect during consume)
           if (producerIdRef.current) {
+            console.log("[useJoinCall] Consuming pending producer:", producerIdRef.current);
             socket.emit("CONSUME", {
               type: "CONSUME",
               producerId: producerIdRef.current,
               rtpCapabilities: device.rtpCapabilities,
               roomId,
             });
-          }
-          // also consume if hostProducerId already stored in state
-          if (!producerIdRef.current && activeCall?.hostProducerId) {
+          } else if (activeCall?.hostProducerId) {
+            console.log("[useJoinCall] Consuming host producer from state:", activeCall.hostProducerId);
             producerIdRef.current = activeCall.hostProducerId;
             socket.emit("CONSUME", {
               type: "CONSUME",
@@ -222,29 +233,56 @@ export function useJoinCall() {
         }
 
         if (msg.type === "NEW_PRODUCER") {
+          console.log("[useJoinCall] NEW_PRODUCER received:", msg.producerId);
           producerIdRef.current = msg.producerId;
           sendConsume(msg.producerId);
         }
 
         if (msg.type === "HOST_PRODUCER") {
+          console.log("[useJoinCall] HOST_PRODUCER received:", msg.producerId);
           producerIdRef.current = msg.producerId;
           sendConsume(msg.producerId);
         }
 
-        if (msg.type === "CONSUMER_CREATED") {
-          if (!recvTransportRef.current || !deviceRef.current) return;
+        if (msg.type === "CONSUMER_CREATED" || msg.type === "CONSUMED") {
+          // Handle both message formats (params object or root level)
+          const consumerId = msg.params?.id || msg.id;
+          const producerId = msg.params?.producerId || msg.producerId;
+          
+          console.log("[useJoinCall] CONSUMER event received:", msg.type, "Consumer ID:", consumerId);
+          
+          // Skip if we already have ANY consumer (prevent duplicate creation)
+          if (consumerRef.current) {
+            console.log("[useJoinCall] Consumer already exists (ID:", consumerRef.current.id, "), skipping event:", msg.type);
+            return;
+          }
+          
+          if (!recvTransportRef.current || !deviceRef.current) {
+            console.warn("[useJoinCall] recvTransport or device not ready");
+            return;
+          }
+          
           try {
+            const kind = msg.params?.kind || msg.kind || "audio";
+            const rtpParameters = msg.params?.rtpParameters || msg.rtpParameters;
+            
+            console.log("[useJoinCall] Creating consumer:", { consumerId, producerId, kind });
+            
             const consumer = await recvTransportRef.current.consume({
-              id: msg.params.id,
-              producerId: msg.params.producerId,
-              // Backend currently omits kind; default to audio to avoid failing consume
-              kind: msg.params.kind ?? "audio",
-              rtpParameters: msg.params.rtpParameters,
+              id: consumerId,
+              producerId: producerId,
+              kind: kind,
+              rtpParameters: rtpParameters,
             });
+            
             consumerRef.current = consumer;
+            console.log("[useJoinCall] Consumer created successfully");
+            console.log("[useJoinCall] Consumer created, resuming...");
             // Resume to ensure audio flows
             await consumer.resume?.();
+            
             const stream = new MediaStream([consumer.track]);
+            
             // Route to speaker on mobile for clarity
             try {
               if (isMobilePlatform) {
@@ -254,6 +292,7 @@ export function useJoinCall() {
             } catch {
               // best effort; ignore if not supported
             }
+            
             // Ensure track is enabled
             consumer.track.enabled = true;
             console.log("[useJoinCall] consumer track", {
@@ -263,6 +302,7 @@ export function useJoinCall() {
               readyState: consumer?.track?.readyState,
               settings: consumer?.track?.getSettings?.(),
             });
+            
             const audioTrack = stream.getAudioTracks?.()[0];
             console.log("[useJoinCall] remote stream tracks", {
               audioCount: stream.getAudioTracks?.().length,
@@ -271,6 +311,7 @@ export function useJoinCall() {
               audioReadyState: audioTrack?.readyState,
               audioSettings: audioTrack?.getSettings?.(),
             });
+            
             if (audioTrack) {
               audioTrack.enabled = true;
               (audioTrack as any).onunmute = () => {
@@ -280,13 +321,16 @@ export function useJoinCall() {
                 console.log("[useJoinCall] audio track muted");
               };
             }
+            
             setRemoteStream(stream);
+            
             try {
               startCallAudio();
               enableSpeakerphone();
             } catch {
               // best effort
             }
+            
             if (!meterIntervalRef.current) {
               meterIntervalRef.current = setInterval(async () => {
                 try {
@@ -323,9 +367,17 @@ export function useJoinCall() {
                 }
               }, 700);
             }
+            
+            console.log("[useJoinCall] Setting state to connected");
             setState("connected");
           } catch (err: any) {
-            console.warn("[useJoinCall] consume error", err);
+            // Ignore SessionDescription NULL errors (transient, audio already working)
+            if (err?.message?.includes("SessionDescription is NULL")) {
+              console.log("[useJoinCall] Ignoring SessionDescription NULL error (audio already working)");
+              return;
+            }
+            
+            console.error("[useJoinCall] consume error:", err);
             setError(err?.message ?? "Failed to consume audio");
             setState("error");
           }
@@ -336,13 +388,40 @@ export function useJoinCall() {
     };
 
     // Listen for all message types
-    socket.on("message", handleMessage);
-    socket.on("SEND_TRANSPORT_CREATED", handleMessage);
-    socket.on("RECV_TRANSPORT_CREATED", handleMessage);
-    socket.on("NEW_PRODUCER", handleMessage);
-    socket.on("HOST_PRODUCER", handleMessage);
-    socket.on("CONSUMER_CREATED", handleMessage);
-    socket.on("CONSUMED", handleMessage);
+    socket.on("message", (msg) => {
+      console.log("[useJoinCall] Received 'message' event:", msg.type);
+      handleMessage(msg);
+    });
+    
+    socket.on("SEND_TRANSPORT_CREATED", (msg) => {
+      console.log("[useJoinCall] Received 'SEND_TRANSPORT_CREATED' event");
+      handleMessage({ type: "SEND_TRANSPORT_CREATED", ...msg });
+    });
+    
+    socket.on("RECV_TRANSPORT_CREATED", (msg) => {
+      console.log("[useJoinCall] Received 'RECV_TRANSPORT_CREATED' event");
+      handleMessage({ type: "RECV_TRANSPORT_CREATED", ...msg });
+    });
+    
+    socket.on("NEW_PRODUCER", (msg) => {
+      console.log("[useJoinCall] Received 'NEW_PRODUCER' event:", msg);
+      handleMessage({ type: "NEW_PRODUCER", ...msg });
+    });
+    
+    socket.on("HOST_PRODUCER", (msg) => {
+      console.log("[useJoinCall] Received 'HOST_PRODUCER' event:", msg);
+      handleMessage({ type: "HOST_PRODUCER", ...msg });
+    });
+    
+    socket.on("CONSUMER_CREATED", (msg) => {
+      console.log("[useJoinCall] Received 'CONSUMER_CREATED' event:", msg);
+      handleMessage({ type: "CONSUMER_CREATED", ...msg });
+    });
+    
+    socket.on("CONSUMED", (msg) => {
+      console.log("[useJoinCall] Received 'CONSUMED' event:", msg);
+      handleMessage({ type: "CONSUMED", ...msg });
+    });
   }, [token, role, activeCall?.routerRtpCapabilities]);
 
   const startSpeaking = useCallback(async () => {
@@ -354,11 +433,20 @@ export function useJoinCall() {
       producerRef.current = await sendTransportRef.current.produce({ track });
       setSpeaking(true);
       console.log("[useJoinCall] started speaking");
+      
+      // Notify backend that user started speaking
+      if (socketRef.current) {
+        socketRef.current.emit("USER_SPEAKING_START", {
+          type: "USER_SPEAKING_START",
+          userId: socketRef.current.id,
+          roomId,
+        });
+      }
     } catch (err: any) {
       console.warn("[useJoinCall] startSpeaking error", err);
       setError(err?.message ?? "Mic unavailable");
     }
-  }, [pttReady, speaking]);
+  }, [pttReady, speaking, roomId]);
 
   const stopSpeaking = useCallback(() => {
     try {
@@ -373,7 +461,16 @@ export function useJoinCall() {
     }
     setSpeaking(false);
     console.log("[useJoinCall] stopped speaking");
-  }, []);
+    
+    // Notify backend that user stopped speaking
+    if (socketRef.current) {
+      socketRef.current.emit("USER_SPEAKING_STOP", {
+        type: "USER_SPEAKING_STOP",
+        userId: socketRef.current.id,
+        roomId,
+      });
+    }
+  }, [roomId]);
 
   return { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady };
 }

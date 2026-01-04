@@ -65,7 +65,7 @@ function RootLayoutNav() {
         }}
       />
       <View style={styles.toastContainer} pointerEvents="box-none">
-        <Toast />
+      <Toast />
       </View>
     </ThemeProvider>
   );
@@ -89,9 +89,9 @@ const styles = StyleSheet.create({
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <Provider store={store}>
-        <RootLayoutNav />
-      </Provider>
+    <Provider store={store}>
+      <RootLayoutNav />
+    </Provider>
     </SafeAreaProvider>
   );
 }

@@ -569,6 +569,51 @@ export function handleSocket({ socket, io }) {
         break;
       }
 
+      /* ---------------- USER SPEAKING STATUS ---------------- */
+      case "USER_SPEAKING_START": {
+        if (!peer || peer.role !== "user") break;
+        
+        const roomId = peer.roomId || peer.hostId || "main-room";
+        console.log("[Socket.IO] USER_SPEAKING_START:", { userId: peer.id, roomId });
+        
+        // Notify host about user speaking
+        const room = getRoom(roomId);
+        if (room) {
+          for (const [peerId, otherPeer] of room.peers) {
+            if (otherPeer.role === "host") {
+              otherPeer.socket.emit("USER_SPEAKING_STATUS", {
+                type: "USER_SPEAKING_STATUS",
+                userId: peer.id,
+                speaking: true,
+              });
+            }
+          }
+        }
+        break;
+      }
+
+      case "USER_SPEAKING_STOP": {
+        if (!peer || peer.role !== "user") break;
+        
+        const roomId = peer.roomId || peer.hostId || "main-room";
+        console.log("[Socket.IO] USER_SPEAKING_STOP:", { userId: peer.id, roomId });
+        
+        // Notify host about user stopped speaking
+        const room = getRoom(roomId);
+        if (room) {
+          for (const [peerId, otherPeer] of room.peers) {
+            if (otherPeer.role === "host") {
+              otherPeer.socket.emit("USER_SPEAKING_STATUS", {
+                type: "USER_SPEAKING_STATUS",
+                userId: peer.id,
+                speaking: false,
+              });
+            }
+          }
+        }
+        break;
+      }
+
       /* ---------------- CALL STOPPED ---------------- */
       case "CALL_STOPPED":
       case "call-stopped": {

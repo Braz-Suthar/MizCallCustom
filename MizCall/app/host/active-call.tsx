@@ -1,14 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Dimensions, FlatList, Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
+import { Dimensions, FlatList, Platform, Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { io, Socket } from "socket.io-client";
+import { RTCView } from "react-native-webrtc";
 
 import { AppButton } from "../../components/ui/AppButton";
 import { useAppDispatch, useAppSelector } from "../../state/store";
 import { endCall, startCall } from "../../state/callActions";
 import { useHostCallMedia } from "../../hooks/useHostCallMedia";
-import { apiFetch } from "../../state/api";
+import { apiFetch, API_BASE } from "../../state/api";
 
 const PRIMARY_BLUE = "#5B9FFF";
 const SUCCESS_GREEN = "#22c55e";
@@ -34,7 +36,7 @@ export default function ActiveCallScreen() {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
 
-  const { state: mediaState, error: mediaError, micEnabled, setMicEnabled } = useHostCallMedia({
+  const { state: mediaState, error: mediaError, micEnabled, setMicEnabled, remoteStream } = useHostCallMedia({
     token,
     role,
     call: activeCall,
@@ -44,6 +46,7 @@ export default function ActiveCallScreen() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [participantStates, setParticipantStates] = useState<Record<string, { speaking: boolean; lastSpoke: number }>>({});
+  const statusSocketRef = React.useRef<Socket | null>(null);
 
   // Fetch participants from backend
   const fetchParticipants = async () => {
@@ -83,29 +86,45 @@ export default function ActiveCallScreen() {
     return () => clearInterval(interval);
   }, [activeCall?.roomId, token]);
 
-  // Simulate speaking detection (replace with actual WebRTC audio level detection)
+  // Listen for real-time speaking status updates via Socket.IO
   useEffect(() => {
-    if (!activeCall || participants.length === 0) return;
-    
-    const interval = setInterval(() => {
-      // Mock: Randomly update speaking status for demonstration
-      setParticipantStates((prev) => {
-        const newStates = { ...prev };
-        participants.forEach((p) => {
-          // Simulate speaking detection
-          const isSpeaking = Math.random() > 0.7; // 30% chance of speaking
-          if (isSpeaking) {
-            newStates[p.id] = { speaking: true, lastSpoke: Date.now() };
-          } else if (newStates[p.id]?.speaking) {
-            newStates[p.id] = { speaking: false, lastSpoke: newStates[p.id].lastSpoke || Date.now() };
-          }
-        });
-        return newStates;
-      });
-    }, 1000);
+    if (!token || !activeCall?.roomId) return;
 
-    return () => clearInterval(interval);
-  }, [activeCall, participants]);
+    console.log("[host-active-call] Setting up Socket.IO for speaking status...");
+
+    const socket = io(API_BASE, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      auth: { token }
+    });
+
+    statusSocketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("[host-active-call] Socket.IO connected for speaking status");
+      socket.emit("auth", { type: "auth", token });
+    });
+
+    socket.on("USER_SPEAKING_STATUS", (data) => {
+      console.log("[host-active-call] USER_SPEAKING_STATUS:", data);
+      
+      setParticipantStates((prev) => ({
+        ...prev,
+        [data.userId]: {
+          speaking: data.speaking,
+          lastSpoke: data.speaking ? Date.now() : prev[data.userId]?.lastSpoke || Date.now(),
+        },
+      }));
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("[host-active-call] Socket.IO disconnected:", reason);
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [token, activeCall?.roomId]);
 
   const participantData: Participant[] = useMemo(() => {
     const data = participants.map((p) => ({
@@ -167,7 +186,7 @@ export default function ActiveCallScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.text} />
         </Pressable>
         <View style={styles.headerInfo}>
-          <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
+      <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
           {hasCall && (
             <Text style={[styles.roomId, { color: colors.text }]}>
               Room: {activeCall?.roomId ?? "..."}
@@ -197,7 +216,7 @@ export default function ActiveCallScreen() {
               <Ionicons name="mic" size={20} color={SUCCESS_GREEN} />
               <Text style={[styles.infoText, { color: colors.text }]}>
                 {speakingCount} Speaking
-              </Text>
+          </Text>
             </View>
           </View>
 
@@ -213,7 +232,7 @@ export default function ActiveCallScreen() {
           <View style={styles.participantsContainer}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
               Participants
-            </Text>
+          </Text>
             
             {loadingParticipants && participantData.length === 0 ? (
               <View style={styles.loadingState}>
@@ -288,8 +307,8 @@ export default function ActiveCallScreen() {
                           { color: item.speaking ? SUCCESS_GREEN : colors.text },
                         ]}
                       >
-                        {item.speaking ? "Speaking" : "Idle"}
-                      </Text>
+                      {item.speaking ? "Speaking" : "Idle"}
+                    </Text>
                     </View>
                   </View>
                 )}
@@ -308,6 +327,16 @@ export default function ActiveCallScreen() {
             <AppButton label="Start Call" onPress={onStart} fullWidth />
           </View>
         </View>
+      )}
+
+      {/* Hidden RTCView to play user audio */}
+      {remoteStream && (Platform.OS === "ios" || Platform.OS === "android") && (
+        <RTCView
+          streamURL={remoteStream.toURL()}
+          style={styles.hiddenRtc}
+          mirror={false}
+          objectFit="cover"
+        />
       )}
 
       {/* Control Bar (Fixed Bottom) */}
@@ -592,6 +621,11 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "700",
+  },
+  hiddenRtc: {
+    width: 1,
+    height: 1,
+    opacity: 0,
   },
 });
 

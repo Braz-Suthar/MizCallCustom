@@ -37,155 +37,123 @@ export default function UserActiveCallScreen() {
   const handlePressIn = () => {
     setIsPressing(true);
     startSpeaking();
+    
+    // Notify backend that user started speaking
+    // This will be implemented in useJoinCall hook
   };
 
   const handlePressOut = () => {
     setIsPressing(false);
     stopSpeaking();
+    
+    // Notify backend that user stopped speaking
+    // This will be implemented in useJoinCall hook
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable onPress={onLeave} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={colors.text} />
-          </Pressable>
-          <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
-          <View style={{ width: 24 }} />
-        </View>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable onPress={onLeave} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </Pressable>
+        <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
+        <View style={{ width: 24 }} />
+      </View>
 
-        {activeCall ? (
-          <>
-            {/* Call Info Card */}
-            <View style={[styles.infoCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.infoRow}>
-                <Ionicons name="people" size={20} color={PRIMARY_BLUE} />
-                <Text style={[styles.infoLabel, { color: colors.text }]}>Room ID</Text>
-              </View>
-              <Text style={[styles.infoValue, { color: colors.text }]}>{activeCall.roomId}</Text>
-            </View>
-
-            {/* Status Card */}
-            <View style={[styles.statusCard, { 
-              backgroundColor: state === "connected" ? SUCCESS_GREEN + "15" : PRIMARY_BLUE + "15",
-              borderColor: state === "connected" ? SUCCESS_GREEN : PRIMARY_BLUE,
-            }]}>
-              <View style={styles.statusRow}>
-                <View style={[styles.statusDot, { 
-                  backgroundColor: state === "connected" ? SUCCESS_GREEN : state === "connecting" ? "#FFA500" : "#64748b" 
-                }]} />
-                <Text style={[styles.statusText, { 
-                  color: state === "connected" ? SUCCESS_GREEN : state === "connecting" ? "#FFA500" : colors.text 
-                }]}>
-                  {state === "connecting" ? "Connecting..." : state === "connected" ? "Connected" : "Idle"}
-                </Text>
-              </View>
-            </View>
-
-            {/* Audio Level Meter (only show when connected and receiving audio) */}
-            {remoteStream && state === "connected" && (
-              <View style={[styles.audioCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <View style={styles.audioHeader}>
-                  <Ionicons name="volume-high" size={20} color={PRIMARY_BLUE} />
-                  <Text style={[styles.audioLabel, { color: colors.text }]}>Host Audio</Text>
-                </View>
-                <View style={styles.meterRow}>
-                  <View style={[styles.meterTrack, { borderColor: colors.border }]}>
-                    <View
-                      style={[
-                        styles.meterFill,
-                        {
-                          backgroundColor: audioLevel > 0.05 ? SUCCESS_GREEN : "#64748b",
-                          width: `${Math.min(100, Math.max(5, Math.round(audioLevel * 100)))}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={[styles.meterLabel, { color: colors.text }]}>
-                    {Math.round(audioLevel * 100)}%
-                  </Text>
-                </View>
-                {Platform.OS === "ios" || Platform.OS === "android" ? (
-                  <RTCView
-                    streamURL={remoteStream.toURL()}
-                    style={styles.hiddenRtc}
-                    mirror={false}
-                    objectFit="cover"
-                  />
-                ) : null}
-              </View>
-            )}
-
-            {/* Your Status Card (only show when connected) */}
-            {state === "connected" && (
-              <View style={[styles.yourStatusCard, { 
-                backgroundColor: speaking ? SUCCESS_GREEN + "15" : colors.card,
-                borderColor: speaking ? SUCCESS_GREEN : colors.border,
+      {activeCall ? (
+        <View style={styles.callContainer}>
+          {/* Status Card */}
+          <View style={[styles.statusCard, { 
+            backgroundColor: state === "connected" ? SUCCESS_GREEN + "15" : PRIMARY_BLUE + "15",
+            borderColor: state === "connected" ? SUCCESS_GREEN : PRIMARY_BLUE,
+          }]}>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusDot, { 
+                backgroundColor: state === "connected" ? SUCCESS_GREEN : state === "connecting" ? "#FFA500" : "#64748b" 
+              }]} />
+              <Text style={[styles.statusText, { 
+                color: state === "connected" ? SUCCESS_GREEN : state === "connecting" ? "#FFA500" : colors.text 
               }]}>
-                <View style={styles.statusRow}>
-                  <Ionicons 
-                    name={speaking ? "mic" : "mic-off"} 
-                    size={20} 
-                    color={speaking ? SUCCESS_GREEN : "#64748b"} 
-                  />
-                  <Text style={[styles.yourStatusText, { color: speaking ? SUCCESS_GREEN : colors.text }]}>
-                    {speaking ? "You are speaking..." : "You are muted"}
-                  </Text>
-                </View>
-              </View>
-            )}
+                {state === "connecting" ? "Connecting..." : state === "connected" ? "Connected" : "Idle"}
+              </Text>
+            </View>
+          </View>
 
-            {/* Error Message */}
-            {error && (
-              <View style={[styles.errorCard, { backgroundColor: DANGER_RED + "15", borderColor: DANGER_RED }]}>
-                <Ionicons name="alert-circle" size={20} color={DANGER_RED} />
-                <Text style={[styles.errorText, { color: DANGER_RED }]}>{error}</Text>
-              </View>
-            )}
-          </>
-        ) : (
-          <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Ionicons name="call-outline" size={48} color={colors.text} style={{ opacity: 0.3 }} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Active Call</Text>
-            <Text style={[styles.emptyText, { color: colors.text }]}>
-              Return to dashboard to wait for a call.
+          {/* Big Circular PTT Button (Center) */}
+          <View style={styles.pttContainer}>
+            <Pressable
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              disabled={!pttReady || state !== "connected"}
+              style={[
+                styles.pttCircle,
+                {
+                  backgroundColor: isPressing ? SUCCESS_GREEN : colors.card,
+                  borderColor: isPressing ? SUCCESS_GREEN : PRIMARY_BLUE,
+                  opacity: !pttReady || state !== "connected" ? 0.4 : 1,
+                },
+              ]}
+            >
+              <Ionicons 
+                name={isPressing ? "mic" : "mic-off"} 
+                size={80} 
+                color={isPressing ? "#fff" : PRIMARY_BLUE} 
+              />
+            </Pressable>
+            <Text style={[styles.pttInstructionText, { color: colors.text }]}>
+              {isPressing ? "Release to Mute" : "Hold to Speak"}
+            </Text>
+            <Text style={[styles.pttStatusText, { 
+              color: isPressing ? SUCCESS_GREEN : "#64748b" 
+            }]}>
+              {isPressing ? "🎤 Speaking..." : "🔇 Muted"}
             </Text>
           </View>
-        )}
-      </ScrollView>
 
-      {/* Fixed Bottom Controls */}
-      {activeCall && (
-        <View style={[styles.bottomControls, { 
-          backgroundColor: colors.card, 
-          borderTopColor: colors.border,
-        }]}>
-          {/* Push to Talk Button */}
-          <Pressable
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            disabled={!pttReady || state !== "connected"}
-            style={[
-              styles.pttButton,
-              {
-                backgroundColor: isPressing ? SUCCESS_GREEN : PRIMARY_BLUE,
-                opacity: !pttReady || state !== "connected" ? 0.5 : 1,
-              },
-            ]}
-          >
-            <Ionicons 
-              name={isPressing ? "mic" : "mic-off"} 
-              size={32} 
-              color="#fff" 
-            />
-            <Text style={styles.pttText}>
-              {isPressing ? "Release to Mute" : "Hold to Talk"}
-            </Text>
-          </Pressable>
+          {/* Audio Level Meter (Bottom Info) */}
+          {remoteStream && state === "connected" && (
+            <View style={[styles.audioCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.audioHeader}>
+                <Ionicons name="volume-high" size={20} color={PRIMARY_BLUE} />
+                <Text style={[styles.audioLabel, { color: colors.text }]}>Host Audio</Text>
+              </View>
+              <View style={styles.meterRow}>
+                <View style={[styles.meterTrack, { borderColor: colors.border }]}>
+                  <View
+                    style={[
+                      styles.meterFill,
+                      {
+                        backgroundColor: audioLevel > 0.05 ? SUCCESS_GREEN : "#64748b",
+                        width: `${Math.min(100, Math.max(5, Math.round(audioLevel * 100)))}%`,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.meterLabel, { color: colors.text }]}>
+                  {Math.round(audioLevel * 100)}%
+                </Text>
+              </View>
+              {Platform.OS === "ios" || Platform.OS === "android" ? (
+                <RTCView
+                  streamURL={remoteStream.toURL()}
+                  style={styles.hiddenRtc}
+                  mirror={false}
+                  objectFit="cover"
+                />
+              ) : null}
+            </View>
+          )}
 
-          {/* Leave Button */}
+          {/* Error Message */}
+          {error && (
+            <View style={[styles.errorCard, { backgroundColor: DANGER_RED + "15", borderColor: DANGER_RED }]}>
+              <Ionicons name="alert-circle" size={20} color={DANGER_RED} />
+              <Text style={[styles.errorText, { color: DANGER_RED }]}>{error}</Text>
+            </View>
+          )}
+
+          {/* Leave Button (Bottom) */}
           <Pressable
             onPress={onLeave}
             style={[styles.leaveButton, { backgroundColor: DANGER_RED }]}
@@ -194,23 +162,27 @@ export default function UserActiveCallScreen() {
             <Text style={styles.leaveText}>Leave Call</Text>
           </Pressable>
         </View>
+      ) : (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="call-outline" size={64} color={colors.text} style={{ opacity: 0.3 }} />
+          <Text style={[styles.emptyTitle, { color: colors.text }]}>No Active Call</Text>
+          <Text style={[styles.emptyText, { color: colors.text }]}>
+            Return to dashboard to wait for a call.
+          </Text>
+        </View>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 120,
-    gap: 16,
-  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 8,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 16,
   },
   backButton: {
     padding: 8,
@@ -219,30 +191,17 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
   },
-  infoCard: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 8,
-  },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  infoLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    opacity: 0.7,
-  },
-  infoValue: {
-    fontSize: 16,
-    fontWeight: "600",
+  callContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    gap: 16,
   },
   statusCard: {
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     borderWidth: 2,
+    alignSelf: "center",
   },
   statusRow: {
     flexDirection: "row",
@@ -255,8 +214,38 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   statusText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  pttContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 20,
+    paddingVertical: 40,
+  },
+  pttCircle: {
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  pttInstructionText: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  pttStatusText: {
     fontSize: 16,
     fontWeight: "600",
+    textAlign: "center",
   },
   audioCard: {
     padding: 16,
@@ -273,17 +262,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  yourStatusCard: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-  },
-  yourStatusText: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
   errorCard: {
-    padding: 16,
+    padding: 14,
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: "row",
@@ -295,16 +275,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
-  emptyCard: {
-    padding: 32,
-    borderRadius: 12,
-    borderWidth: 1,
+  emptyContainer: {
+    flex: 1,
     alignItems: "center",
-    gap: 12,
-    marginTop: 40,
+    justifyContent: "center",
+    paddingHorizontal: 40,
+    gap: 16,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "700",
   },
   emptyText: {
@@ -341,29 +320,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
-  bottomControls: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 20,
-    paddingBottom: Platform.OS === "ios" ? 34 : 20,
-    borderTopWidth: 1,
-    gap: 12,
-  },
-  pttButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 18,
-    borderRadius: 12,
-    gap: 12,
-  },
-  pttText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
   leaveButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -371,6 +327,8 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     gap: 10,
+    marginHorizontal: 20,
+    marginBottom: Platform.OS === "ios" ? 34 : 20,
   },
   leaveText: {
     color: "#fff",

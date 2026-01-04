@@ -262,13 +262,13 @@ export default function HostUsers() {
 
                 {/* User Info */}
                 <View style={styles.userInfo}>
-                  <View style={styles.cardHeader}>
-                    <Text style={[styles.cardTitle, { color: colors.text }]}>{item.username}</Text>
-                    <Text style={[styles.chip, { backgroundColor: item.enabled ? "#22c55e22" : "#f9731622", color: item.enabled ? "#16a34a" : "#ea580c" }]}>
-                      {item.enabled ? "Active" : "Disabled"}
-                    </Text>
-                  </View>
-                  <Text style={[styles.cardId, { color: colors.text }]}>{item.id}</Text>
+              <View style={styles.cardHeader}>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>{item.username}</Text>
+                <Text style={[styles.chip, { backgroundColor: item.enabled ? "#22c55e22" : "#f9731622", color: item.enabled ? "#16a34a" : "#ea580c" }]}>
+                  {item.enabled ? "Active" : "Disabled"}
+                </Text>
+              </View>
+              <Text style={[styles.cardId, { color: colors.text }]}>{item.id}</Text>
                 </View>
               </View>
 

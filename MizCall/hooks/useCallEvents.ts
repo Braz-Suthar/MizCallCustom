@@ -69,24 +69,24 @@ export function useCallEvents() {
     socket.on("message", (msg) => {
       try {
         if (msg.type === "call-started" && msg.routerRtpCapabilities) {
-          dispatch(
-            setActiveCall({
-              roomId: msg.roomId ?? "main-room",
-              routerRtpCapabilities: msg.routerRtpCapabilities,
-              hostProducerId: msg.producerId,
-            }),
-          );
-        }
+            dispatch(
+              setActiveCall({
+                roomId: msg.roomId ?? "main-room",
+                routerRtpCapabilities: msg.routerRtpCapabilities,
+                hostProducerId: msg.producerId,
+              }),
+            );
+          }
         
         if (msg.type === "host-producer" && msg.routerRtpCapabilities) {
-          dispatch(
-            setActiveCall({
-              roomId: msg.roomId ?? "main-room",
-              routerRtpCapabilities: msg.routerRtpCapabilities,
-              hostProducerId: msg.producerId,
-            }),
-          );
-        }
+            dispatch(
+              setActiveCall({
+                roomId: msg.roomId ?? "main-room",
+                routerRtpCapabilities: msg.routerRtpCapabilities,
+                hostProducerId: msg.producerId,
+              }),
+            );
+          }
         
         if (msg.type === "call-stopped") {
           dispatch(setActiveCall(null));

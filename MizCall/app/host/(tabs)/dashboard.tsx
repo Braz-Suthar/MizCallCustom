@@ -310,8 +310,8 @@ export default function HostDashboard() {
                 <Ionicons name="person-add" size={20} color="#fff" />
                 <Text style={styles.actionButtonText}>Create User</Text>
               </Pressable>
-            </View>
           </View>
+        </View>
 
           {/* Stats Grid */}
           <View style={styles.statsGrid}>
@@ -338,12 +338,12 @@ export default function HostDashboard() {
                 </View>
               </View>
             ))}
-          </View>
+        </View>
 
           {/* Recent Activity */}
-          <View style={styles.section}>
+        <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Activity</Text>
-            <View style={styles.activityList}>
+          <View style={styles.activityList}>
               {recent.map((item, index) => (
                 <View 
                   key={index} 
@@ -353,13 +353,13 @@ export default function HostDashboard() {
                     <Ionicons name={item.icon} size={24} color={PRIMARY_BLUE} />
                   </View>
                   <View style={styles.activityContent}>
-                    <Text style={[styles.activityTitle, { color: colors.text }]}>{item.title}</Text>
-                    <Text style={[styles.activityDetail, { color: colors.text }]}>{item.detail}</Text>
-                  </View>
+                  <Text style={[styles.activityTitle, { color: colors.text }]}>{item.title}</Text>
+                  <Text style={[styles.activityDetail, { color: colors.text }]}>{item.detail}</Text>
                 </View>
-              ))}
-            </View>
+              </View>
+            ))}
           </View>
+        </View>
         </ScrollView>
         )}
       </View>

@@ -16,7 +16,12 @@ export const isMobilePlatform = Platform.OS === "ios" || Platform.OS === "androi
 export const startCallAudio = () => {
   if (!isMobilePlatform || !InCallManager) return;
   try {
-    InCallManager.start({ media: "audio" });
+    // iOS fix: auto: false prevents automatic earpiece routing
+    InCallManager.start({ 
+      media: "audio", 
+      auto: false,  // Critical for iOS - prevents earpiece routing
+      ringback: "" 
+    });
   } catch {
     // best effort
   }
@@ -25,8 +30,18 @@ export const startCallAudio = () => {
 export const enableSpeakerphone = () => {
   if (!isMobilePlatform || !InCallManager) return;
   try {
+    // Must be called AFTER start() for iOS
     InCallManager.setForceSpeakerphoneOn(true);
     InCallManager.setSpeakerphoneOn(true);
+    
+    // iOS sometimes needs a slight delay
+    if (Platform.OS === "ios") {
+      setTimeout(() => {
+        try {
+          InCallManager.setSpeakerphoneOn(true);
+        } catch {}
+      }, 100);
+    }
   } catch {
     // best effort
   }

@@ -74,29 +74,29 @@ export default function CreateUser() {
 
   return (
     <>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>
-        <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.title, { color: colors.text }]}>Create new user</Text>
-          <Text style={[styles.subtitle, { color: colors.text }]}>Provide details to create a new regular user.</Text>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>
+      <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled">
+        <Text style={[styles.title, { color: colors.text }]}>Create new user</Text>
+        <Text style={[styles.subtitle, { color: colors.text }]}>Provide details to create a new regular user.</Text>
 
-          <AppTextInput
-            label="User name"
-            value={name}
-            onChangeText={setName}
-            placeholder="John Doe"
-          />
-          <AppTextInput
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="Minimum 6 characters"
-          />
+        <AppTextInput
+          label="User name"
+          value={name}
+          onChangeText={setName}
+          placeholder="John Doe"
+        />
+        <AppTextInput
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholder="Minimum 6 characters"
+        />
 
-          <AppButton label="Create user" onPress={onSubmit} disabled={!valid || loading} loading={loading} fullWidth />
-          <AppButton label="Cancel" variant="ghost" onPress={() => router.back()} fullWidth />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <AppButton label="Create user" onPress={onSubmit} disabled={!valid || loading} loading={loading} fullWidth />
+        <AppButton label="Cancel" variant="ghost" onPress={() => router.back()} fullWidth />
+      </ScrollView>
+    </KeyboardAvoidingView>
 
       {/* Success Modal */}
       {createdUser && (

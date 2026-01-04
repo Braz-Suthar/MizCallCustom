@@ -152,7 +152,7 @@ export default function HostSettings() {
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Profile</Text>
         
         <View style={styles.profileCard}>
-          <View style={styles.profileRow}>
+        <View style={styles.profileRow}>
             <View style={[styles.avatar, { backgroundColor: PRIMARY_BLUE }]}>
               <Text style={styles.avatarText}>
                 {(auth.email ?? "Host").charAt(0).toUpperCase()}
@@ -169,7 +169,7 @@ export default function HostSettings() {
                 <Ionicons name="shield-checkmark" size={14} color={PRIMARY_BLUE} />
                 <Text style={[styles.roleText, { color: PRIMARY_BLUE }]}>Host</Text>
               </View>
-            </View>
+          </View>
           </View>
           
           <Pressable
@@ -214,7 +214,7 @@ export default function HostSettings() {
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.sectionHeader}>
           <Ionicons name="color-palette-outline" size={22} color={colors.text} />
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
         </View>
         
         <View style={styles.themeOptions}>
@@ -263,7 +263,7 @@ export default function HostSettings() {
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.sectionHeader}>
           <Ionicons name="settings-outline" size={22} color={colors.text} />
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Account</Text>
         </View>
         
         <View style={styles.accountActions}>
@@ -294,8 +294,8 @@ export default function HostSettings() {
             <Text style={[styles.infoLabel, { color: colors.text }]}>Role</Text>
             <Text style={[styles.infoValue, { color: PRIMARY_BLUE }]}>Host</Text>
           </View>
-        </View>
       </View>
+    </View>
 
       {/* Edit Profile Modal */}
       <EditProfileModal

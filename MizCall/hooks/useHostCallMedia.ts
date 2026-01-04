@@ -3,7 +3,7 @@ import { Device } from "mediasoup-client";
 import { PermissionsAndroid, Platform } from "react-native";
 import { mediaDevices, MediaStream } from "react-native-webrtc";
 import { io, Socket } from "socket.io-client";
-import { startCallAudio, enableSpeakerphone, stopCallAudio, disableSpeakerphone } from "../utils/callAudio";
+import { startCallAudio, enableSpeakerphone, stopCallAudio, disableSpeakerphone, isMobilePlatform } from "../utils/callAudio";
 
 import { ActiveCall } from "../state/callSlice";
 
@@ -17,6 +17,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const [state, setState] = useState<MediaState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [micEnabled, setMicEnabled] = useState(true);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const deviceRef = useRef<Device | null>(null);
@@ -30,6 +31,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const producedRef = useRef(false);
   const turnConfigRef = useRef<any>(null);
   const pendingConsumeRef = useRef<Array<{ producerId: string; userId?: string }>>([]);
+  const processedConsumerIdsRef = useRef<Set<string>>(new Set());
 
   const cleanup = useCallback(() => {
     socketRef.current?.disconnect();
@@ -181,21 +183,38 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
             pendingConsumeRef.current = [];
             pending.forEach(({ producerId }) => {
               socket.emit("CONSUME", {
-                type: "CONSUME",
-                producerId,
-                rtpCapabilities: device.rtpCapabilities,
-                roomId: call.roomId,
+                  type: "CONSUME",
+                  producerId,
+                  rtpCapabilities: device.rtpCapabilities,
+                  roomId: call.roomId,
               });
             });
           }
 
           if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "user") {
+            console.log("[useHostCallMedia] NEW_PRODUCER from user:", msg.producerId);
+            
+            // Close old consumer if exists (user created new producer by pressing PTT again)
+            if (consumerRef.current) {
+              console.log("[useHostCallMedia] Closing old consumer before creating new one");
+              try {
+                consumerRef.current.close?.();
+              } catch (e) {
+                console.warn("[useHostCallMedia] Failed to close old consumer:", e);
+              }
+              consumerRef.current = null;
+            }
+            
+            // Clear processed consumer IDs to allow new consumer creation
+            processedConsumerIdsRef.current.clear();
+            console.log("[useHostCallMedia] Cleared processed consumer IDs, ready for new consumer");
+            
             if (recvTransportRef.current && deviceRef.current) {
               socket.emit("CONSUME", {
-                type: "CONSUME",
-                producerId: msg.producerId,
-                rtpCapabilities: deviceRef.current.rtpCapabilities,
-                roomId: call.roomId,
+                  type: "CONSUME",
+                  producerId: msg.producerId,
+                  rtpCapabilities: deviceRef.current.rtpCapabilities,
+                  roomId: call.roomId,
               });
             } else {
               pendingConsumeRef.current.push({ producerId: msg.producerId, userId: msg.userId });
@@ -203,27 +222,88 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }
 
           if (msg.type === "CONSUMER_CREATED" || msg.type === "CONSUMED") {
+            const params = msg.params || msg;
+            const consumerId = params.id;
+            
+            console.log("[useHostCallMedia] CONSUMER event received:", msg.type, "Consumer ID:", consumerId);
+            
+            // Skip if we already processed this consumer ID
+            if (processedConsumerIdsRef.current.has(consumerId)) {
+              console.log("[useHostCallMedia] Consumer", consumerId, "already processed, skipping event:", msg.type);
+              return;
+            }
+            
+            // Mark as being processed
+            processedConsumerIdsRef.current.add(consumerId);
+            
             if (!recvTransportRef.current || !deviceRef.current) return;
+            
             try {
-              const params = msg.params || msg;
+              console.log("[useHostCallMedia] Creating consumer for user audio:", consumerId);
+              
               const consumer = await recvTransportRef.current.consume({
                 id: params.id,
                 producerId: params.producerId,
                 kind: params.kind ?? "audio",
                 rtpParameters: params.rtpParameters,
               });
+              
               consumerRef.current = consumer;
               await consumer.resume?.();
+              
+              // Ensure track is enabled
+              consumer.track.enabled = true;
+              
               const stream = new MediaStream([consumer.track]);
+              
+              // Set the remote stream so it can be rendered with RTCView
+              setRemoteStream(stream);
+              
               console.log("[useHostCallMedia] host consuming user audio", {
                 consumerId: consumer?.id,
                 trackState: consumer?.track?.readyState,
+                trackEnabled: consumer?.track?.enabled,
+                streamId: stream.id,
               });
+              
+              // Force audio routing to speaker - AGGRESSIVE approach for iOS
               try {
+                console.log("[useHostCallMedia] Forcing speaker for user audio...");
+                
+                // Call multiple times with delays to ensure it takes effect on iOS
                 startCallAudio();
                 enableSpeakerphone();
-              } catch {}
-            } catch (err) {
+                
+                // Wait a bit and try again (iOS sometimes needs this)
+                setTimeout(() => {
+                  console.log("[useHostCallMedia] Re-enabling speakerphone (iOS fix)");
+                  enableSpeakerphone();
+                }, 100);
+                
+                setTimeout(() => {
+                  console.log("[useHostCallMedia] Re-enabling speakerphone again (iOS fix)");
+                  enableSpeakerphone();
+                }, 300);
+                
+                // Additional mobile-specific routing
+                if (isMobilePlatform) {
+                  await (mediaDevices as any).setSpeakerphoneOn?.(true);
+                  console.log("[useHostCallMedia] mediaDevices.setSpeakerphoneOn(true) called");
+                }
+                
+                console.log("[useHostCallMedia] Speakerphone routing complete");
+              } catch (e) {
+                console.warn("[useHostCallMedia] Audio routing error:", e);
+              }
+            } catch (err: any) {
+              // Remove from processed set if failed
+              processedConsumerIdsRef.current.delete(consumerId);
+              
+              // Ignore SessionDescription NULL errors (transient)
+              if (err?.message?.includes("SessionDescription is NULL")) {
+                console.log("[useHostCallMedia] Ignoring SessionDescription NULL error (audio already working)");
+                return;
+              }
               console.warn("[useHostCallMedia] consume failed", err);
             }
           }
@@ -349,9 +429,9 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         console.log("[useHostCallMedia] CONNECT_SEND_TRANSPORT", { roomId });
         try {
           socket.emit("CONNECT_SEND_TRANSPORT", {
-            type: "CONNECT_SEND_TRANSPORT",
-            dtlsParameters,
-            roomId,
+              type: "CONNECT_SEND_TRANSPORT",
+              dtlsParameters,
+              roomId,
           });
           callback();
         } catch (err) {
@@ -372,10 +452,10 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         pendingProduceResolve.current = (id: string) => callback({ id });
         console.log("[useHostCallMedia] producing kind", kind, "room", roomId);
         socket.emit("PRODUCE", {
-          type: "PRODUCE",
-          kind,
-          rtpParameters,
-          roomId,
+            type: "PRODUCE",
+            kind,
+            rtpParameters,
+            roomId,
         });
       });
 
@@ -414,6 +494,6 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
     });
   }, []);
 
-  return { state, error, micEnabled, setMicEnabled: toggleMic };
+  return { state, error, micEnabled, setMicEnabled: toggleMic, remoteStream };
 }
 
