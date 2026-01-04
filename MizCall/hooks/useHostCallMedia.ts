@@ -321,6 +321,8 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       const transport = device.createSendTransport({
         ...transportParams,
         iceServers: turnConfigRef.current?.iceServers,
+        // Do not force relay: mediasoup provides host-only candidates; forcing relay drops them.
+        iceTransportPolicy: undefined,
       });
       sendTransportRef.current = transport;
 
