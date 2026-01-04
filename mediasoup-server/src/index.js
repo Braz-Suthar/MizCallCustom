@@ -21,8 +21,8 @@ const worker = await createWorker();
 async function createPlainTransport(router) {
     return router.createPlainTransport({
         listenIp: "0.0.0.0",
-        rtcpMux: false,
-        comedia: true
+        rtcpMux: true,
+        comedia: false
     });
 }
 
@@ -154,6 +154,7 @@ wss.on("connection", async (socket) => {
                 rtpCapabilities: room.router.rtpCapabilities,
                 paused: false
             });
+            await consumer.resume();
 
             const key = `${msg.producerOwnerId}:${msg.remotePort}`;
             room.recorderTransports.set(key, { plain, consumer });

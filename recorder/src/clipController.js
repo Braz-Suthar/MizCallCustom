@@ -71,6 +71,7 @@ export class ClipController {
         const file = path.join(dir, `clip_${time}.wav`);
 
         const mixed = mixPcm(Buffer.concat(this.hostFrames), Buffer.concat(this.userFrames));
+        console.log("[recorder] write clip", { file, hostLen: mixed.length, userFrames: this.userFrames.length, hostFrames: this.hostFrames.length });
         writeWav(mixed, file);
 
         // metadata

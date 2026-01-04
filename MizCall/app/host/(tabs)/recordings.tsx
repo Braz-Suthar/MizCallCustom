@@ -85,7 +85,8 @@ export default function HostRecordings() {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
-      const streamUrl = `${API_BASE}/recordings/${item.id}/stream?token=${encodeURIComponent(token)}`;
+      // ensure https for Android devices
+      const streamUrl = `${API_BASE.replace("http://", "https://")}/recordings/${item.id}/stream?token=${encodeURIComponent(token)}`;
       const { sound } = await Audio.Sound.createAsync(
         { uri: streamUrl },
         { shouldPlay: true }

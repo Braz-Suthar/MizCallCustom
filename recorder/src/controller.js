@@ -35,6 +35,8 @@ export function startUserRecording({
         });
     };
 
+    console.log("[recorder] START_USER", { hostId, userId, meetingId, userPort, hostPort });
+
     const userStream = new RtpStream({
         port: userPort,
         onPcm: (pcm) => controller.onUserPcm(pcm)
@@ -49,10 +51,12 @@ export function startUserRecording({
 }
 
 export function startClip(userId) {
+    console.log("[recorder] START_CLIP", { userId });
     streams.get(userId)?.controller.start();
 }
 
 export function stopClip(userId) {
+    console.log("[recorder] STOP_CLIP", { userId });
     streams.get(userId)?.controller.stop();
 }
 
@@ -60,6 +64,7 @@ export function stopUserRecording(userId) {
     const entry = streams.get(userId);
     if (!entry) return;
 
+    console.log("[recorder] STOP_USER", { userId });
     entry.userStream.close();
     entry.hostStream.close();
     streams.delete(userId);

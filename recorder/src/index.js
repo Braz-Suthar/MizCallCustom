@@ -21,6 +21,7 @@ wss.on("connection", (socket) => {
     socket.on("message", (raw) => {
         try {
             const msg = JSON.parse(raw.toString());
+            console.log("[recorder] message", msg.type, msg);
 
             switch (msg.type) {
                 case "START_USER":
