@@ -34,7 +34,7 @@ router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
       [req.hostId]
     );
 
-    // Get recent activity (last 10 events)
+    // Get recent activity (last 5 events)
     const recentActivityResult = await query(
       `(
         SELECT 
@@ -58,7 +58,7 @@ router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
         WHERE host_id = $1
       )
       ORDER BY created_at DESC
-      LIMIT 10`,
+      LIMIT 5`,
       [req.hostId]
     );
 
@@ -205,6 +205,59 @@ router.get("/calls", requireAuth, requireHost, async (req, res) => {
     [req.hostId]
   );
   res.json({ calls: result.rows });
+});
+
+/* GET ACTIVE CALL PARTICIPANTS */
+router.get("/calls/:roomId/participants", requireAuth, requireHost, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    
+    // Verify the call belongs to this host
+    const callResult = await query(
+      `SELECT id FROM rooms WHERE id = $1 AND host_id = $2`,
+      [roomId, req.hostId]
+    );
+    
+    if (callResult.rows.length === 0) {
+      return res.status(404).json({ error: "Call not found" });
+    }
+
+    // Get the room from signaling server
+    const { getRoom, peers } = await import("../../signaling/ws.js");
+    
+    const room = getRoom(roomId);
+    const participants = [];
+    
+    if (room?.peers) {
+      // Iterate through all peers in the room
+      for (const [peerId, peer] of room.peers) {
+        // Skip the host
+        if (peer.role === "host") continue;
+        
+        // Get user details from database
+        const userResult = await query(
+          `SELECT id, username FROM users WHERE id = $1 AND host_id = $2`,
+          [peerId, req.hostId]
+        );
+        
+        if (userResult.rows.length > 0) {
+          const user = userResult.rows[0];
+          participants.push({
+            id: user.id,
+            username: user.username,
+            userId: user.id,
+            speaking: false, // Will be updated via WebSocket in real-time
+            connected: true,
+          });
+        }
+      }
+    }
+    
+    res.json({ participants });
+  } catch (error) {
+    console.error("Error fetching participants:", error);
+    res.status(500).json({ error: "Failed to fetch participants" });
+  }
 });
 
 /* END CALL */

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -7,7 +7,7 @@ import { Fab } from "../../../components/ui/Fab";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { startCall } from "../../../state/callActions";
 import { setThemeMode } from "../../../state/themeSlice";
-import { apiFetch } from "../../../state/api";
+import { apiFetch, API_BASE } from "../../../state/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -43,76 +43,140 @@ export default function HostDashboard() {
   const { token, role } = useAppSelector((state) => state.auth);
   const wsRef = React.useRef<WebSocket | null>(null);
   
-  // Connection is good if latency exists and is under 1000ms
+  // Connection is good if we have latency data and it's under 1000ms
+  // WebSocket connection is preferred but not required
   const connectionStatus = { 
-    connected: wsConnected && networkLatency !== null && networkLatency < 1000 
+    connected: networkLatency !== null && networkLatency < 1000 
   };
+
+  // Update connection status whenever latency changes
+  useEffect(() => {
+    if (networkLatency !== null) {
+      console.log("[Dashboard] Network status updated:", 
+        connectionStatus.connected ? "🟢 Connected" : "🔴 Disconnected",
+        `(${networkLatency}ms)`
+      );
+    }
+  }, [networkLatency]);
 
   const loadDashboardData = async () => {
     if (!token || role !== "host") return;
 
     try {
+      // Measure API latency if WebSocket is not connected
+      const startTime = Date.now();
       const data = await apiFetch<DashboardData>("/host/dashboard", token);
+      const endTime = Date.now();
+      
       setDashboardData(data);
+      
+      // Only update latency from API if WebSocket is not connected
+      if (!wsConnected) {
+        const apiLatency = endTime - startTime;
+        setNetworkLatency(apiLatency);
+      }
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
+      setNetworkLatency(null);
     } finally {
       setLoading(false);
     }
   };
 
-  // WebSocket connection for real-time ping
+  // WebSocket connection for real-time ping with auto-reconnect
   useEffect(() => {
     if (!token) return;
 
-    const API_BASE = process.env.EXPO_PUBLIC_API_BASE || "http://localhost:3100";
-    const WS_URL = API_BASE.replace(/^http/, "ws");
-    
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+    const INITIAL_RECONNECT_DELAY = 1000; // 1 second
 
-    ws.onopen = () => {
-      console.log("[Dashboard] WebSocket connected");
-      setWsConnected(true);
-      // Authenticate
-      ws.send(JSON.stringify({
-        type: "AUTH",
-        token: token,
-      }));
-    };
+    const connectWebSocket = () => {
+      // Convert HTTP URL to WebSocket URL
+      const WS_URL = API_BASE.replace(/^http/, "ws");
+      
+      console.log("[Dashboard] Connecting to WebSocket:", WS_URL, 
+        reconnectAttempts > 0 ? `(attempt ${reconnectAttempts + 1})` : "");
+      
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
+      ws.onopen = () => {
+        console.log("[Dashboard] WebSocket connected");
+        setWsConnected(true);
+        reconnectAttempts = 0; // Reset attempts on successful connection
         
-        if (msg.type === "PING") {
-          // Respond to server ping
-          ws.send(JSON.stringify({
-            type: "PONG",
-            timestamp: msg.timestamp,
-          }));
-        } else if (msg.type === "LATENCY_UPDATE") {
-          // Update latency from server
-          setNetworkLatency(msg.latency);
+        // Authenticate
+        ws.send(JSON.stringify({
+          type: "AUTH",
+          token: token,
+        }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          
+          console.log("[Dashboard] WebSocket message:", msg.type);
+          
+          if (msg.type === "PING") {
+            // Respond to server ping
+            console.log("[Dashboard] Received PING, sending PONG");
+            ws.send(JSON.stringify({
+              type: "PONG",
+              timestamp: msg.timestamp,
+            }));
+          } else if (msg.type === "LATENCY_UPDATE") {
+            // Update latency from server
+            console.log("[Dashboard] Latency update:", msg.latency, "ms");
+            setNetworkLatency(msg.latency);
+          }
+        } catch (e) {
+          console.error("[Dashboard] WebSocket message error:", e);
         }
-      } catch (e) {
-        console.error("[Dashboard] WebSocket message error:", e);
-      }
+      };
+
+      ws.onerror = (error) => {
+        console.warn("[Dashboard] WebSocket error - will attempt reconnection");
+        setWsConnected(false);
+      };
+
+      ws.onclose = (event) => {
+        console.log("[Dashboard] WebSocket closed:", event.code, event.reason || "No reason");
+        setWsConnected(false);
+
+        // Attempt to reconnect with exponential backoff
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          const delay = INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts);
+          console.log(`[Dashboard] Reconnecting in ${delay}ms...`);
+          
+          reconnectTimeout = setTimeout(() => {
+            reconnectAttempts++;
+            connectWebSocket();
+          }, delay);
+        } else {
+          console.warn("[Dashboard] Max reconnection attempts reached. Using API latency fallback.");
+        }
+      };
     };
 
-    ws.onerror = (error) => {
-      console.error("[Dashboard] WebSocket error:", error);
-      setWsConnected(false);
-    };
+    // Initial connection
+    connectWebSocket();
 
-    ws.onclose = () => {
-      console.log("[Dashboard] WebSocket closed");
-      setWsConnected(false);
-    };
-
+    // Cleanup
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.close();
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (wsRef.current) {
+        const ws = wsRef.current;
+        // Remove event listeners to prevent reconnection on intentional close
+        ws.onclose = null;
+        ws.onerror = null;
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close();
+        }
       }
     };
   }, [token]);
@@ -124,7 +188,7 @@ export default function HostDashboard() {
     }, [token, role])
   );
 
-  const stats = [
+  const stats = useMemo(() => [
     { 
       label: "Total Users", 
       value: dashboardData?.stats.totalUsers?.toString() || "0", 
@@ -142,11 +206,11 @@ export default function HostDashboard() {
     },
     { 
       label: "Network Status", 
-      value: networkLatency ? `${networkLatency}ms` : "---", 
+      value: networkLatency !== null ? `${networkLatency}ms` : "---", 
       icon: "wifi" as const, 
       isLatency: true 
     },
-  ];
+  ], [dashboardData, networkLatency]);
   
   const formatActivityTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -291,7 +355,12 @@ export default function HostDashboard() {
                 <Text style={[styles.statLabel, { color: colors.text }]}>{stat.label}</Text>
                 <View style={styles.statValueRow}>
                   {stat.isLatency && (
-                    <Ionicons name="wifi" size={20} color="#ef4444" style={styles.statIcon} />
+                    <Ionicons 
+                      name="wifi" 
+                      size={20} 
+                      color={connectionStatus.connected ? "#22c55e" : "#ef4444"} 
+                      style={styles.statIcon} 
+                    />
                   )}
                   <Text style={[styles.statValue, { color: PRIMARY_BLUE }]}>{stat.value}</Text>
                 </View>

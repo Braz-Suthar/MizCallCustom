@@ -13,6 +13,9 @@ let wssInstance = null;
 // roomId -> { routerRtpCapabilities, peers: Map<peerId, Peer>, producerIdToOwner: Map, hostProducerId?: string, hostId?: string }
 const rooms = new Map();
 
+// Export peers and getRoom for API access
+export { peers };
+
 const RECORDER_PORT_START = Number(process.env.RECORDER_PORT_START || 50000);
 let recorderPortCursor = RECORDER_PORT_START;
 function allocRecorderPort() {
@@ -35,6 +38,9 @@ function getRoom(roomId) {
   }
   return rooms.get(roomId);
 }
+
+// Export getRoom for API access
+export { getRoom };
 
 export async function ensureMediasoupRoom(roomId) {
   const room = getRoom(roomId);

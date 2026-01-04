@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Dimensions, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Dimensions, FlatList, Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,6 +8,7 @@ import { AppButton } from "../../components/ui/AppButton";
 import { useAppDispatch, useAppSelector } from "../../state/store";
 import { endCall, startCall } from "../../state/callActions";
 import { useHostCallMedia } from "../../hooks/useHostCallMedia";
+import { apiFetch } from "../../state/api";
 
 const PRIMARY_BLUE = "#5B9FFF";
 const SUCCESS_GREEN = "#22c55e";
@@ -19,6 +20,7 @@ type Participant = {
   username: string;
   userId: string;
   speaking: boolean;
+  connected: boolean;
   lastSpoke?: number;
 };
 
@@ -29,7 +31,6 @@ export default function ActiveCallScreen() {
   const activeCall = useAppSelector((s) => s.call.activeCall);
   const callStatus = useAppSelector((s) => s.call.status);
   const callError = useAppSelector((s) => s.call.error);
-  const participants = useAppSelector((s) => s.call.participants);
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
 
@@ -40,11 +41,50 @@ export default function ActiveCallScreen() {
   });
   
   const [muted, setMuted] = useState(false);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [participantStates, setParticipantStates] = useState<Record<string, { speaking: boolean; lastSpoke: number }>>({});
+
+  // Fetch participants from backend
+  const fetchParticipants = async () => {
+    if (!activeCall?.roomId || !token) return;
+    
+    setLoadingParticipants(true);
+    try {
+      const response = await apiFetch(`/host/calls/${activeCall.roomId}/participants`, {
+        method: "GET",
+        token,
+      });
+      
+      if (response.participants) {
+        setParticipants(response.participants);
+      }
+    } catch (error) {
+      console.error("Error fetching participants:", error);
+    } finally {
+      setLoadingParticipants(false);
+    }
+  };
+
+  // Fetch participants when call is active
+  useEffect(() => {
+    if (!activeCall?.roomId) {
+      setParticipants([]);
+      return;
+    }
+    
+    // Initial fetch
+    fetchParticipants();
+    
+    // Poll for updates every 5 seconds
+    const interval = setInterval(fetchParticipants, 5000);
+    
+    return () => clearInterval(interval);
+  }, [activeCall?.roomId, token]);
 
   // Simulate speaking detection (replace with actual WebRTC audio level detection)
   useEffect(() => {
-    if (!activeCall) return;
+    if (!activeCall || participants.length === 0) return;
     
     const interval = setInterval(() => {
       // Mock: Randomly update speaking status for demonstration
@@ -54,9 +94,9 @@ export default function ActiveCallScreen() {
           // Simulate speaking detection
           const isSpeaking = Math.random() > 0.7; // 30% chance of speaking
           if (isSpeaking) {
-            newStates[p] = { speaking: true, lastSpoke: Date.now() };
-          } else if (newStates[p]?.speaking) {
-            newStates[p] = { speaking: false, lastSpoke: newStates[p].lastSpoke || Date.now() };
+            newStates[p.id] = { speaking: true, lastSpoke: Date.now() };
+          } else if (newStates[p.id]?.speaking) {
+            newStates[p.id] = { speaking: false, lastSpoke: newStates[p.id].lastSpoke || Date.now() };
           }
         });
         return newStates;
@@ -68,11 +108,9 @@ export default function ActiveCallScreen() {
 
   const participantData: Participant[] = useMemo(() => {
     const data = participants.map((p) => ({
-      id: p,
-      username: p,
-      userId: p,
-      speaking: participantStates[p]?.speaking || false,
-      lastSpoke: participantStates[p]?.lastSpoke || 0,
+      ...p,
+      speaking: participantStates[p.id]?.speaking || false,
+      lastSpoke: participantStates[p.id]?.lastSpoke || 0,
     }));
 
     // Sort: speaking users first, then by last spoke time
@@ -176,7 +214,12 @@ export default function ActiveCallScreen() {
               Participants
             </Text>
             
-            {participantData.length === 0 ? (
+            {loadingParticipants && participantData.length === 0 ? (
+              <View style={styles.loadingState}>
+                <ActivityIndicator size="large" color={PRIMARY_BLUE} />
+                <Text style={[styles.loadingText, { color: colors.text }]}>Loading participants...</Text>
+              </View>
+            ) : participantData.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="people-outline" size={64} color={colors.text} style={{ opacity: 0.3 }} />
                 <Text style={[styles.emptyText, { color: colors.text }]}>Waiting for users to join...</Text>
@@ -469,6 +512,16 @@ const styles = StyleSheet.create({
   statusLabel: {
     fontSize: 13,
     fontWeight: "600",
+  },
+  loadingState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 15,
+    opacity: 0.7,
   },
   emptyState: {
     alignItems: "center",
