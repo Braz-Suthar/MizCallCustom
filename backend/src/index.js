@@ -7,7 +7,7 @@ import recordingRoutes from "./api/recordings/index.js";
 import recordingsRoutes from "./routes/recordings.js";
 import { requireAuth } from "./middleware/auth.js";
 
-import { startWebSocketServer } from "./signaling/ws.js";
+import { startWebSocketServer } from "./signaling/socket-io.js";
 import { connectMediasoup } from "./mediasoup/client.js";
 import { connectRecorder } from "./recorder/client.js";
 import { runMigrations } from "./db/migrate.js";

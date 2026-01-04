@@ -1,15 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client";
 
 import { CredentialsPayload } from "../state/authSlice";
 import { setActiveCall } from "../state/callSlice";
 import { useAppDispatch, useAppSelector } from "../state/store";
 
-const WS_URL = "wss://custom.mizcall.com";
+const WS_URL = "https://custom.mizcall.com";
 
 export const useSocket = (session: CredentialsPayload | null) => {
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef(0);
+  const socketRef = useRef<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const dispatch = useAppDispatch();
   const activeCall = useAppSelector((s) => s.call.activeCall);
   const callRef = useRef(activeCall);
@@ -20,104 +20,114 @@ export const useSocket = (session: CredentialsPayload | null) => {
 
   useEffect(() => {
     if (!session?.token) {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
       }
-      wsRef.current?.close();
-      wsRef.current = null;
+      setIsConnected(false);
       return;
     }
 
-    const MAX_RECONNECT_ATTEMPTS = 5;
-    const INITIAL_RECONNECT_DELAY = 1000;
+    console.log("[useSocket] Connecting to Socket.IO...");
 
-    const connectWebSocket = () => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        return; // Already connected
+    const socket = io(WS_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 30000,
+      timeout: 10000,
+      autoConnect: true,
+      auth: {
+        token: session.token
       }
+    });
 
-      console.log("[useSocket] Connecting...", 
-        reconnectAttemptsRef.current > 0 ? `(attempt ${reconnectAttemptsRef.current + 1})` : "");
+    socketRef.current = socket;
 
-      const ws = new WebSocket(WS_URL);
-      wsRef.current = ws;
+    socket.on("connect", () => {
+      console.log("[useSocket] Connected:", socket.id);
+      setIsConnected(true);
+      
+      // Send auth message
+      socket.emit("auth", { type: "auth", token: session.token });
+    });
 
-      ws.onopen = () => {
-        console.log("[useSocket] ws open");
-        reconnectAttemptsRef.current = 0; // Reset on successful connection
-        ws.send(JSON.stringify({ type: "auth", token: session.token }));
-      };
+    socket.on("disconnect", (reason) => {
+      console.log("[useSocket] Disconnected:", reason);
+      setIsConnected(false);
+    });
 
-      ws.onerror = (err) => {
-        console.warn("[useSocket] Socket error, will reconnect");
-      };
+    socket.on("connect_error", (error) => {
+      console.log("[useSocket] Connection error:", error.message);
+      setIsConnected(false);
+    });
 
-      ws.onmessage = (ev) => {
-        console.log("[useSocket] message", ev.data);
-        try {
-          const msg = JSON.parse(ev.data);
-          if (msg.type === "call-started") {
-            const current = callRef.current;
-            dispatch(
-              setActiveCall({
-                roomId: msg.roomId ?? current?.roomId ?? "main-room",
-                routerRtpCapabilities: msg.routerRtpCapabilities ?? current?.routerRtpCapabilities,
-                hostProducerId: current?.hostProducerId,
-              }),
-            );
-          }
-          if (msg.type === "NEW_PRODUCER") {
-            const current = callRef.current;
-            dispatch(
-              setActiveCall({
-                roomId: current?.roomId ?? msg.roomId ?? "main-room",
-                routerRtpCapabilities: current?.routerRtpCapabilities ?? msg.routerRtpCapabilities,
-                hostProducerId: msg.producerId,
-              }),
-            );
-          }
-          if (msg.type === "call-stopped") {
-            dispatch(setActiveCall(null));
-          }
-        } catch {
-          // ignore malformed
+    socket.on("reconnect_attempt", (attempt) => {
+      console.log(`[useSocket] Reconnect attempt ${attempt}`);
+    });
+
+    socket.on("reconnect", (attempt) => {
+      console.log(`[useSocket] Reconnected after ${attempt} attempts`);
+      setIsConnected(true);
+    });
+
+    socket.on("message", (msg) => {
+      try {
+        if (msg.type === "call-started") {
+          const current = callRef.current;
+          dispatch(
+            setActiveCall({
+              roomId: msg.roomId ?? current?.roomId ?? "main-room",
+              routerRtpCapabilities: msg.routerRtpCapabilities ?? current?.routerRtpCapabilities,
+              hostProducerId: current?.hostProducerId,
+            }),
+          );
         }
-      };
-
-      ws.onclose = (ev) => {
-        console.log("[useSocket] ws close", ev.code, ev.reason);
-        wsRef.current = null;
-
-        // Attempt to reconnect with exponential backoff
-        if (session?.token && reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
-          const delay = INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttemptsRef.current);
-          console.log(`[useSocket] Reconnecting in ${delay}ms...`);
-          
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectAttemptsRef.current++;
-            connectWebSocket();
-          }, delay);
-        } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-          console.warn("[useSocket] Max reconnection attempts reached");
+        
+        if (msg.type === "NEW_PRODUCER") {
+          const current = callRef.current;
+          dispatch(
+            setActiveCall({
+              roomId: current?.roomId ?? msg.roomId ?? "main-room",
+              routerRtpCapabilities: current?.routerRtpCapabilities ?? msg.routerRtpCapabilities,
+              hostProducerId: msg.producerId,
+            }),
+          );
         }
-      };
-    };
+        
+        if (msg.type === "call-stopped") {
+          dispatch(setActiveCall(null));
+        }
+      } catch (e) {
+        console.error("[useSocket] Message error:", e);
+      }
+    });
 
-    // Initial connection
-    connectWebSocket();
+    // Listen for specific events
+    socket.on("call-started", (msg) => {
+      const current = callRef.current;
+      dispatch(
+        setActiveCall({
+          roomId: msg.roomId ?? current?.roomId ?? "main-room",
+          routerRtpCapabilities: msg.routerRtpCapabilities ?? current?.routerRtpCapabilities,
+          hostProducerId: current?.hostProducerId,
+        }),
+      );
+    });
+
+    socket.on("call-stopped", () => {
+      dispatch(setActiveCall(null));
+    });
 
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (wsRef.current) {
-        wsRef.current.onclose = null; // Prevent reconnection on intentional close
-        wsRef.current.close();
-        wsRef.current = null;
+      console.log("[useSocket] Cleaning up...");
+      if (socket) {
+        socket.disconnect();
       }
     };
-  }, [session, dispatch]);
+  }, [session?.token, dispatch]);
 
-  return wsRef.current;
+  return { socket: socketRef.current, isConnected };
 };
 

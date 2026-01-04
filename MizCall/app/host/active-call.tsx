@@ -51,10 +51,11 @@ export default function ActiveCallScreen() {
     
     setLoadingParticipants(true);
     try {
-      const response = await apiFetch(`/host/calls/${activeCall.roomId}/participants`, {
-        method: "GET",
+      const response = await apiFetch<{ participants: Participant[] }>(
+        `/host/calls/${activeCall.roomId}/participants`,
         token,
-      });
+        { method: "GET" }
+      );
       
       if (response.participants) {
         setParticipants(response.participants);
