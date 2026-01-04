@@ -1,56 +1,103 @@
 import { AppDispatch, RootState } from "./store";
 import { apiFetch } from "./api";
 import { addParticipant, clearActiveCall, resetParticipants, setActiveCall, setCallError, setCallStatus } from "./callSlice";
+import { io, Socket } from "socket.io-client";
 
-const WS_URL = "wss://custom.mizcall.com/ws";
+const SOCKET_URL = "https://custom.mizcall.com";
 
-let hostCallWs: WebSocket | null = null;
+let hostCallSocket: Socket | null = null;
 
 const openHostCallSocket = (token: string, dispatch: AppDispatch, roomId: string) =>
   new Promise<void>((resolve) => {
-    if (hostCallWs) {
+    if (hostCallSocket) {
       try {
-        hostCallWs.close();
+        hostCallSocket.disconnect();
       } catch {
         //
       }
-      hostCallWs = null;
+      hostCallSocket = null;
     }
 
-    const ws = new WebSocket(WS_URL);
-    hostCallWs = ws;
+    console.log("[host-call] Connecting to Socket.IO...");
 
-    ws.onopen = () => {
-      console.log("[host-call] ws open");
-      ws.send(JSON.stringify({ type: "auth", token }));
-      // align with backend: notify call-started (roomId ignored server-side)
-      ws.send(JSON.stringify({ type: "call-started", roomId }));
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 30000,
+      timeout: 10000,
+      autoConnect: true,
+      auth: {
+        token
+      }
+    });
+
+    hostCallSocket = socket;
+
+    socket.on("connect", () => {
+      console.log("[host-call] Socket.IO connected:", socket.id);
+      
+      // Send auth message
+      socket.emit("auth", { type: "auth", token });
+      
+      // Notify call started
+      socket.emit("call-started", { type: "call-started", roomId });
+      socket.emit("CALL_STARTED", { type: "CALL_STARTED", roomId });
+      
       resolve();
-    };
+    });
 
-    ws.onmessage = (event) => {
-      console.log("[host-call] ws message", event.data);
+    socket.on("disconnect", (reason) => {
+      console.log("[host-call] Socket.IO disconnected:", reason);
+      hostCallSocket = null;
+    });
+
+    socket.on("connect_error", (error) => {
+      console.log("[host-call] Connection error:", error.message);
+    });
+
+    socket.on("reconnect", (attempt) => {
+      console.log(`[host-call] Reconnected after ${attempt} attempts`);
+    });
+
+    // Listen for user joined events
+    socket.on("message", (msg) => {
+      console.log("[host-call] message:", msg.type);
       try {
-        const msg = JSON.parse(event.data);
         if (msg.type === "user-joined" && msg.userId) {
+          dispatch(addParticipant(msg.userId));
+        }
+        if (msg.type === "USER_JOINED" && msg.userId) {
           dispatch(addParticipant(msg.userId));
         }
         if (msg.type === "call-stopped") {
           dispatch(clearActiveCall());
         }
-      } catch {
-        // ignore
+      } catch (e) {
+        console.error("[host-call] Message error:", e);
       }
-    };
+    });
 
-    ws.onerror = () => {
-      console.warn("[host-call] ws error");
-    };
+    // Also listen for specific events
+    socket.on("user-joined", (msg) => {
+      console.log("[host-call] user-joined:", msg.userId);
+      if (msg.userId) {
+        dispatch(addParticipant(msg.userId));
+      }
+    });
 
-    ws.onclose = () => {
-      console.log("[host-call] ws close");
-      hostCallWs = null;
-    };
+    socket.on("USER_JOINED", (msg) => {
+      console.log("[host-call] USER_JOINED:", msg.userId);
+      if (msg.userId) {
+        dispatch(addParticipant(msg.userId));
+      }
+    });
+
+    socket.on("call-stopped", () => {
+      console.log("[host-call] call-stopped");
+      dispatch(clearActiveCall());
+    });
   });
 
 export const startCall =
@@ -75,11 +122,11 @@ export const startCall =
 export const endCall =
   () => async (dispatch: AppDispatch) => {
     try {
-      hostCallWs?.close();
+      hostCallSocket?.disconnect();
     } catch {
       //
     }
-    hostCallWs = null;
+    hostCallSocket = null;
     dispatch(clearActiveCall());
     dispatch(setCallStatus("idle"));
     dispatch(setCallError(null));

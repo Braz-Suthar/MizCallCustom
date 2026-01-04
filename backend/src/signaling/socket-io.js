@@ -508,14 +508,28 @@ export function handleSocket({ socket, io }) {
       /* ---------------- CONSUME ---------------- */
       case "CONSUME": {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
-        console.log("[Socket.IO] CONSUME:", { roomId, producerId: msg.producerId });
+        const room = getRoom(roomId);
+        
+        // Get the owner ID from the producer ID
+        const producerOwnerId = room.producerIdToOwner.get(msg.producerId);
+        
+        console.log("[Socket.IO] CONSUME:", { roomId, producerId: msg.producerId, producerOwnerId });
+        
+        if (!producerOwnerId) {
+          console.error("[Socket.IO] CONSUME failed: producer owner not found for producerId:", msg.producerId);
+          socket.emit("CONSUME_ERROR", {
+            type: "CONSUME_ERROR",
+            error: "Producer not found"
+          });
+          break;
+        }
         
         try {
           const res = await sendMediasoup({
             type: MS.CONSUME,
             roomId,
             transportId: requirePeer().recvTransport.id,
-            producerId: msg.producerId,
+            producerOwnerId: producerOwnerId,  // Send owner ID, not producer ID
             rtpCapabilities: msg.rtpCapabilities,
           });
           

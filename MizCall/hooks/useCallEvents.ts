@@ -12,7 +12,7 @@ export function useCallEvents() {
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
-  useEffect() => {
+  useEffect(() => {
     if (!token || !role) {
       if (socketRef.current) {
         socketRef.current.disconnect();

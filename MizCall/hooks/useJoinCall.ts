@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 type RtpCapabilities = any;
 import { MediaStream, mediaDevices } from "react-native-webrtc";
+import { io, Socket } from "socket.io-client";
 
 import { useAppSelector } from "../state/store";
 import { disableSpeakerphone, enableSpeakerphone, isMobilePlatform, startCallAudio, stopCallAudio } from "../utils/callAudio";
 
-const WS_URL = "wss://custom.mizcall.com/ws";
+const SOCKET_URL = "https://custom.mizcall.com";
 
 type JoinState = "idle" | "connecting" | "connected" | "error";
 
@@ -22,7 +23,7 @@ export function useJoinCall() {
 
   const roomId = activeCall?.roomId || (activeCall as any)?.id;
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const recvTransportRef = useRef<any>(null);
   const sendTransportRef = useRef<any>(null);
@@ -40,8 +41,8 @@ export function useJoinCall() {
     } catch {
       // ignore
     }
-    wsRef.current?.close();
-    wsRef.current = null;
+    socketRef.current?.disconnect();
+    socketRef.current = null;
     recvTransportRef.current?.close?.();
     recvTransportRef.current = null;
     sendTransportRef.current?.close?.();
@@ -69,15 +70,13 @@ export function useJoinCall() {
   useEffect(() => cleanup, []);
 
   const sendConsume = (producerId: string) => {
-    if (!producerId || !deviceRef.current || !wsRef.current) return;
-    wsRef.current.send(
-      JSON.stringify({
-        type: "CONSUME",
-        producerId,
-        rtpCapabilities: deviceRef.current.rtpCapabilities,
-        roomId,
-      }),
-    );
+    if (!producerId || !deviceRef.current || !socketRef.current) return;
+    socketRef.current.emit("CONSUME", {
+      type: "CONSUME",
+      producerId,
+      rtpCapabilities: deviceRef.current.rtpCapabilities,
+      roomId,
+    });
   };
 
   const join = useCallback(async () => {
@@ -101,39 +100,50 @@ export function useJoinCall() {
     setError(null);
     setRemoteStream(null);
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+    console.log("[useJoinCall] Connecting to Socket.IO...");
 
-    ws.onopen = async () => {
-      console.log("[useJoinCall] ws open");
+    const socket = io(SOCKET_URL, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+      timeout: 10000,
+      auth: {
+        token
+      }
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", async () => {
+      console.log("[useJoinCall] Socket.IO connected:", socket.id);
       try {
         startCallAudio();
         enableSpeakerphone();
       } catch {
         // best effort
       }
-      ws.send(JSON.stringify({ type: "auth", token }));
-      ws.send(JSON.stringify({ type: "JOIN", token, roomId }));
-    };
+      socket.emit("auth", { type: "auth", token });
+      socket.emit("JOIN", { type: "JOIN", token, roomId });
+    });
 
-    ws.onerror = (e) => {
-      console.warn("[useJoinCall] ws error", e);
-      setError("WebSocket error");
-      setState("error");
-    };
-
-    ws.onclose = (ev) => {
-      console.log("[useJoinCall] ws close", ev.code, ev.reason);
-      wsRef.current = null;
+    socket.on("disconnect", (reason) => {
+      console.log("[useJoinCall] Socket.IO disconnected:", reason);
+      socketRef.current = null;
       if (state !== "connected") {
         setState("idle");
       }
-    };
+    });
 
-    ws.onmessage = async (event) => {
-      console.log("[useJoinCall] ws message", event.data);
+    socket.on("connect_error", (error) => {
+      console.log("[useJoinCall] Connection error:", error.message);
+      setError("Connection error");
+      setState("error");
+    });
+
+    const handleMessage = async (msg: any) => {
+      console.log("[useJoinCall] message:", msg.type);
       try {
-        const msg = JSON.parse(event.data);
         if (msg.type === "SEND_TRANSPORT_CREATED") {
           const device = new Device({ handlerName: "ReactNative106" as any });
           await device.load({ routerRtpCapabilities: (activeCall?.routerRtpCapabilities || {}) as RtpCapabilities });
@@ -142,13 +152,11 @@ export function useJoinCall() {
           sendTransportRef.current = transport;
           transport.on("connect", ({ dtlsParameters }, callback, errback) => {
             try {
-              ws.send(
-                JSON.stringify({
-                  type: "CONNECT_SEND_TRANSPORT",
-                  dtlsParameters,
-                  roomId,
-                }),
-              );
+              socket.emit("CONNECT_SEND_TRANSPORT", {
+                type: "CONNECT_SEND_TRANSPORT",
+                dtlsParameters,
+                roomId,
+              });
               callback();
             } catch (err) {
               errback?.(err as Error);
@@ -156,13 +164,11 @@ export function useJoinCall() {
           });
           transport.on("produce", ({ rtpParameters }, callback, errback) => {
             try {
-              ws.send(
-                JSON.stringify({
-                  type: "PRODUCE",
-                  rtpParameters,
-                  roomId,
-                }),
-              );
+              socket.emit("PRODUCE", {
+                type: "PRODUCE",
+                rtpParameters,
+                roomId,
+              });
               callback({ id: String(Date.now()) });
             } catch (err) {
               errback?.(err as Error);
@@ -182,13 +188,11 @@ export function useJoinCall() {
           recvTransportRef.current = transport;
 
           transport.on("connect", ({ dtlsParameters }, callback) => {
-            ws.send(
-              JSON.stringify({
-                type: "CONNECT_RECV_TRANSPORT",
-                dtlsParameters,
-                roomId,
-              }),
-            );
+            socket.emit("CONNECT_RECV_TRANSPORT", {
+              type: "CONNECT_RECV_TRANSPORT",
+              dtlsParameters,
+              roomId,
+            });
             callback();
           });
 
@@ -198,26 +202,22 @@ export function useJoinCall() {
 
           // if we already know a producer, consume it
           if (producerIdRef.current) {
-            ws.send(
-              JSON.stringify({
-                type: "CONSUME",
-                producerId: producerIdRef.current,
-                rtpCapabilities: device.rtpCapabilities,
-                roomId,
-              }),
-            );
+            socket.emit("CONSUME", {
+              type: "CONSUME",
+              producerId: producerIdRef.current,
+              rtpCapabilities: device.rtpCapabilities,
+              roomId,
+            });
           }
           // also consume if hostProducerId already stored in state
           if (!producerIdRef.current && activeCall?.hostProducerId) {
             producerIdRef.current = activeCall.hostProducerId;
-            ws.send(
-              JSON.stringify({
-                type: "CONSUME",
-                producerId: activeCall.hostProducerId,
-                rtpCapabilities: device.rtpCapabilities,
-                roomId,
-              }),
-            );
+            socket.emit("CONSUME", {
+              type: "CONSUME",
+              producerId: activeCall.hostProducerId,
+              rtpCapabilities: device.rtpCapabilities,
+              roomId,
+            });
           }
         }
 
@@ -330,10 +330,19 @@ export function useJoinCall() {
             setState("error");
           }
         }
-      } catch {
-        // ignore parse errors
+      } catch (e) {
+        console.warn("[useJoinCall] message error:", e);
       }
     };
+
+    // Listen for all message types
+    socket.on("message", handleMessage);
+    socket.on("SEND_TRANSPORT_CREATED", handleMessage);
+    socket.on("RECV_TRANSPORT_CREATED", handleMessage);
+    socket.on("NEW_PRODUCER", handleMessage);
+    socket.on("HOST_PRODUCER", handleMessage);
+    socket.on("CONSUMER_CREATED", handleMessage);
+    socket.on("CONSUMED", handleMessage);
   }, [token, role, activeCall?.routerRtpCapabilities]);
 
   const startSpeaking = useCallback(async () => {
