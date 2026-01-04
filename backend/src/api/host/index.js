@@ -39,7 +39,7 @@ router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
       `(
         SELECT 
           'call' as type,
-          id,
+          id::text,
           status,
           started_at as created_at,
           NULL as username
@@ -50,7 +50,7 @@ router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
       (
         SELECT 
           'user' as type,
-          id,
+          id::text,
           CASE WHEN enabled THEN 'active' ELSE 'disabled' END as status,
           created_at,
           username
