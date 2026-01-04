@@ -533,14 +533,31 @@ export function handleSocket({ socket, io }) {
             rtpCapabilities: msg.rtpCapabilities,
           });
           
-          requirePeer().consumers.set(res.consumerId, { id: res.consumerId });
+          // Mediasoup returns: { id, producerId, rtpParameters }
+          const consumerId = res.id;
+          requirePeer().consumers.set(consumerId, { id: consumerId });
           
-          socket.emit("CONSUMED", {
+          // Send both message types for compatibility
+          const consumeResponse = {
             type: "CONSUMED",
             producerId: msg.producerId,
-            id: res.consumerId,
-            kind: res.kind,
+            id: consumerId,
+            kind: "audio",  // Always audio for now
             rtpParameters: res.rtpParameters,
+            params: {
+              id: consumerId,
+              producerId: msg.producerId,
+              kind: "audio",
+              rtpParameters: res.rtpParameters,
+            }
+          };
+          
+          socket.emit("CONSUMED", consumeResponse);
+          socket.emit("CONSUMER_CREATED", consumeResponse);
+          
+          console.log("[Socket.IO] CONSUMED successfully:", {
+            consumerId: consumerId,
+            producerId: msg.producerId
           });
         } catch (e) {
           console.error("[Socket.IO] CONSUME failed:", e?.message || e);
@@ -549,19 +566,6 @@ export function handleSocket({ socket, io }) {
             error: e?.message || "consume failed"
           });
         }
-        break;
-      }
-
-      /* ---------------- RESUME CONSUMER ---------------- */
-      case "RESUME_CONSUMER": {
-        const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
-        console.log("[Socket.IO] RESUME_CONSUMER:", { roomId, consumerId: msg.consumerId });
-        
-        await sendMediasoup({
-          type: MS.RESUME_CONSUMER,
-          roomId,
-          consumerId: msg.consumerId,
-        });
         break;
       }
 
