@@ -3,6 +3,7 @@ import { createWorker } from "./worker.js";
 import { createRouter } from "./router.js";
 import { createWebRtcTransport } from "./transports.js";
 import { v4 as uuid } from "uuid";
+import dns from "dns";
 
 const wss = new WebSocketServer({ port: 4000 });
 
@@ -144,8 +145,19 @@ wss.on("connection", async (socket) => {
             }
 
             const plain = await createPlainTransport(room.router);
+
+            // resolve hostname to numeric IP because mediasoup requires an IP literal
+            const host = msg.remoteIp || process.env.RECORDER_IP || "recorder";
+            let targetIp = host;
+            try {
+                const lookup = await dns.promises.lookup(host);
+                targetIp = lookup.address;
+            } catch (e) {
+                console.error("Recorder IP resolve failed, using raw host", host, e?.message || e);
+            }
+
             await plain.connect({
-                ip: msg.remoteIp || process.env.RECORDER_IP || "recorder",
+                ip: targetIp,
                 port: msg.remotePort
             });
 
