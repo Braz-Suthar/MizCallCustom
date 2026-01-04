@@ -1,12 +1,13 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack } from "expo-router";
 import { Provider } from "react-redux";
-import { useColorScheme, PermissionsAndroid, Platform } from "react-native";
+import { useColorScheme, PermissionsAndroid, Platform, StyleSheet, View } from "react-native";
 import { useEffect } from "react";
 import { StatusBar } from "expo-status-bar";
 import { registerGlobals } from "react-native-webrtc";
 import { setAudioModeAsync } from "expo-audio";
 import Toast from "react-native-toast-message";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { store, useAppSelector } from "../state/store";
 import { useCallEvents } from "../hooks/useCallEvents";
@@ -60,17 +61,37 @@ function RootLayoutNav() {
       <Stack
         screenOptions={{
           headerShown: false,
+          contentStyle: Platform.OS === "ios" ? styles.iosContainer : undefined,
         }}
       />
-      <Toast />
+      <View style={styles.toastContainer} pointerEvents="box-none">
+        <Toast />
+      </View>
     </ThemeProvider>
   );
 }
 
+const styles = StyleSheet.create({
+  iosContainer: {
+    paddingTop: 20,
+  },
+  toastContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+});
+
 export default function RootLayout() {
   return (
-    <Provider store={store}>
-      <RootLayoutNav />
-    </Provider>
+    <SafeAreaProvider>
+      <Provider store={store}>
+        <RootLayoutNav />
+      </Provider>
+    </SafeAreaProvider>
   );
 }

@@ -5,6 +5,7 @@ import { useTheme } from "@react-navigation/native";
 
 import { AppButton } from "../../components/ui/AppButton";
 import { AppTextInput } from "../../components/ui/AppTextInput";
+import { UserCreatedModal } from "../../components/ui/UserCreatedModal";
 import { apiFetch } from "../../state/api";
 import { useAppSelector } from "../../state/store";
 
@@ -15,6 +16,10 @@ export default function CreateUser() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  
+  // Success modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdUser, setCreatedUser] = useState<{ userId: string; password: string; username: string } | null>(null);
 
   const valid = name.trim().length >= 2 && password.trim().length >= 6;
 
@@ -42,8 +47,18 @@ export default function CreateUser() {
           }),
         },
       );
-      Alert.alert("User created", `ID: ${result.userId}\nPassword: ${result.password}`);
-      router.back();
+      
+      // Show success modal with credentials
+      setCreatedUser({
+        userId: result.userId,
+        password: result.password,
+        username: name.trim(),
+      });
+      setShowSuccessModal(true);
+      
+      // Clear form
+      setName("");
+      setPassword("");
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Could not create user. Please try again.");
     } finally {
@@ -51,30 +66,49 @@ export default function CreateUser() {
     }
   };
 
+  const handleCloseSuccessModal = () => {
+    setShowSuccessModal(false);
+    setCreatedUser(null);
+    router.back();
+  };
+
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>
-      <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.title, { color: colors.text }]}>Create new user</Text>
-        <Text style={[styles.subtitle, { color: colors.text }]}>Provide details to create a new regular user.</Text>
+    <>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>
+        <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled">
+          <Text style={[styles.title, { color: colors.text }]}>Create new user</Text>
+          <Text style={[styles.subtitle, { color: colors.text }]}>Provide details to create a new regular user.</Text>
 
-        <AppTextInput
-          label="User name"
-          value={name}
-          onChangeText={setName}
-          placeholder="John Doe"
-        />
-        <AppTextInput
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder="Minimum 6 characters"
-        />
+          <AppTextInput
+            label="User name"
+            value={name}
+            onChangeText={setName}
+            placeholder="John Doe"
+          />
+          <AppTextInput
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            placeholder="Minimum 6 characters"
+          />
 
-        <AppButton label="Create user" onPress={onSubmit} disabled={!valid || loading} loading={loading} fullWidth />
-        <AppButton label="Cancel" variant="ghost" onPress={() => router.back()} fullWidth />
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <AppButton label="Create user" onPress={onSubmit} disabled={!valid || loading} loading={loading} fullWidth />
+          <AppButton label="Cancel" variant="ghost" onPress={() => router.back()} fullWidth />
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Success Modal */}
+      {createdUser && (
+        <UserCreatedModal
+          visible={showSuccessModal}
+          userId={createdUser.userId}
+          password={createdUser.password}
+          username={createdUser.username}
+          onClose={handleCloseSuccessModal}
+        />
+      )}
+    </>
   );
 }
 

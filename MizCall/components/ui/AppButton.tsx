@@ -2,6 +2,9 @@ import React from "react";
 import { ActivityIndicator, GestureResponderEvent, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
 
+// Consistent primary blue color
+const PRIMARY_BLUE = "#5B9FFF";
+
 type Props = {
   label: string;
   onPress: (event: GestureResponderEvent) => void;
@@ -48,7 +51,7 @@ export function AppButton({ label, onPress, disabled, loading, variant = "primar
           pressed && styles.pressed,
         ]}
       >
-        <Text style={[styles.ghostLabel, { color: colors.primary }]}>{label}</Text>
+        <Text style={[styles.ghostLabel, { color: PRIMARY_BLUE }]}>{label}</Text>
       </Pressable>
     );
   }
@@ -57,7 +60,7 @@ export function AppButton({ label, onPress, disabled, loading, variant = "primar
     styles.pressable,
     { paddingVertical: verticalPadding },
     isPrimary
-      ? [styles.primary, { backgroundColor: colors.primary }]
+      ? [styles.primary, { backgroundColor: PRIMARY_BLUE }]
       : isDanger
       ? [styles.danger]
       : [styles.secondary, { borderColor: colors.border, backgroundColor: colors.card }],
