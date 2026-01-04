@@ -50,9 +50,28 @@ export async function ensureMediasoupRoom(roomId) {
 export async function startWebSocketServer(httpServer) {
   const wss = new WebSocketServer({ server: httpServer });
   wssInstance = wss;
+  
+  // Heartbeat interval - send ping every 5 seconds
+  const heartbeatInterval = setInterval(() => {
+    for (const peer of peers.values()) {
+      if (peer.socket.readyState === 1) { // OPEN
+        const pingTime = Date.now();
+        peer.lastPingTime = pingTime;
+        peer.socket.send(JSON.stringify({
+          type: "PING",
+          timestamp: pingTime,
+        }));
+      }
+    }
+  }, 5000);
+  
   wss.on("connection", (socket) => {
     console.log("[WS] connection open");
     handleSocket({ socket });
+  });
+  
+  wss.on("close", () => {
+    clearInterval(heartbeatInterval);
   });
 }
 
@@ -142,6 +161,20 @@ export function handleSocket({ socket }) {
         }
 
         switch (msg.type) {
+
+            /* ---------------- PONG (ping response) ---------------- */
+            case "PONG": {
+                if (peer && peer.lastPingTime) {
+                    const latency = Date.now() - peer.lastPingTime;
+                    peer.latency = latency;
+                    // Send latency update back to client
+                    socket.send(JSON.stringify({
+                        type: "LATENCY_UPDATE",
+                        latency: latency,
+                    }));
+                }
+                break;
+            }
 
             /* ---------------- AUTH ONLY (for dashboards wanting push) ---------------- */
             case "auth":

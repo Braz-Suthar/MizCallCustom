@@ -38,27 +38,84 @@ export default function HostDashboard() {
   const [loading, setLoading] = useState(true);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [networkLatency, setNetworkLatency] = useState<number | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
   const themeMode = useAppSelector((state) => state.theme.mode);
   const { token, role } = useAppSelector((state) => state.auth);
-  const connectionStatus = { connected: networkLatency !== null && networkLatency < 1000 };
+  const wsRef = React.useRef<WebSocket | null>(null);
+  
+  // Connection is good if latency exists and is under 1000ms
+  const connectionStatus = { 
+    connected: wsConnected && networkLatency !== null && networkLatency < 1000 
+  };
 
   const loadDashboardData = async () => {
     if (!token || role !== "host") return;
 
     try {
-      const startTime = Date.now();
       const data = await apiFetch<DashboardData>("/host/dashboard", token);
-      const endTime = Date.now();
-      const latency = endTime - startTime;
-
       setDashboardData(data);
-      setNetworkLatency(latency);
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
     } finally {
       setLoading(false);
     }
   };
+
+  // WebSocket connection for real-time ping
+  useEffect(() => {
+    if (!token) return;
+
+    const API_BASE = process.env.EXPO_PUBLIC_API_BASE || "http://localhost:3100";
+    const WS_URL = API_BASE.replace(/^http/, "ws");
+    
+    const ws = new WebSocket(WS_URL);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log("[Dashboard] WebSocket connected");
+      setWsConnected(true);
+      // Authenticate
+      ws.send(JSON.stringify({
+        type: "AUTH",
+        token: token,
+      }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        
+        if (msg.type === "PING") {
+          // Respond to server ping
+          ws.send(JSON.stringify({
+            type: "PONG",
+            timestamp: msg.timestamp,
+          }));
+        } else if (msg.type === "LATENCY_UPDATE") {
+          // Update latency from server
+          setNetworkLatency(msg.latency);
+        }
+      } catch (e) {
+        console.error("[Dashboard] WebSocket message error:", e);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error("[Dashboard] WebSocket error:", error);
+      setWsConnected(false);
+    };
+
+    ws.onclose = () => {
+      console.log("[Dashboard] WebSocket closed");
+      setWsConnected(false);
+    };
+
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
+  }, [token]);
 
   // Load data on mount and when screen is focused
   useFocusEffect(
