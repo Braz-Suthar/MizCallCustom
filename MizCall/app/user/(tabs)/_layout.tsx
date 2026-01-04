@@ -1,14 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
 import React, { useMemo } from "react";
+import { useColorScheme } from "react-native";
 
 import { useAppSelector } from "../../../state/store";
 import { useSocket } from "../../../hooks/useSocket";
+
+// Consistent primary blue color
+const PRIMARY_BLUE = "#5B9FFF";
 
 export default function UserTabsLayout() {
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
   const userId = useAppSelector((s) => s.auth.userId);
+  const themeMode = useAppSelector((s) => s.theme.mode);
+  const systemScheme = useColorScheme() ?? "light";
+  const resolvedScheme = themeMode === "system" ? systemScheme : themeMode;
+  const isDark = resolvedScheme === "dark";
 
   const session = useMemo(() => {
     if (token && role === "user") {
@@ -27,29 +35,41 @@ export default function UserTabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#1f80ff",
-        tabBarStyle: { borderTopWidth: 0.5, borderTopColor: "#e0e4ea" },
+        tabBarActiveTintColor: PRIMARY_BLUE,
+        tabBarInactiveTintColor: isDark ? "#888" : "#666",
+        tabBarStyle: { 
+          backgroundColor: isDark ? "#1a1d29" : "#ffffff",
+          borderTopWidth: isDark ? 0 : 1,
+          borderTopColor: isDark ? "transparent" : "#e0e0e0",
+          height: 65,
+          paddingBottom: 8,
+          paddingTop: 8,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "600",
+        },
       }}
     >
       <Tabs.Screen
         name="dashboard"
         options={{
           title: "Dashboard",
-          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="recordings"
         options={{
           title: "Recordings",
-          tabBarIcon: ({ color, size }) => <Ionicons name="albums-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="videocam" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color, size }) => <Ionicons name="settings-outline" size={size} color={color} />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
         }}
       />
     </Tabs>
