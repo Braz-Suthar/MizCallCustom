@@ -16,7 +16,10 @@ export function startUserRecording({
     userPostSeconds = 2,
     hostPostSeconds = 5,
 }) {
-    if (streams.has(userId)) return;
+    if (streams.has(userId)) {
+        console.log("[recorder] START_USER ignored, already tracking", userId);
+        return;
+    }
 
     const controller = new ClipController({
         hostId,
@@ -65,6 +68,8 @@ export function stopUserRecording(userId) {
     if (!entry) return;
 
     console.log("[recorder] STOP_USER", { userId });
+    // ensure clip is finalized
+    entry.controller.stop();
     entry.userStream.close();
     entry.hostStream.close();
     streams.delete(userId);

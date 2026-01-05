@@ -81,6 +81,11 @@ export async function startWebSocketServer(httpServer) {
       // Cleanup peer
       for (const [peerId, peer] of peers.entries()) {
         if (peer.socket === socket) {
+          // finalize any recorder session for this user
+          if (peer.role === "user") {
+            sendRecorder({ type: "STOP_CLIP", userId: peer.id });
+            sendRecorder({ type: "STOP_USER", userId: peer.id });
+          }
           peers.delete(peerId);
           
           // Remove from rooms
@@ -576,6 +581,9 @@ export function handleSocket({ socket, io }) {
         const roomId = peer.roomId || peer.hostId || "main-room";
         console.log("[Socket.IO] USER_SPEAKING_START:", { userId: peer.id, roomId });
         
+        // Start a clip for this speaking burst
+        sendRecorder({ type: "START_CLIP", userId: peer.id });
+        
         // Notify host about user speaking
         const room = getRoom(roomId);
         if (room) {
@@ -597,6 +605,9 @@ export function handleSocket({ socket, io }) {
         
         const roomId = peer.roomId || peer.hostId || "main-room";
         console.log("[Socket.IO] USER_SPEAKING_STOP:", { userId: peer.id, roomId });
+        
+        // Stop current clip for this speaking burst
+        sendRecorder({ type: "STOP_CLIP", userId: peer.id });
         
         // Notify host about user stopped speaking
         const room = getRoom(roomId);
@@ -632,6 +643,8 @@ export function handleSocket({ socket, io }) {
         if (room) {
           for (const [userId, userPeer] of room.peers) {
             if (userPeer.role === "user") {
+              sendRecorder({ type: "STOP_CLIP", userId: userId });
+              sendRecorder({ type: "STOP_USER", userId: userId });
               sendRecorder({
                 type: "STOP_CLIP",
                 userId: userId
