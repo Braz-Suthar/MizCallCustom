@@ -32,6 +32,7 @@
     }
   };
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client";
 import { Device } from "mediasoup-client";
 import {
   FiHome,
@@ -469,7 +470,7 @@ function App() {
   const [remoteAudioStream, setRemoteAudioStream] = useState<MediaStream | null>(null);
   const [callJoinState, setCallJoinState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [callError, setCallError] = useState<string | null>(null);
-  const callSocketRef = useRef<WebSocket | null>(null);
+  const callSocketRef = useRef<Socket | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const sendTransportRef = useRef<any>(null);
   const recvTransportRef = useRef<any>(null);
@@ -485,7 +486,7 @@ function App() {
   const [pttActive, setPttActive] = useState(false);
   const pendingConsumeRef = useRef<Array<{ producerId: string; ownerId?: string }>>([]);
   const activeCallListenerRef = useRef<null | (() => void)>(null);
-  const userWsRef = useRef<WebSocket | null>(null);
+  const userWsRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
@@ -735,7 +736,7 @@ function App() {
   };
 
   const endCall = async (id: string) => {
-    if (!session?.token || session.role !== "host") return;
+    if (!session?.token || session.role !== "host") return leaveCall();
     try {
       const res = await fetch(`${API_BASE}/host/calls/${id}/end`, {
         method: "PATCH",
@@ -744,13 +745,18 @@ function App() {
       if (!res.ok) throw new Error(`End call failed (${res.status})`);
       const now = new Date().toISOString();
       setCalls((prev) => prev.map((c) => (c.id === id ? { ...c, status: "ended", ended_at: now } : c)));
-      setActiveCall(null);
-      setActiveParticipants([]);
-      setTab("calls");
+      leaveCall();
       showToast("Call ended", "success");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "End call failed", "error");
     }
+  };
+
+  const leaveCall = () => {
+    cleanupCallMedia();
+    setActiveCall(null);
+    setActiveParticipants([]);
+    setTab("calls");
   };
 
   const cleanupCallMedia = () => {
@@ -798,7 +804,8 @@ function App() {
       audioCtxRef.current = null;
     }
     setRemoteAudioStream(null);
-    callSocketRef.current?.close?.();
+    callSocketRef.current?.emit?.("CALL_STOPPED", { roomId: activeCall?.id });
+    callSocketRef.current?.disconnect?.();
     callSocketRef.current = null;
     deviceRef.current = null;
     hostProducerIdRef.current = null;
@@ -877,15 +884,12 @@ function App() {
     const pending = [...pendingConsumeRef.current];
     pendingConsumeRef.current = [];
     pending.forEach(({ producerId, ownerId }) => {
-      callSocketRef.current?.send(
-        JSON.stringify({
-          type: "CONSUME",
-          producerId,
-          producerOwnerId: ownerId,
-          rtpCapabilities: deviceRef.current?.rtpCapabilities,
-          roomId: activeCall.id,
-        })
-      );
+      callSocketRef.current?.emit("CONSUME", {
+        producerId,
+        producerOwnerId: ownerId,
+        rtpCapabilities: deviceRef.current?.rtpCapabilities,
+        roomId: activeCall.id,
+      });
     });
   };
 
@@ -895,15 +899,12 @@ function App() {
       pendingConsumeRef.current.push({ producerId, ownerId: producerOwnerId });
       return;
     }
-    callSocketRef.current.send(
-      JSON.stringify({
-        type: "CONSUME",
-        producerId,
-        producerOwnerId,
-        rtpCapabilities: deviceRef.current.rtpCapabilities,
-        roomId: activeCall.id,
-      })
-    );
+    callSocketRef.current.emit("CONSUME", {
+      producerId,
+      producerOwnerId,
+      rtpCapabilities: deviceRef.current.rtpCapabilities,
+      roomId: activeCall.id,
+    });
   };
 
   const startHostProducer = async () => {
@@ -940,6 +941,7 @@ function App() {
       const producer = await sendTransportRef.current.produce({ track });
       producerRef.current = producer;
       setPttActive(true);
+      callSocketRef.current?.emit?.("USER_SPEAKING_START");
     } catch (err) {
       console.error("ptt error", err);
       showToast("Cannot access microphone", "error");
@@ -958,6 +960,7 @@ function App() {
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     }
+    callSocketRef.current?.emit?.("USER_SPEAKING_STOP");
     setPttActive(false);
   };
 
@@ -974,36 +977,38 @@ function App() {
       hostProducer: hostProducerIdRef.current,
     });
 
-    const ws = new WebSocket("wss://custom.mizcall.com/ws");
+    const ws: Socket = io("https://custom.mizcall.com", {
+      transports: ["websocket"],
+      withCredentials: true,
+    });
     callSocketRef.current = ws;
 
-    ws.onopen = () => {
-      console.log("[desktop] call-ws open");
-      ws.send(JSON.stringify({ type: "AUTH", token: session.token }));
-      ws.send(JSON.stringify({ type: "CALL_STARTED", roomId: activeCall.id }));
-      ws.send(JSON.stringify({ type: "GET_ROUTER_CAPS", roomId: activeCall.id }));
-      ws.send(JSON.stringify({ type: "JOIN", token: session.token, roomId: activeCall.id }));
+    ws.on("connect", () => {
+      console.log("[desktop] call-sio connect");
+      ws.emit("AUTH", { token: session.token });
+      ws.emit("CALL_STARTED", { roomId: activeCall.id });
+      ws.emit("GET_ROUTER_CAPS", { roomId: activeCall.id });
+      ws.emit("JOIN", { token: session.token, roomId: activeCall.id });
       if (session.role === "user") {
-        console.log("[desktop] call-ws send REQUEST_HOST_PRODUCER on open");
-        ws.send(JSON.stringify({ type: "REQUEST_HOST_PRODUCER", roomId: activeCall.id }));
+        ws.emit("REQUEST_HOST_PRODUCER", { roomId: activeCall.id });
       }
-    };
+    });
 
-    ws.onerror = () => {
-      console.warn("[desktop] call-ws error");
+    ws.on("connect_error", () => {
+      console.warn("[desktop] call-sio error");
       setCallJoinState("error");
-      setCallError("WebSocket error");
-    };
+      setCallError("Socket error");
+    });
 
-    ws.onclose = () => {
-      console.log("[desktop] call-ws close");
+    ws.on("disconnect", () => {
+      console.log("[desktop] call-sio disconnect");
       setCallJoinState((prev) => (prev === "connected" ? prev : "idle"));
-    };
+    });
 
-    ws.onmessage = async (event) => {
+    const handleMsg = async (msgRaw: any) => {
       try {
-        const msg = JSON.parse(event.data);
-        console.log("[desktop] call-ws message", msg.type, msg);
+        const msg = msgRaw || {};
+        console.log("[desktop] call-sio message", msg.type, msg);
 
         if (msg.type === "ROUTER_CAPS") {
           routerCapsRef.current = msg.routerRtpCapabilities;
@@ -1014,7 +1019,7 @@ function App() {
             }
           } else if (session.role === "user" && !msg.hostProducerId) {
             console.log("[desktop] ROUTER_CAPS missing host producer; requesting");
-            ws.send(JSON.stringify({ type: "REQUEST_HOST_PRODUCER", roomId: activeCall.id }));
+            ws.emit("REQUEST_HOST_PRODUCER", { roomId: activeCall.id });
           }
         }
 
@@ -1022,12 +1027,12 @@ function App() {
           const device = await ensureDeviceLoaded();
           const transport = device.createSendTransport(msg.params);
           transport.on("connect", ({ dtlsParameters }, callback) => {
-            ws.send(JSON.stringify({ type: "CONNECT_SEND_TRANSPORT", dtlsParameters, roomId: activeCall.id }));
+            ws.emit("CONNECT_SEND_TRANSPORT", { dtlsParameters, roomId: activeCall.id });
             callback();
           });
           transport.on("produce", ({ kind, rtpParameters }, callback, errback) => {
             try {
-              ws.send(JSON.stringify({ type: "PRODUCE", kind, rtpParameters, roomId: activeCall.id }));
+              ws.emit("PRODUCE", { kind, rtpParameters, roomId: activeCall.id });
               const randomId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
               callback({ id: randomId });
             } catch (err) {
@@ -1037,6 +1042,8 @@ function App() {
           sendTransportRef.current = transport;
           if (session.role === "host") {
             startHostProducer();
+            setCallJoinState("connected");
+            setCallError(null);
           }
         }
 
@@ -1044,7 +1051,7 @@ function App() {
           const device = await ensureDeviceLoaded();
           const transport = device.createRecvTransport(msg.params);
           transport.on("connect", ({ dtlsParameters }, callback) => {
-            ws.send(JSON.stringify({ type: "CONNECT_RECV_TRANSPORT", dtlsParameters, roomId: activeCall.id }));
+            ws.emit("CONNECT_RECV_TRANSPORT", { dtlsParameters, roomId: activeCall.id });
             callback();
           });
           recvTransportRef.current = transport;
@@ -1054,8 +1061,11 @@ function App() {
             requestConsume(hostProducerIdRef.current);
           } else if (session.role === "user") {
             console.log("[desktop] RECV created; requesting host producer");
-            ws.send(JSON.stringify({ type: "REQUEST_HOST_PRODUCER", roomId: activeCall.id }));
+            ws.emit("REQUEST_HOST_PRODUCER", { roomId: activeCall.id });
             // Mark as ready even if host producer not yet available; we'll consume when it arrives
+            setCallJoinState("connected");
+            setCallError(null);
+          } else if (session.role === "host") {
             setCallJoinState("connected");
             setCallError(null);
           }
@@ -1097,19 +1107,20 @@ function App() {
           }
         }
 
-        if (msg.type === "CONSUMER_CREATED") {
+        if (msg.type === "CONSUMER_CREATED" || msg.type === "CONSUMED") {
           if (!recvTransportRef.current) return;
-          console.log("[desktop] CONSUMER_CREATED", msg.params);
+          const params = msg.params || msg;
+          console.log("[desktop] CONSUMER_CREATED", params);
           try {
             consumerRef.current?.close?.();
           } catch {
             // ignore
           }
           const consumer = await recvTransportRef.current.consume({
-            id: msg.params.id,
-            producerId: msg.params.producerId,
-            kind: msg.params.kind ?? "audio",
-            rtpParameters: msg.params.rtpParameters,
+            id: params.id,
+            producerId: params.producerId,
+            kind: params.kind ?? "audio",
+            rtpParameters: params.rtpParameters,
           });
           consumerRef.current = consumer;
           await consumer.resume?.();
@@ -1130,6 +1141,7 @@ function App() {
           }
           attachRemoteStream(stream);
           setCallJoinState("connected");
+          setCallError(null);
         }
 
         if (msg.type === "USER_JOINED") {
@@ -1156,6 +1168,23 @@ function App() {
         console.error("ws message error", err);
       }
     };
+
+    ws.on("message", (payload) => handleMsg(payload));
+    [
+      "ROUTER_CAPS",
+      "SEND_TRANSPORT_CREATED",
+      "RECV_TRANSPORT_CREATED",
+      "HOST_PRODUCER",
+      "NEW_PRODUCER",
+      "CONSUMER_CREATED",
+      "PRODUCED",
+      "CONSUME_ERROR",
+      "PRODUCE_ERROR",
+      "USER_JOINED",
+      "USER_LEFT",
+    ].forEach((event) => {
+      ws.on(event, (payload) => handleMsg(payload ?? { type: event }));
+    });
   };
 
   const formatDateTime = (iso: string | null) => {
@@ -1293,23 +1322,25 @@ function App() {
 
   useEffect(() => {
     if (!session || session.role !== "user") {
-      userWsRef.current?.close();
+      userWsRef.current?.disconnect?.();
       userWsRef.current = null;
       return;
     }
     if (userWsRef.current) return;
 
-    const ws = new WebSocket("wss://custom.mizcall.com/ws");
+    const ws: Socket = io("https://custom.mizcall.com", {
+      transports: ["websocket"],
+      withCredentials: true,
+    });
     userWsRef.current = ws;
 
-    ws.onopen = () => {
-      console.log("[desktop:user-ws] open");
-      ws.send(JSON.stringify({ type: "auth", token: session.token }));
-    };
-    ws.onmessage = (ev) => {
+    ws.on("connect", () => {
+      console.log("[desktop:user-sio] open");
+      ws.emit("auth", { token: session.token });
+    });
+    ws.on("message", (msg) => {
       try {
-        const msg = JSON.parse(ev.data);
-        console.log("[desktop:user-ws] message", msg.type, msg);
+        console.log("[desktop:user-sio] message", msg.type, msg);
         if (msg.type === "call-started") {
           routerCapsRef.current = msg.routerRtpCapabilities ?? null;
           setActiveCall({
@@ -1318,7 +1349,7 @@ function App() {
             routerRtpCapabilities: msg.routerRtpCapabilities ?? null,
           });
           if (!msg.routerRtpCapabilities && msg.roomId) {
-            ws.send(JSON.stringify({ type: "get-router-caps", roomId: msg.roomId }));
+            ws.emit("get-router-caps", { roomId: msg.roomId });
           }
         }
         if (msg.type === "call-stopped") {
@@ -1331,7 +1362,7 @@ function App() {
             routerCapsRef.current = msg.routerRtpCapabilities;
             setActiveCall((prev) => (prev ? { ...prev, routerRtpCapabilities: msg.routerRtpCapabilities } : prev));
           } else if (activeCall?.id) {
-            ws.send(JSON.stringify({ type: "get-router-caps", roomId: activeCall.id }));
+            ws.emit("get-router-caps", { roomId: activeCall.id });
           }
           requestConsume(msg.producerId);
         }
@@ -1341,7 +1372,7 @@ function App() {
              routerCapsRef.current = msg.routerRtpCapabilities;
              setActiveCall((prev) => (prev ? { ...prev, routerRtpCapabilities: msg.routerRtpCapabilities } : prev));
            } else if (activeCall?.id) {
-             ws.send(JSON.stringify({ type: "get-router-caps", roomId: activeCall.id }));
+             ws.emit("get-router-caps", { roomId: activeCall.id });
            }
           requestConsume(msg.producerId);
         }
@@ -1352,17 +1383,14 @@ function App() {
       } catch {
         // ignore malformed
       }
-    };
-    ws.onerror = () => {
-      console.warn("[desktop:user-ws] error");
-    };
-    ws.onclose = () => {
-      console.log("[desktop:user-ws] close");
+    });
+    ws.on("disconnect", () => {
+      console.log("[desktop:user-sio] close");
       userWsRef.current = null;
-    };
+    });
 
     return () => {
-      ws.close();
+      ws.disconnect();
       userWsRef.current = null;
     };
   }, [session?.token, session?.role]);
@@ -1518,7 +1546,7 @@ function App() {
                 {pttActive ? <FiVolume2 /> : <FiMic />}
                 <span>{pttActive ? "Talking…" : "Hold to talk"}</span>
               </button>
-              <Button label="Leave call" variant="secondary" onClick={() => endCall(activeCall.id)} />
+              <Button label="Leave call" variant="secondary" onClick={leaveCall} />
               <div className="volume-control">
                 <span className="muted small">Volume</span>
                 <input

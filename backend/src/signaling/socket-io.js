@@ -203,7 +203,8 @@ export function handleSocket({ socket, io }) {
     "PONG", "auth", "AUTH", "CALL_STARTED", "call-started",
     "GET_ROUTER_CAPS", "get-router-caps", "REQUEST_HOST_PRODUCER",
     "JOIN", "CONNECT_SEND_TRANSPORT", "PRODUCE", "CONNECT_RECV_TRANSPORT",
-    "CONSUME", "RESUME_CONSUMER", "CALL_STOPPED", "call-stopped"
+    "CONSUME", "RESUME_CONSUMER", "CALL_STOPPED", "call-stopped",
+    "USER_SPEAKING_START", "USER_SPEAKING_STOP"
   ];
 
   eventTypes.forEach(type => {
