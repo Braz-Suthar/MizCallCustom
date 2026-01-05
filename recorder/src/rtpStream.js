@@ -28,6 +28,10 @@ export class RtpStream {
         this.ffmpeg.on("close", () => {
             this.closed = true;
         });
+        this.ffmpeg.stderr.on("data", (data) => {
+            const msg = data.toString().trim();
+            if (msg) console.error("[recorder] ffmpeg stderr", msg);
+        });
 
         this.onMessage = (packet) => {
             if (this.closed || this.ffmpeg.stdin.destroyed) return;
@@ -39,6 +43,9 @@ export class RtpStream {
             try {
                 this.packets += 1;
                 this.bytes += packet.length;
+                if (this.packets <= 3) {
+                    console.log("[recorder] rtp packet", this.label, { pt, len: packet.length });
+                }
                 // Strip RTP header (12 bytes)
                 this.ffmpeg.stdin.write(packet.slice(12));
             } catch (err) {

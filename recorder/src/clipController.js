@@ -28,6 +28,8 @@ export class ClipController {
 
         this.userFrames = [];
         this.hostFrames = [];
+        this.userPcmBytes = 0;
+        this.hostPcmBytes = 0;
         this.recording = false;
         this.stopTimeout = null;
         this.sequence = 0;
@@ -36,11 +38,13 @@ export class ClipController {
 
     onUserPcm(pcm) {
         this.userBuffer.push(pcm);
+        this.userPcmBytes += pcm.length;
         if (this.recording) this.userFrames.push(pcm);
     }
 
     onHostPcm(pcm) {
         this.hostBuffer.push(pcm);
+        this.hostPcmBytes += pcm.length;
         if (this.recording) this.hostFrames.push(pcm);
     }
 
@@ -79,10 +83,21 @@ export class ClipController {
 
         const mixed = mixPcm(Buffer.concat(this.hostFrames), Buffer.concat(this.userFrames));
         if (mixed.length === 0) {
-            console.warn("[recorder] write clip skipped (no audio)", { file });
+            console.warn("[recorder] write clip skipped (no audio)", {
+                file,
+                userPcmBytes: this.userPcmBytes,
+                hostPcmBytes: this.hostPcmBytes,
+            });
             return;
         }
-        console.log("[recorder] write clip", { file, hostLen: mixed.length, userFrames: this.userFrames.length, hostFrames: this.hostFrames.length });
+        console.log("[recorder] write clip", {
+            file,
+            hostLen: mixed.length,
+            userFrames: this.userFrames.length,
+            hostFrames: this.hostFrames.length,
+            userPcmBytes: this.userPcmBytes,
+            hostPcmBytes: this.hostPcmBytes,
+        });
         writeWav(mixed, file);
 
         // metadata
