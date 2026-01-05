@@ -161,9 +161,15 @@ wss.on("connection", async (socket) => {
                 port: msg.remotePort
             });
 
+            // Build minimal rtpCapabilities from the producer to preserve payload types/codecs
+            const rtpCapabilities = {
+                codecs: producer.rtpParameters.codecs,
+                headerExtensions: producer.rtpParameters.headerExtensions || room.router.rtpCapabilities.headerExtensions,
+            };
+
             const consumer = await plain.consume({
                 producerId: producer.id,
-                rtpCapabilities: room.router.rtpCapabilities,
+                rtpCapabilities,
                 paused: false
             });
             await consumer.resume();
