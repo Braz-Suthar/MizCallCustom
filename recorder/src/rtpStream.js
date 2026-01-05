@@ -14,14 +14,15 @@ export class RtpStream {
             "s=recorder",
             "c=IN IP4 0.0.0.0",
             "t=0 0",
-            `m=audio ${port} RTP 100`,
+            `m=audio ${port} RTP/AVP 100`,
             "a=rtpmap:100 opus/48000/2",
+            "a=rtcp-mux",
             "a=recvonly",
         ].join("\n");
 
         this.ffmpeg = spawn("ffmpeg", [
             "-loglevel", "error",
-            "-protocol_whitelist", "file,udp,rtp",
+            "-protocol_whitelist", "file,udp,rtp,pipe",
             "-f", "sdp",
             "-i", "pipe:0",
             "-f", "s16le",
