@@ -54,13 +54,23 @@ export function startUserRecording({
 }
 
 export function startClip(userId) {
+    const entry = streams.get(userId);
+    if (!entry) {
+        console.warn("[recorder] START_CLIP ignored, no stream for", userId);
+        return;
+    }
     console.log("[recorder] START_CLIP", { userId });
-    streams.get(userId)?.controller.start();
+    entry.controller.start();
 }
 
 export function stopClip(userId) {
+    const entry = streams.get(userId);
+    if (!entry) {
+        console.warn("[recorder] STOP_CLIP ignored, no stream for", userId);
+        return;
+    }
     console.log("[recorder] STOP_CLIP", { userId });
-    streams.get(userId)?.controller.stop();
+    entry.controller.stop();
 }
 
 export function stopUserRecording(userId) {

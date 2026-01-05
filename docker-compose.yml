@@ -38,6 +38,7 @@ services:
       - redis
     volumes:
       - recordings:/var/app/recordings
+      - /opt/docker-data/recordings:/var/app/recordings
     restart: always
 
   # ========================
@@ -72,6 +73,7 @@ services:
       - .env
     volumes:
       - recordings:/var/app/recordings
+      - /opt/docker-data/recordings:/var/app/recordings
     depends_on:
       - mediasoup
     restart: always

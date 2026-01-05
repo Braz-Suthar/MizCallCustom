@@ -30,6 +30,8 @@ export class ClipController {
         this.hostFrames = [];
         this.recording = false;
         this.stopTimeout = null;
+        this.sequence = 0;
+        this.finalized = false;
     }
 
     onUserPcm(pcm) {
@@ -44,13 +46,16 @@ export class ClipController {
 
     start() {
         this.recording = true;
+        this.finalized = false;
         this.startedAt = new Date();
+        this.sequence += 1;
         // seed frames with pre-roll snapshots
         this.userFrames = [Buffer.from(this.userBuffer.snapshot())];
         this.hostFrames = [Buffer.from(this.hostBuffer.snapshot())];
     }
 
     stop() {
+        if (this.finalized) return;
         // keep recording for post-roll before finalizing
         const postMs = Math.max(this.userPostSeconds, this.hostPostSeconds) * 1000;
         if (this.stopTimeout) clearTimeout(this.stopTimeout);
@@ -62,13 +67,15 @@ export class ClipController {
     }
 
     write() {
+        if (this.finalized) return;
         const date = this.startedAt.toISOString().slice(0, 10);
         const time = this.startedAt.toISOString().slice(11, 19).replace(/:/g, "-");
 
         const dir = `/var/app/recordings/${this.hostId}/${this.userId}/${date}`;
         fs.mkdirSync(dir, { recursive: true });
 
-        const file = path.join(dir, `clip_${time}.wav`);
+        const fileBase = path.join(dir, `clip_${time}_${this.sequence}`);
+        const file = `${fileBase}.wav`;
 
         const mixed = mixPcm(Buffer.concat(this.hostFrames), Buffer.concat(this.userFrames));
         console.log("[recorder] write clip", { file, hostLen: mixed.length, userFrames: this.userFrames.length, hostFrames: this.hostFrames.length });
@@ -100,6 +107,7 @@ export class ClipController {
             filePath: file
         });
 
+        this.finalized = true;
         this.userFrames = [];
         this.hostFrames = [];
         this.userBuffer.clear();
