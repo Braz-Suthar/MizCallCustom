@@ -78,6 +78,10 @@ export class ClipController {
         const file = `${fileBase}.wav`;
 
         const mixed = mixPcm(Buffer.concat(this.hostFrames), Buffer.concat(this.userFrames));
+        if (mixed.length === 0) {
+            console.warn("[recorder] write clip skipped (no audio)", { file });
+            return;
+        }
         console.log("[recorder] write clip", { file, hostLen: mixed.length, userFrames: this.userFrames.length, hostFrames: this.hostFrames.length });
         writeWav(mixed, file);
 

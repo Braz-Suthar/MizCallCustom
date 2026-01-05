@@ -71,7 +71,13 @@ export function stopClip(userId) {
         console.warn("[recorder] STOP_CLIP ignored, no stream for", userId);
         return;
     }
-    console.log("[recorder] STOP_CLIP", { userId });
+    console.log("[recorder] STOP_CLIP", {
+        userId,
+        userPackets: entry.userStream.packets,
+        hostPackets: entry.hostStream.packets,
+        userBytes: entry.userStream.bytes,
+        hostBytes: entry.hostStream.bytes,
+    });
     entry.controller.stop();
 }
 
@@ -79,7 +85,13 @@ export function stopUserRecording(userId) {
     const entry = streams.get(userId);
     if (!entry) return;
 
-    console.log("[recorder] STOP_USER", { userId });
+    console.log("[recorder] STOP_USER", {
+        userId,
+        userPackets: entry.userStream.packets,
+        hostPackets: entry.hostStream.packets,
+        userBytes: entry.userStream.bytes,
+        hostBytes: entry.hostStream.bytes,
+    });
     // ensure clip is finalized
     entry.controller.stop();
     entry.userStream.close();
