@@ -42,11 +42,13 @@ export function startUserRecording({
 
     const userStream = new RtpStream({
         port: userPort,
+        label: `user-${userId}`,
         onPcm: (pcm) => controller.onUserPcm(pcm)
     });
 
     const hostStream = new RtpStream({
         port: hostPort,
+        label: `host-${userId}`,
         onPcm: (pcm) => controller.onHostPcm(pcm)
     });
 

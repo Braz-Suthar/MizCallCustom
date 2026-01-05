@@ -2,12 +2,15 @@ import dgram from "dgram";
 import { spawn } from "child_process";
 
 export class RtpStream {
-    constructor({ port, onPcm }) {
+    constructor({ port, onPcm, label = "stream" }) {
         this.socket = dgram.createSocket("udp4");
         this.closed = false;
+        this.packets = 0;
+        this.bytes = 0;
+        this.label = label;
 
         this.ffmpeg = spawn("ffmpeg", [
-            "-loglevel", "quiet",
+            "-loglevel", "error",
             "-protocol_whitelist", "file,udp,rtp",
             "-f", "opus",
             "-i", "pipe:0",
@@ -28,7 +31,14 @@ export class RtpStream {
 
         this.onMessage = (packet) => {
             if (this.closed || this.ffmpeg.stdin.destroyed) return;
+            // ignore tiny/invalid packets
+            if (!packet || packet.length <= 12) return;
+            // drop RTCP (payload types 200-204)
+            const pt = packet[1] & 0x7f;
+            if (pt >= 200 && pt <= 204) return;
             try {
+                this.packets += 1;
+                this.bytes += packet.length;
                 // Strip RTP header (12 bytes)
                 this.ffmpeg.stdin.write(packet.slice(12));
             } catch (err) {
@@ -65,5 +75,6 @@ export class RtpStream {
         } catch {
             // ignore
         }
+        console.log("[recorder] stream closed", this.label, { packets: this.packets, bytes: this.bytes });
     }
 }
