@@ -162,11 +162,16 @@ wss.on("connection", async (socket) => {
             });
 
             // Build minimal rtpCapabilities from the producer to preserve payload types/codecs
+            const headerExtensions =
+                (producer.rtpParameters.headerExtensions ||
+                    room.router.rtpCapabilities.headerExtensions ||
+                    [])
+                    .filter((ext) => !ext.kind || ext.kind === "audio")
+                    .map((ext) => ({ ...ext, kind: "audio" }));
+
             const rtpCapabilities = {
                 codecs: producer.rtpParameters.codecs,
-                headerExtensions: (producer.rtpParameters.headerExtensions || room.router.rtpCapabilities.headerExtensions || []).filter(
-                    (ext) => !ext.kind || ext.kind === "audio"
-                ),
+                headerExtensions,
             };
 
             const consumer = await plain.consume({
