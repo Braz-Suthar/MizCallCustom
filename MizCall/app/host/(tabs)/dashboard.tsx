@@ -49,7 +49,28 @@ export default function HostDashboard() {
   const [callLogs, setCallLogs] = useState<Array<{ id: string; status: string }>>([]);
   const [showActiveCallModal, setShowActiveCallModal] = useState(false);
   const [isStartingCall, setIsStartingCall] = useState(false);
-  const isDark = colors.background === "#000" || colors.background === "#1a1d29";
+  const isDark = (() => {
+    const bg = colors.background;
+    // Check for hex colors
+    if (bg === "#000" || bg === "#1a1d29" || bg === "#000000") return true;
+    // Check for rgb colors (dark if all values < 50)
+    const rgbMatch = bg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (rgbMatch) {
+      const [, r, g, b] = rgbMatch.map(Number);
+      return r < 50 && g < 50 && b < 50;
+    }
+    return false;
+  })();
+  
+  // Log theme info for debugging
+  useEffect(() => {
+    console.log("[Dashboard] Theme:", {
+      isDark,
+      background: colors.background,
+      text: colors.text,
+      statValueColor: isDark ? "#93c5fd" : colors.text
+    });
+  }, [isDark, colors.background, colors.text]);
   
   // Connection is good if we have latency data and it's under 1000ms
   // WebSocket connection is preferred but not required
@@ -334,15 +355,18 @@ export default function HostDashboard() {
               >
                 <Text style={[styles.statLabel, { color: colors.text }]}>{stat.label}</Text>
                 <View style={styles.statValueRow}>
-                  {stat.isLatency && (
-                    <Ionicons 
-                      name="wifi" 
-                      size={20} 
-                      color={connectionStatus.connected ? "#22c55e" : "#ef4444"} 
-                      style={styles.statIcon} 
-                    />
-                  )}
-                  <Text style={[styles.statValue, { color: PRIMARY_BLUE }]}>{stat.value}</Text>
+                  <Ionicons 
+                    name={stat.icon} 
+                    size={20} 
+                    color={stat.isLatency 
+                      ? (connectionStatus.connected ? "#22c55e" : "#ef4444")
+                      : PRIMARY_BLUE
+                    } 
+                    style={styles.statIcon} 
+                  />
+                  <Text style={[styles.statValue, { color: isDark ? "#93c5fd" : colors.text }]}>
+                    {stat.value}
+                  </Text>
                 </View>
               </View>
             ))}

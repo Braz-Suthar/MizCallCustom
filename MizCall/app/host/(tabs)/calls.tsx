@@ -75,15 +75,15 @@ export default function HostCalls() {
     if (!dateString) return "Unknown";
     
     try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return "Invalid date";
-      
-      return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "Invalid date";
+    
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
     } catch (error) {
       console.error("[calls] Error formatting date:", error);
       return "Invalid date";
@@ -92,53 +92,53 @@ export default function HostCalls() {
 
   const formatDuration = (startTime: string, endTime?: string | null, status?: string) => {
     try {
-      const start = new Date(startTime);
-      
-      // Validate start time
-      if (isNaN(start.getTime())) {
-        return "Unknown";
-      }
-      
-      const startUTC = start.toISOString().slice(11, 19); // HH:MM:SS format
-      
+    const start = new Date(startTime);
+    
+    // Validate start time
+    if (isNaN(start.getTime())) {
+      return "Unknown";
+    }
+    
+    const startUTC = start.toISOString().slice(11, 19); // HH:MM:SS format
+    
       // If status is not "ended" or no endTime, show start time only
       if (status !== "ended" || !endTime) {
-        return `Started: ${startUTC} UTC`;
-      }
-      
-      const end = new Date(endTime);
-      
-      // Validate end time
-      if (isNaN(end.getTime())) {
-        return `Started: ${startUTC} UTC`;
-      }
-      
-      const endUTC = end.toISOString().slice(11, 19); // HH:MM:SS format
-      
-      // Calculate duration
-      const diffMs = end.getTime() - start.getTime();
-      
-      // If negative or unreasonably large, just show times
-      if (diffMs < 0 || diffMs > 86400000) {
-        return `${startUTC} - ${endUTC} UTC`;
-      }
-      
-      const totalSeconds = Math.floor(diffMs / 1000);
-      const hours = Math.floor(totalSeconds / 3600);
-      const minutes = Math.floor((totalSeconds % 3600) / 60);
-      const seconds = totalSeconds % 60;
-      
-      // Format: "HH:MM:SS - HH:MM:SS (Xm Ys)"
-      let durationStr = "";
-      if (hours > 0) {
-        durationStr = `${hours}h ${minutes}m`;
-      } else if (minutes > 0) {
-        durationStr = `${minutes}m ${seconds}s`;
-      } else {
-        durationStr = `${seconds}s`;
-      }
-      
-      return `${startUTC} - ${endUTC} (${durationStr})`;
+      return `Started: ${startUTC} UTC`;
+    }
+    
+    const end = new Date(endTime);
+    
+    // Validate end time
+    if (isNaN(end.getTime())) {
+      return `Started: ${startUTC} UTC`;
+    }
+    
+    const endUTC = end.toISOString().slice(11, 19); // HH:MM:SS format
+    
+    // Calculate duration
+    const diffMs = end.getTime() - start.getTime();
+    
+    // If negative or unreasonably large, just show times
+    if (diffMs < 0 || diffMs > 86400000) {
+      return `${startUTC} - ${endUTC} UTC`;
+    }
+    
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    
+    // Format: "HH:MM:SS - HH:MM:SS (Xm Ys)"
+    let durationStr = "";
+    if (hours > 0) {
+      durationStr = `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      durationStr = `${minutes}m ${seconds}s`;
+    } else {
+      durationStr = `${seconds}s`;
+    }
+    
+    return `${startUTC} - ${endUTC} (${durationStr})`;
     } catch (error) {
       console.error("[calls] Error formatting duration:", error);
       return "Unknown";
@@ -275,12 +275,12 @@ export default function HostCalls() {
                   onPress={() => handleJoinCall()}
                   style={{ flex: 1 }}
                 />
-                <AppButton
-                  label="End Call"
-                  variant="danger"
+              <AppButton
+                label="End Call"
+                variant="danger"
                   onPress={() => handleEndCall()}
                   style={{ flex: 1 }}
-                />
+              />
               </View>
             </View>
           </View>

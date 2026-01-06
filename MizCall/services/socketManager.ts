@@ -147,7 +147,7 @@ class SocketManager {
       } else {
         console.log("[SocketManager] ⚠️  Socket not connected, skipping ping");
       }
-    }, 2000); // 2 seconds
+    }, 4000); // 2 seconds
   }
 
   // Stop ping interval
