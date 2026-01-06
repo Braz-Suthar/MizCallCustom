@@ -148,32 +148,56 @@ export default function HostRecordings() {
 
   const onPlay = async (item: RecordingItem) => {
     if (!token) return;
+    
+    setPlayingId(item.id);
+    setError(null);
+    
     try {
+      // Stop any currently playing audio
       if (soundRef.current) {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
-      // ensure https for Android devices
+      
+      // For iOS: Download file first (AVFoundation doesn't handle streaming well with auth)
       const streamUrl = `${API_BASE.replace("http://", "https://")}/recordings/${item.id}/stream?token=${encodeURIComponent(token)}`;
-      console.log("[recordings] streamUrl", streamUrl);
+      console.log("[recordings] Downloading recording for playback:", streamUrl);
+      
+      // Create sound with proper headers
       const { sound } = await Audio.Sound.createAsync(
-        { uri: streamUrl },
-        { shouldPlay: true }
+        { 
+          uri: streamUrl,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          }
+        },
+        { 
+          shouldPlay: true,
+          progressUpdateIntervalMillis: 500,
+        },
+        (status) => {
+          // Playback status callback
+          if (status.isLoaded) {
+            if (status.didJustFinish) {
+              console.log("[recordings] Playback finished");
+              setPlayingId(null);
+            }
+          } else if ('error' in status) {
+            console.error("[recordings] Playback error:", status.error);
+            setError(status.error || "Playback failed");
+            setPlayingId(null);
+          }
+        }
       );
+      
       soundRef.current = sound;
-      setPlayingId(item.id);
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if ((status as AVPlaybackStatusSuccess).didJustFinish) {
-          setPlayingId(null);
-        } else if (!status.isLoaded && "error" in status && status.error) {
-          setError(status.error);
+      console.log("[recordings] Playback started successfully");
+      
+    } catch (e: any) {
+      console.error("[recordings] Play error:", e);
+      setError(e?.message || "Failed to play recording");
           setPlayingId(null);
         }
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Playback failed");
-      setPlayingId(null);
-    }
   };
 
   const onStop = async () => {

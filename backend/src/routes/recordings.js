@@ -92,16 +92,47 @@ router.get("/recordings/:id/stream", async (req, res) => {
 
   try {
     const stats = fs.statSync(rec.file_path);
-    res.setHeader("Content-Type", "audio/wav");
-    res.setHeader("Content-Length", stats.size);
-    console.log("[recordings] stream", { id, path: rec.file_path, size: stats.size });
-    const stream = fs.createReadStream(rec.file_path);
-    stream.on("error", (err) => {
-      console.error("[recordings] stream error", err?.message || err);
-      if (!res.headersSent) res.sendStatus(500);
-      else res.destroy();
-    });
-    stream.pipe(res);
+    const fileSize = stats.size;
+    
+    // Handle HTTP Range requests for iOS (required for AVFoundation)
+    const range = req.headers.range;
+    
+    if (range) {
+      // Parse range header
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunksize = (end - start) + 1;
+      
+      // Set headers for partial content
+      res.status(206);
+      res.setHeader("Content-Range", `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Content-Length", chunksize);
+      res.setHeader("Content-Type", "audio/wav");
+      res.setHeader("Cache-Control", "no-cache");
+      
+      console.log("[recordings] streaming range", { id, start, end, chunksize });
+      
+      const stream = fs.createReadStream(rec.file_path, { start, end });
+      stream.pipe(res);
+    } else {
+      // No range request - send full file
+      res.setHeader("Content-Type", "audio/wav");
+      res.setHeader("Content-Length", fileSize);
+      res.setHeader("Accept-Ranges", "bytes");  // Tell iOS we support ranges
+      res.setHeader("Cache-Control", "no-cache");
+      
+      console.log("[recordings] streaming full file", { id, path: rec.file_path, size: fileSize });
+      
+      const stream = fs.createReadStream(rec.file_path);
+      stream.on("error", (err) => {
+        console.error("[recordings] stream error", err?.message || err);
+        if (!res.headersSent) res.sendStatus(500);
+        else res.destroy();
+      });
+      stream.pipe(res);
+    }
   } catch (err) {
     console.error("[recordings] file missing or unreadable", rec.file_path, err?.message || err);
     return res.sendStatus(404);
