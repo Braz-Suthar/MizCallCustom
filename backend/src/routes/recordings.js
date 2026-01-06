@@ -90,8 +90,22 @@ router.get("/recordings/:id/stream", async (req, res) => {
     return res.sendStatus(403);
   }
 
-  res.setHeader("Content-Type", "audio/wav");
-  fs.createReadStream(rec.file_path).pipe(res);
+  try {
+    const stats = fs.statSync(rec.file_path);
+    res.setHeader("Content-Type", "audio/wav");
+    res.setHeader("Content-Length", stats.size);
+    console.log("[recordings] stream", { id, path: rec.file_path, size: stats.size });
+    const stream = fs.createReadStream(rec.file_path);
+    stream.on("error", (err) => {
+      console.error("[recordings] stream error", err?.message || err);
+      if (!res.headersSent) res.sendStatus(500);
+      else res.destroy();
+    });
+    stream.pipe(res);
+  } catch (err) {
+    console.error("[recordings] file missing or unreadable", rec.file_path, err?.message || err);
+    return res.sendStatus(404);
+  }
 });
 
 /* ---------------- HOST DELETE ---------------- */
