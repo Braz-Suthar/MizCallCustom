@@ -204,7 +204,7 @@ export function handleSocket({ socket, io }) {
     "GET_ROUTER_CAPS", "get-router-caps", "REQUEST_HOST_PRODUCER",
     "JOIN", "CONNECT_SEND_TRANSPORT", "PRODUCE", "CONNECT_RECV_TRANSPORT",
     "CONSUME", "RESUME_CONSUMER", "CALL_STOPPED", "call-stopped",
-    "USER_SPEAKING_START", "USER_SPEAKING_STOP"
+    "USER_SPEAKING_START", "USER_SPEAKING_STOP", "HOST_MIC_STATUS"
   ];
 
   eventTypes.forEach(type => {
@@ -571,6 +571,28 @@ export function handleSocket({ socket, io }) {
             type: "CONSUME_ERROR",
             error: e?.message || "consume failed"
           });
+        }
+        break;
+      }
+
+      /* ---------------- HOST MIC STATUS ---------------- */
+      case "HOST_MIC_STATUS": {
+        if (!peer || peer.role !== "host") break;
+        
+        const roomId = msg.roomId || peer.roomId || peer.hostId || "main-room";
+        console.log("[Socket.IO] HOST_MIC_STATUS:", { hostId: peer.id, muted: msg.muted, roomId });
+        
+        // Notify all users in the room about host mic status
+        const room = getRoom(roomId);
+        if (room) {
+          for (const [peerId, otherPeer] of room.peers) {
+            if (otherPeer.role === "user") {
+              otherPeer.socket.emit("HOST_MIC_STATUS", {
+                type: "HOST_MIC_STATUS",
+                muted: msg.muted,
+              });
+            }
+          }
         }
         break;
       }

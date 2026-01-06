@@ -105,8 +105,23 @@ export default function ActiveCallScreen() {
       socket.emit("auth", { type: "auth", token });
     });
 
+    // Listen for generic message event too
+    socket.on("message", (msg) => {
+      console.log("[host-active-call] Received message event:", msg.type);
+      if (msg.type === "USER_SPEAKING_STATUS") {
+        console.log("[host-active-call] USER_SPEAKING_STATUS from message:", msg);
+        setParticipantStates((prev) => ({
+          ...prev,
+          [msg.userId]: {
+            speaking: msg.speaking,
+            lastSpoke: msg.speaking ? Date.now() : prev[msg.userId]?.lastSpoke || Date.now(),
+          },
+        }));
+      }
+    });
+
     socket.on("USER_SPEAKING_STATUS", (data) => {
-      console.log("[host-active-call] USER_SPEAKING_STATUS:", data);
+      console.log("[host-active-call] USER_SPEAKING_STATUS event:", data);
       
       setParticipantStates((prev) => ({
         ...prev,
@@ -155,8 +170,20 @@ export default function ActiveCallScreen() {
   };
 
   const toggleMute = () => {
-    setMuted((m) => !m);
-    setMicEnabled(!muted);
+    const newMutedState = !muted;
+    setMuted(newMutedState);
+    setMicEnabled(!newMutedState);
+    
+    // Notify users about host mute status
+    if (statusSocketRef.current) {
+      statusSocketRef.current.emit("HOST_MIC_STATUS", {
+        type: "HOST_MIC_STATUS",
+        muted: newMutedState,
+        roomId: activeCall?.roomId,
+      });
+    }
+    
+    console.log("[host-active-call] Mic", newMutedState ? "muted" : "unmuted");
   };
 
   const hasCall = !!activeCall || callStatus === "starting";
@@ -357,7 +384,7 @@ export default function ActiveCallScreen() {
               color={muted ? "#fff" : colors.text}
             />
             <Text style={[styles.controlButtonText, { color: muted ? "#fff" : colors.text }]}>
-              {muted ? "Unmute" : "Mute"}
+              {muted ? "Muted" : "Speaking"}
             </Text>
           </Pressable>
 

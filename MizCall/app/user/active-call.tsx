@@ -18,9 +18,24 @@ export default function UserActiveCallScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
-  const { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady } = useJoinCall();
+  const { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket } = useJoinCall();
   const hasJoinedRef = useRef(false);
   const [isPressing, setIsPressing] = React.useState(false);
+  const [hostMuted, setHostMuted] = React.useState(false);
+
+  // Listen for host mic status updates
+  useEffect(() => {
+    if (!socket) return;
+
+    socket.on("HOST_MIC_STATUS", (data) => {
+      console.log("[user-active-call] HOST_MIC_STATUS:", data);
+      setHostMuted(data.muted);
+    });
+
+    return () => {
+      socket.off("HOST_MIC_STATUS");
+    };
+  }, [socket]);
 
   useEffect(() => {
     if (!hasJoinedRef.current && activeCall?.routerRtpCapabilities) {
@@ -110,6 +125,25 @@ export default function UserActiveCallScreen() {
               {isPressing ? "🎤 Speaking..." : "🔇 Muted"}
             </Text>
           </View>
+
+          {/* Host Status Card */}
+          {state === "connected" && (
+            <View style={[styles.hostStatusCard, { 
+              backgroundColor: hostMuted ? "#64748b15" : SUCCESS_GREEN + "15",
+              borderColor: hostMuted ? "#64748b" : SUCCESS_GREEN,
+            }]}>
+              <View style={styles.statusRow}>
+                <Ionicons 
+                  name={hostMuted ? "mic-off" : "mic"} 
+                  size={20} 
+                  color={hostMuted ? "#64748b" : SUCCESS_GREEN} 
+                />
+                <Text style={[styles.hostStatusText, { color: hostMuted ? "#64748b" : SUCCESS_GREEN }]}>
+                  Host is {hostMuted ? "muted" : "speaking"}
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Audio Level Meter (Bottom Info) */}
           {remoteStream && state === "connected" && (
@@ -214,6 +248,15 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   statusText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  hostStatusCard: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  hostStatusText: {
     fontSize: 15,
     fontWeight: "600",
   },

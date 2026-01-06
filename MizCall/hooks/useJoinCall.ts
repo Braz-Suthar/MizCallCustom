@@ -436,9 +436,9 @@ export function useJoinCall() {
       
       // Notify backend that user started speaking
       if (socketRef.current) {
+        console.log("[useJoinCall] Emitting USER_SPEAKING_START");
         socketRef.current.emit("USER_SPEAKING_START", {
           type: "USER_SPEAKING_START",
-          userId: socketRef.current.id,
           roomId,
         });
       }
@@ -464,14 +464,14 @@ export function useJoinCall() {
     
     // Notify backend that user stopped speaking
     if (socketRef.current) {
+      console.log("[useJoinCall] Emitting USER_SPEAKING_STOP");
       socketRef.current.emit("USER_SPEAKING_STOP", {
         type: "USER_SPEAKING_STOP",
-        userId: socketRef.current.id,
         roomId,
       });
     }
   }, [roomId]);
 
-  return { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady };
+  return { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket: socketRef.current };
 }
 
