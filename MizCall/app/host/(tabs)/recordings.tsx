@@ -8,6 +8,7 @@ import { useAppSelector } from "../../../state/store";
 
 // Consistent primary blue color
 const PRIMARY_BLUE = "#5B9FFF";
+const DANGER_RED = "#ef4444";
 
 type HostRecordingsResponse = Record<
   string,
@@ -27,10 +28,12 @@ type RecordingItem = {
   time: string;
 };
 
-type DateGroup = {
-  date: string;
-  recordings: RecordingItem[];
-  isExpanded: boolean;
+type GroupedUser = {
+  userName: string;
+  dates: {
+    date: string;
+    recordings: RecordingItem[];
+  }[];
 };
 
 export default function HostRecordings() {
@@ -39,10 +42,18 @@ export default function HostRecordings() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<RecordingItem[]>([]);
-  const [dateGroups, setDateGroups] = useState<DateGroup[]>([]);
+  const [data, setData] = useState<GroupedUser[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+   const [confirm, setConfirm] = useState<{
+    visible: boolean;
+    title?: string;
+    message?: string;
+    onConfirm?: () => void;
+  }>({ visible: false });
   const soundRef = useRef<Audio.Sound | null>(null);
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let mounted = true;
@@ -69,34 +80,20 @@ export default function HostRecordings() {
       try {
         const res = await apiFetch<HostRecordingsResponse>("/host/recordings", token);
         if (!mounted) return;
-        const flattened: RecordingItem[] = [];
-        for (const userName of Object.keys(res)) {
+        const grouped: GroupedUser[] = Object.keys(res).map((userName) => {
           const byDate = res[userName] || {};
-          for (const date of Object.keys(byDate)) {
-            for (const clip of byDate[date]) {
-              flattened.push({ id: clip.id, userName, date, time: clip.time });
-            }
-          }
-        }
-        flattened.sort((a, b) => (a.date === b.date ? (a.time > b.time ? -1 : 1) : a.date > b.date ? -1 : 1));
-        setData(flattened);
-        
-        // Group by date
-        const groups: Record<string, RecordingItem[]> = {};
-        flattened.forEach(item => {
-          if (!groups[item.date]) groups[item.date] = [];
-          groups[item.date].push(item);
+          const dates = Object.keys(byDate)
+            .sort((a, b) => (a > b ? -1 : 1))
+            .map((date) => ({
+              date,
+              recordings: (byDate[date] || [])
+                .slice()
+                .sort((a, b) => (a.time > b.time ? -1 : 1))
+                .map((clip) => ({ id: clip.id, userName, date, time: clip.time })),
+            }));
+          return { userName, dates };
         });
-        
-        const dateGroupsArray: DateGroup[] = Object.keys(groups)
-          .sort((a, b) => b.localeCompare(a))
-          .map(date => ({
-            date,
-            recordings: groups[date],
-            isExpanded: true, // Default to expanded
-          }));
-        
-        setDateGroups(dateGroupsArray);
+        setData(grouped);
       } catch (e: any) {
         if (!mounted) return;
         setError(e?.message || "Failed to load recordings");
@@ -108,17 +105,26 @@ export default function HostRecordings() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Trigger reload by updating a dependency or call load directly
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const res = await apiFetch<HostRecordingsResponse>("/host/recordings", token!);
+      const grouped: GroupedUser[] = Object.keys(res).map((userName) => {
+        const byDate = res[userName] || {};
+        const dates = Object.keys(byDate)
+          .sort((a, b) => (a > b ? -1 : 1))
+          .map((date) => ({
+            date,
+            recordings: (byDate[date] || [])
+              .slice()
+              .sort((a, b) => (a.time > b.time ? -1 : 1))
+              .map((clip) => ({ id: clip.id, userName, date, time: clip.time })),
+          }));
+        return { userName, dates };
+      });
+      setData(grouped);
+    } catch (e) {
+      // ignore refresh errors
+    }
     setRefreshing(false);
-  };
-
-  const toggleDateGroup = (date: string) => {
-    setDateGroups(prev =>
-      prev.map(group =>
-        group.date === date ? { ...group, isExpanded: !group.isExpanded } : group
-      )
-    );
   };
 
   const formatDate = (dateString: string) => {
@@ -179,6 +185,38 @@ export default function HostRecordings() {
     }
   };
 
+  const deleteClips = async (ids: string[]) => {
+    if (!token || !ids.length) return;
+    setDeleting(true);
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          fetch(`${API_BASE}/host/recordings/${id}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        )
+      );
+      setData((prev) =>
+        prev
+          .map((u) => ({
+            ...u,
+            dates: u.dates
+              .map((d) => ({
+                ...d,
+                recordings: d.recordings.filter((r) => !ids.includes(r.id)),
+              }))
+              .filter((d) => d.recordings.length > 0),
+          }))
+          .filter((u) => u.dates.length > 0)
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to delete recordings");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const empty = !loading && data.length === 0;
 
   return (
@@ -209,8 +247,8 @@ export default function HostRecordings() {
       ) : null}
 
       <FlatList
-        data={dateGroups}
-        keyExtractor={(item) => item.date}
+        data={data}
+        keyExtractor={(item) => item.userName}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -219,93 +257,196 @@ export default function HostRecordings() {
             colors={[PRIMARY_BLUE]}
           />
         }
-        renderItem={({ item: dateGroup }) => (
-          <View style={styles.dateGroupContainer}>
-            {/* Date Folder Header */}
-            <Pressable
-              style={[styles.dateHeader, { backgroundColor: colors.card }]}
-              onPress={() => toggleDateGroup(dateGroup.date)}
-            >
-              <View style={styles.dateHeaderLeft}>
-                <Ionicons
-                  name={dateGroup.isExpanded ? "folder-open" : "folder"}
-                  size={24}
-                  color={PRIMARY_BLUE}
-                />
-                <View style={styles.dateInfo}>
-                  <Text style={[styles.dateText, { color: colors.text }]}>
-                    {formatDate(dateGroup.date)}
-                  </Text>
-                  <Text style={[styles.dateCount, { color: colors.text }]}>
-                    {dateGroup.recordings.length} recording{dateGroup.recordings.length > 1 ? 's' : ''}
-                  </Text>
-                </View>
-              </View>
-              <Ionicons
-                name={dateGroup.isExpanded ? "chevron-up" : "chevron-down"}
-                size={20}
-                color={colors.text}
-              />
-            </Pressable>
-
-            {/* Recordings List */}
-            {dateGroup.isExpanded && (
-              <View style={styles.recordingsList}>
-                {dateGroup.recordings.map((recording) => (
-                  <View
-                    key={recording.id}
-                    style={[styles.recordingCard, { backgroundColor: colors.background, borderColor: colors.border }]}
-                  >
-                    <View style={styles.recordingHeader}>
-                      <View style={[styles.audioIcon, { backgroundColor: PRIMARY_BLUE + "20" }]}>
-                        <Ionicons name="mic" size={20} color={PRIMARY_BLUE} />
-                      </View>
-                      <View style={styles.recordingInfo}>
-                        <Text style={[styles.userName, { color: colors.text }]}>{recording.userName}</Text>
-                        <Text style={[styles.recordingTime, { color: colors.text }]}>{recording.time}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.recordingActions}>
-                      {playingId === recording.id ? (
-                        <>
-                          <Pressable
-                            style={[styles.actionButton, styles.stopButton]}
-                            onPress={onStop}
-                          >
-                            <Ionicons name="stop" size={18} color="#fff" />
-                            <Text style={styles.actionButtonText}>Stop</Text>
-                          </Pressable>
-                          <View style={styles.playingIndicator}>
-                            <View style={[styles.waveBar, { backgroundColor: PRIMARY_BLUE }]} />
-                            <View style={[styles.waveBar, { backgroundColor: PRIMARY_BLUE }]} />
-                            <View style={[styles.waveBar, { backgroundColor: PRIMARY_BLUE }]} />
-                          </View>
-                        </>
-                      ) : (
-                        <Pressable
-                          style={[styles.actionButton, styles.playButton, { backgroundColor: PRIMARY_BLUE }]}
-                          onPress={() => onPlay(recording)}
-                        >
-                          <Ionicons name="play" size={18} color="#fff" />
-                          <Text style={styles.actionButtonText}>Play</Text>
-                        </Pressable>
-                      )}
-                      <Pressable
-                        style={[styles.actionButton, styles.downloadButton, { borderColor: colors.border }]}
-                        onPress={() => {}}
-                      >
-                        <Ionicons name="download-outline" size={18} color={colors.text} />
-                      </Pressable>
+        renderItem={({ item }) => {
+          const userExpanded = expandedUsers.has(item.userName);
+          return (
+            <View style={[styles.userBlock, { borderColor: colors.border }]}>
+              <View style={[styles.userHeader, { backgroundColor: colors.card }]}>
+                <Pressable
+                  style={styles.userHeaderTap}
+                  onPress={() => {
+                    const next = new Set(expandedUsers);
+                    userExpanded ? next.delete(item.userName) : next.add(item.userName);
+                    setExpandedUsers(next);
+                  }}
+                >
+                  <View style={styles.dateHeaderLeft}>
+                    <Ionicons
+                      name={userExpanded ? "folder-open" : "folder"}
+                      size={22}
+                      color={PRIMARY_BLUE}
+                    />
+                    <View style={styles.dateInfo}>
+                      <Text style={[styles.userName, { color: colors.text }]}>{item.userName}</Text>
+                      <Text style={[styles.dateCount, { color: colors.text }]}>
+                        {item.dates.reduce((sum, d) => sum + d.recordings.length, 0)} clips
+                      </Text>
                     </View>
                   </View>
-                ))}
+                  <Ionicons
+                    name={userExpanded ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color={colors.text}
+                  />
+                </Pressable>
+                <Pressable
+                  disabled={deleting}
+                  onPress={() =>
+                    setConfirm({
+                      visible: true,
+                      title: "Delete user recordings",
+                      message: `Delete all recordings for ${item.userName}?`,
+                      onConfirm: () => deleteClips(item.dates.flatMap((d) => d.recordings.map((r) => r.id))),
+                    })
+                  }
+                  style={styles.deleteIcon}
+                >
+                  <Ionicons name="trash" size={18} color="#ef4444" />
+                </Pressable>
               </View>
-            )}
-          </View>
-        )}
+
+              {userExpanded ? (
+                <View style={styles.recordingsList}>
+                  {item.dates.map((d) => {
+                    const key = `${item.userName}:${d.date}`;
+                    const dateExpanded = expandedDates.has(key);
+                    return (
+                      <View key={key} style={styles.dateGroupContainer}>
+                        <Pressable
+                          style={[styles.dateHeader, { backgroundColor: colors.background }]}
+                          onPress={() => {
+                            const next = new Set(expandedDates);
+                            dateExpanded ? next.delete(key) : next.add(key);
+                            setExpandedDates(next);
+                          }}
+                        >
+                          <View style={styles.dateHeaderLeft}>
+                            <Ionicons
+                              name={dateExpanded ? "chevron-up" : "chevron-down"}
+                              size={18}
+                              color={colors.text}
+                            />
+                            <View style={styles.dateInfo}>
+                              <Text style={[styles.dateText, { color: colors.text }]}>{formatDate(d.date)}</Text>
+                              <Text style={[styles.dateCount, { color: colors.text }]}>
+                                {d.recordings.length} recording{d.recordings.length > 1 ? "s" : ""}
+                              </Text>
+                            </View>
+                          </View>
+                          <Pressable
+                            disabled={deleting}
+                            onPress={() =>
+                              setConfirm({
+                                visible: true,
+                                title: "Delete date folder",
+                                message: `Delete all recordings for ${formatDate(d.date)}?`,
+                                onConfirm: () => deleteClips(d.recordings.map((r) => r.id)),
+                              })
+                            }
+                            style={styles.deleteIcon}
+                          >
+                            <Ionicons name="trash" size={16} color="#ef4444" />
+                          </Pressable>
+                        </Pressable>
+
+                        {dateExpanded ? (
+                          <View style={styles.recordingsList}>
+                            {d.recordings.map((recording) => (
+                              <View
+                                key={recording.id}
+                                style={[styles.recordingCard, { backgroundColor: colors.background, borderColor: colors.border }]}
+                              >
+                                <View style={styles.recordingHeader}>
+                                  <View style={[styles.audioIcon, { backgroundColor: PRIMARY_BLUE + "20" }]}>
+                                    <Ionicons name="mic" size={20} color={PRIMARY_BLUE} />
+                                  </View>
+                                  <View style={styles.recordingInfo}>
+                                    <Text style={[styles.userName, { color: colors.text }]}>{recording.time}</Text>
+                                    <Text style={[styles.recordingTime, { color: colors.text }]}>{recording.date}</Text>
+                                  </View>
+                                </View>
+
+                                <View style={styles.recordingActions}>
+                                  {playingId === recording.id ? (
+                                    <>
+                                      <Pressable
+                                        style={[styles.actionButton, styles.stopButton]}
+                                        onPress={onStop}
+                                      >
+                                        <Ionicons name="stop" size={18} color="#fff" />
+                                        <Text style={styles.actionButtonText}>Stop</Text>
+                                      </Pressable>
+                                      <View style={styles.playingIndicator}>
+                                        <View style={[styles.waveBar, { backgroundColor: PRIMARY_BLUE }]} />
+                                        <View style={[styles.waveBar, { backgroundColor: PRIMARY_BLUE }]} />
+                                        <View style={[styles.waveBar, { backgroundColor: PRIMARY_BLUE }]} />
+                                      </View>
+                                    </>
+                                  ) : (
+                                    <Pressable
+                                      style={[styles.actionButton, styles.playButton, { backgroundColor: PRIMARY_BLUE }]}
+                                      onPress={() => onPlay(recording)}
+                                    >
+                                      <Ionicons name="play" size={18} color="#fff" />
+                                      <Text style={styles.actionButtonText}>Play</Text>
+                                    </Pressable>
+                                  )}
+                                  <Pressable
+                                    disabled={deleting}
+                                    style={[styles.actionButton, styles.downloadButton, { borderColor: colors.border }]}
+                                    onPress={() =>
+                                      setConfirm({
+                                        visible: true,
+                                        title: "Delete recording",
+                                        message: "Delete this recording?",
+                                        onConfirm: () => deleteClips([recording.id]),
+                                      })
+                                    }
+                                  >
+                                    <Ionicons name="trash" size={18} color="#ef4444" />
+                                  </Pressable>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
+          );
+        }}
         contentContainerStyle={{ paddingVertical: 12, paddingBottom: 80 }}
       />
+      {confirm.visible ? (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{confirm.title ?? "Confirm"}</Text>
+            {confirm.message ? (
+              <Text style={[styles.modalMessage, { color: colors.text }]}>{confirm.message}</Text>
+            ) : null}
+            <View style={styles.modalActions}>
+              <Pressable
+                style={[styles.modalButton, styles.modalCancel, { borderColor: colors.border, backgroundColor: colors.background }]}
+                onPress={() => setConfirm({ visible: false })}
+              >
+                <Text style={[styles.modalButtonText, { color: colors.text }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalButton, styles.modalDestructive, { backgroundColor: DANGER_RED }]}
+                onPress={() => {
+                  setConfirm({ visible: false });
+                  confirm.onConfirm?.();
+                }}
+              >
+                <Text style={[styles.modalButtonText, styles.modalButtonTextDestructive]}>Delete</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -393,10 +534,33 @@ const styles = StyleSheet.create({
     fontSize: 13,
     opacity: 0.6,
   },
+  userBlock: {
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  userHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  userHeaderTap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   recordingsList: {
     marginTop: 8,
     paddingLeft: 20,
     gap: 8,
+  },
+  deleteIcon: {
+    padding: 8,
   },
   recordingCard: {
     padding: 14,
@@ -478,6 +642,59 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 2,
     opacity: 0.7,
+  },
+  modalOverlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  modalCard: {
+    width: "100%",
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 8,
+  },
+  modalMessage: {
+    fontSize: 14,
+    marginBottom: 16,
+    opacity: 0.8,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  modalButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  modalCancel: {
+    borderWidth: 1,
+  },
+  modalDestructive: {
+  },
+  modalButtonText: {
+    color: "#111",
+    fontWeight: "600",
+  },
+  modalButtonTextDestructive: {
+    color: "#fff",
   },
 });
 

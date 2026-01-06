@@ -82,9 +82,13 @@ export default function HostSettings() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-      <Text style={[styles.title, { color: colors.text }]}>Settings</Text>
-      <Text style={[styles.subtitle, { color: colors.text }]}>Manage your account and preferences</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.header}>
+        <Text style={[styles.title, { color: colors.text }]}>Settings</Text>
+        <Text style={[styles.subtitle, { color: colors.text }]}>Manage your account and preferences</Text>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
 
       {/* Membership Section */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -278,7 +282,7 @@ export default function HostSettings() {
       </View>
 
       {/* App Info Section */}
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View style={[styles.section, styles.appInfoSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.sectionHeader}>
           <Ionicons name="information-circle-outline" size={22} color={colors.text} />
           <Text style={[styles.sectionTitle, { color: colors.text }]}>App Information</Text>
@@ -312,16 +316,23 @@ export default function HostSettings() {
         onClose={() => setChangePasswordVisible(false)}
         onSave={handleChangePassword}
       />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  header: {
     paddingHorizontal: 20,
     paddingTop: 28,
-    paddingBottom: 20,
+    paddingBottom: 12,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 32,
   },
   title: {
     fontSize: 20,
@@ -562,6 +573,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: 4,
+  },
+  appInfoSection: {
+    marginBottom: 40,
   },
   infoLabel: {
     fontSize: 15,

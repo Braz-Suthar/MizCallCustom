@@ -367,6 +367,7 @@ export default function HostDashboard() {
         icon="logo-whatsapp"
         accessibilityLabel="Contact via WhatsApp"
         onPress={() => Linking.openURL("https://wa.me/")}
+        style={{ backgroundColor: "#25D366" }}
       />
     </>
   );
