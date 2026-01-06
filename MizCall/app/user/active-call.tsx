@@ -3,9 +3,11 @@ import { Dimensions, Platform, ScrollView, StyleSheet, Text, View, Pressable } f
 import { RTCView } from "react-native-webrtc";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
+import { usePreventRemove } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { AppButton } from "../../components/ui/AppButton";
+import { LeaveCallModal } from "../../components/ui/LeaveCallModal";
 import { useAppSelector } from "../../state/store";
 import { useJoinCall } from "../../hooks/useJoinCall";
 
@@ -22,6 +24,13 @@ export default function UserActiveCallScreen() {
   const hasJoinedRef = useRef(false);
   const [isPressing, setIsPressing] = React.useState(false);
   const [hostMuted, setHostMuted] = React.useState(false);
+  const [isLeaving, setIsLeaving] = React.useState(false);
+  const [showLeaveModal, setShowLeaveModal] = React.useState(false);
+  
+  // Prevent back navigation during active call (unless explicitly leaving)
+  usePreventRemove(!!activeCall && !isLeaving, ({ data }) => {
+    // This will prevent all back navigation when activeCall exists and not leaving
+  });
 
   // Listen for host mic status updates
   useEffect(() => {
@@ -44,9 +53,23 @@ export default function UserActiveCallScreen() {
     }
   }, [activeCall?.routerRtpCapabilities, join, activeCall]);
 
-  const onLeave = () => {
+  const handleLeaveButtonClick = () => {
+    setShowLeaveModal(true);
+  };
+
+  const handleConfirmLeave = () => {
+    setShowLeaveModal(false);
     hasJoinedRef.current = false;
-    router.back();
+    setIsLeaving(true);
+    
+    // Small delay to allow usePreventRemove to update
+    setTimeout(() => {
+      router.back();
+    }, 50);
+  };
+
+  const handleCancelLeave = () => {
+    setShowLeaveModal(false);
   };
 
   const handlePressIn = () => {
@@ -69,11 +92,7 @@ export default function UserActiveCallScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={onLeave} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
         <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
-        <View style={{ width: 24 }} />
       </View>
 
       {activeCall ? (
@@ -189,7 +208,7 @@ export default function UserActiveCallScreen() {
 
           {/* Leave Button (Bottom) */}
           <Pressable
-            onPress={onLeave}
+            onPress={handleLeaveButtonClick}
             style={[styles.leaveButton, { backgroundColor: DANGER_RED }]}
           >
             <Ionicons name="call" size={24} color="#fff" />
@@ -205,21 +224,24 @@ export default function UserActiveCallScreen() {
           </Text>
         </View>
       )}
+
+      {/* Leave Call Confirmation Modal */}
+      <LeaveCallModal
+        visible={showLeaveModal}
+        onCancel={handleCancelLeave}
+        onConfirm={handleConfirmLeave}
+        isHost={false}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 28,
     paddingBottom: 16,
-  },
-  backButton: {
-    padding: 8,
   },
   title: {
     fontSize: 20,

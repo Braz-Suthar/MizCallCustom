@@ -275,27 +275,36 @@ export default function HostUsers() {
               {/* Action Buttons */}
               <View style={styles.actionButtons}>
                 <Pressable 
-                  style={[styles.actionButton, { backgroundColor: PRIMARY_BLUE + "15" }]}
+                  style={[styles.actionButton, { 
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  }]}
                   onPress={() => handleView(item)}
                 >
-                  <Ionicons name="eye-outline" size={18} color={PRIMARY_BLUE} />
-                  <Text style={[styles.actionButtonText, { color: PRIMARY_BLUE }]}>View</Text>
+                  <Ionicons name="eye-outline" size={18} color={colors.text} />
+                  <Text style={[styles.actionButtonText, { color: colors.text }]}>View</Text>
                 </Pressable>
 
                 <Pressable 
-                  style={[styles.actionButton, { backgroundColor: "#FFA50015" }]}
+                  style={[styles.actionButton, { 
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  }]}
                   onPress={() => handleEdit(item)}
                 >
-                  <Ionicons name="create-outline" size={18} color="#FFA500" />
-                  <Text style={[styles.actionButtonText, { color: "#FFA500" }]}>Edit</Text>
+                  <Ionicons name="create-outline" size={18} color={colors.text} />
+                  <Text style={[styles.actionButtonText, { color: colors.text }]}>Edit</Text>
                 </Pressable>
 
                 <Pressable 
-                  style={[styles.actionButton, { backgroundColor: "#ef444415" }]}
+                  style={[styles.actionButton, { 
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  }]}
                   onPress={() => handleDelete(item)}
                 >
-                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
-                  <Text style={[styles.actionButtonText, { color: "#ef4444" }]}>Delete</Text>
+                  <Ionicons name="trash-outline" size={18} color={colors.text} />
+                  <Text style={[styles.actionButtonText, { color: colors.text }]}>Delete</Text>
                 </Pressable>
               </View>
             </View>
@@ -662,6 +671,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
+    borderWidth: 1,
   },
   actionButtonText: {
     fontSize: 13,

@@ -14,10 +14,9 @@ const PRIMARY_BLUE = "#5B9FFF";
 
 type CallLog = {
   id: string;
-  roomId: string;
-  status: "active" | "ended";
-  startTime: string;
-  endTime?: string;
+  status: string;
+  started_at: string;
+  ended_at?: string | null;
   participants?: string[];
   duration?: string;
 };
@@ -41,6 +40,18 @@ export default function HostCalls() {
     try {
       // Fetch call logs from API
       const res = await apiFetch<{ calls: CallLog[] }>("/host/calls", token);
+      console.log("[calls] Loaded", res.calls?.length || 0, "calls");
+      
+      // Debug: Log call data
+      if (res.calls && res.calls.length > 0) {
+        console.log("[calls] Sample call:", {
+          id: res.calls[0].id,
+          status: res.calls[0].status,
+          started_at: res.calls[0].started_at,
+          ended_at: res.calls[0].ended_at,
+        });
+      }
+      
       setCallLogs(res.calls || []);
     } catch (e) {
       console.error("Failed to load call logs:", e);
@@ -56,7 +67,11 @@ export default function HostCalls() {
   );
 
   const formatDate = (dateString: string) => {
+    // console.log("[calls] formatDate", dateString);
+    if (!dateString) return "Unknown";
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "Invalid date";
+    
     return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -65,14 +80,54 @@ export default function HostCalls() {
     });
   };
 
-  const formatDuration = (startTime: string, endTime?: string) => {
-    if (!endTime) return "In progress";
-    const start = new Date(startTime).getTime();
-    const end = new Date(endTime).getTime();
-    const diff = Math.floor((end - start) / 1000); // seconds
-    const minutes = Math.floor(diff / 60);
-    const seconds = diff % 60;
-    return `${minutes}m ${seconds}s`;
+  const formatDuration = (startTime: string, endTime?: string | null, status?: string) => {
+    const start = new Date(startTime);
+    
+    // Validate start time
+    if (isNaN(start.getTime())) {
+      return "Unknown";
+    }
+    
+    const startUTC = start.toISOString().slice(11, 19); // HH:MM:SS format
+    
+    // If status is "started" or no endTime, show start time only
+    if (status === "started" || !endTime) {
+      return `Started: ${startUTC} UTC`;
+    }
+    
+    const end = new Date(endTime);
+    
+    // Validate end time
+    if (isNaN(end.getTime())) {
+      return `Started: ${startUTC} UTC`;
+    }
+    
+    const endUTC = end.toISOString().slice(11, 19); // HH:MM:SS format
+    
+    // Calculate duration
+    const diffMs = end.getTime() - start.getTime();
+    
+    // If negative or unreasonably large, just show times
+    if (diffMs < 0 || diffMs > 86400000) {
+      return `${startUTC} - ${endUTC} UTC`;
+    }
+    
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    
+    // Format: "HH:MM:SS - HH:MM:SS (Xm Ys)"
+    let durationStr = "";
+    if (hours > 0) {
+      durationStr = `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      durationStr = `${minutes}m ${seconds}s`;
+    } else {
+      durationStr = `${seconds}s`;
+    }
+    
+    return `${startUTC} - ${endUTC} (${durationStr})`;
   };
 
   return (
@@ -141,27 +196,27 @@ export default function HostCalls() {
               <View style={[styles.logCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.logHeader}>
                   <View style={styles.logHeaderLeft}>
-                    <View style={[styles.callIcon, { backgroundColor: item.status === "active" ? PRIMARY_BLUE + "20" : colors.background }]}>
+                    <View style={[styles.callIcon, { backgroundColor: item.status === "started" ? PRIMARY_BLUE + "20" : colors.background }]}>
                       <Ionicons
-                        name={item.status === "active" ? "call" : "call-outline"}
+                        name={item.status === "started" ? "call" : "call-outline"}
                         size={20}
-                        color={item.status === "active" ? PRIMARY_BLUE : colors.text}
+                        color={item.status === "started" ? PRIMARY_BLUE : colors.text}
                       />
                     </View>
                     <View style={styles.logInfo}>
-                      <Text style={[styles.logRoomId, { color: colors.text }]}>Room {item.roomId}</Text>
-                      <Text style={[styles.logTime, { color: colors.text }]}>{formatDate(item.startTime)}</Text>
+                      <Text style={[styles.logRoomId, { color: colors.text }]}>Room {item.id.slice(0, 8)}</Text>
+                      <Text style={[styles.logTime, { color: colors.text }]}>{formatDate(item.started_at)}</Text>
                     </View>
                   </View>
                   <View
                     style={[
                       styles.statusBadge,
-                      { backgroundColor: item.status === "active" ? "#22c55e" : "#64748b" }
+                      { backgroundColor: item.status === "started" ? "#22c55e" : "#64748b" }
                     ]}
                   >
-                    {item.status === "active" && <View style={styles.statusDot} />}
+                    {item.status === "started" && <View style={styles.statusDot} />}
                     <Text style={styles.statusText}>
-                      {item.status === "active" ? "Active" : "Ended"}
+                      {item.status === "started" ? "Active" : "Ended"}
                     </Text>
                   </View>
                 </View>
@@ -170,7 +225,7 @@ export default function HostCalls() {
                   <View style={styles.logDetailItem}>
                     <Ionicons name="time-outline" size={16} color={colors.text} />
                     <Text style={[styles.logDetailText, { color: colors.text }]}>
-                      {formatDuration(item.startTime, item.endTime)}
+                      {formatDuration(item.started_at, item.ended_at, item.status)}
                     </Text>
                   </View>
                   {item.participants && item.participants.length > 0 && (

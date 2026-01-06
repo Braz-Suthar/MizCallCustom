@@ -2,11 +2,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Dimensions, FlatList, Platform, Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
+import { usePreventRemove } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { io, Socket } from "socket.io-client";
 import { RTCView } from "react-native-webrtc";
 
 import { AppButton } from "../../components/ui/AppButton";
+import { LeaveCallModal } from "../../components/ui/LeaveCallModal";
 import { useAppDispatch, useAppSelector } from "../../state/store";
 import { endCall, startCall } from "../../state/callActions";
 import { useHostCallMedia } from "../../hooks/useHostCallMedia";
@@ -35,6 +37,13 @@ export default function ActiveCallScreen() {
   const callError = useAppSelector((s) => s.call.error);
   const token = useAppSelector((s) => s.auth.token);
   const role = useAppSelector((s) => s.auth.role);
+  const [isEnding, setIsEnding] = useState(false);
+  const [showEndModal, setShowEndModal] = useState(false);
+  
+  // Prevent back navigation during active call (unless explicitly ending)
+  usePreventRemove(!!activeCall && !isEnding, ({ data }) => {
+    // This will prevent all back navigation when activeCall exists and not ending
+  });
 
   const { state: mediaState, error: mediaError, micEnabled, setMicEnabled, remoteStream } = useHostCallMedia({
     token,
@@ -158,15 +167,32 @@ export default function ActiveCallScreen() {
 
   const onStart = async () => {
     try {
-      await dispatch(startCall()).unwrap?.();
+      const result = await dispatch(startCall()) as any;
+      if (result && typeof result.unwrap === 'function') {
+        await result.unwrap();
+      }
     } catch {
       // errors already surfaced via state
     }
   };
 
-  const onEnd = () => {
+  const handleEndButtonClick = () => {
+    setShowEndModal(true);
+  };
+
+  const handleConfirmEnd = () => {
+    setShowEndModal(false);
     dispatch(endCall());
-    router.back();
+    setIsEnding(true);
+    
+    // Small delay to allow usePreventRemove to update
+    setTimeout(() => {
+      router.back();
+    }, 50);
+  };
+
+  const handleCancelEnd = () => {
+    setShowEndModal(false);
   };
 
   const toggleMute = () => {
@@ -209,11 +235,8 @@ export default function ActiveCallScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </Pressable>
         <View style={styles.headerInfo}>
-      <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
           {hasCall && (
             <Text style={[styles.roomId, { color: colors.text }]}>
               Room: {activeCall?.roomId ?? "..."}
@@ -390,7 +413,7 @@ export default function ActiveCallScreen() {
 
           <Pressable
             style={[styles.controlButton, styles.endCallButton, { backgroundColor: DANGER_RED }]}
-            onPress={onEnd}
+            onPress={handleEndButtonClick}
             disabled={callStatus === "starting"}
           >
             <Ionicons name="call" size={24} color="#fff" />
@@ -398,6 +421,14 @@ export default function ActiveCallScreen() {
           </Pressable>
         </View>
       )}
+
+      {/* End Call Confirmation Modal */}
+      <LeaveCallModal
+        visible={showEndModal}
+        onCancel={handleCancelEnd}
+        onConfirm={handleConfirmEnd}
+        isHost={true}
+      />
     </View>
   );
 }
@@ -409,17 +440,10 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 28,
     paddingBottom: 16,
-    gap: 12,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
   },
   headerInfo: {
     flex: 1,

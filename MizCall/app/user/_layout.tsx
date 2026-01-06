@@ -9,7 +9,13 @@ export default function UserLayout() {
       }}
     >
       <Stack.Screen name="(tabs)" />
-      <Stack.Screen name="active-call" />
+      <Stack.Screen 
+        name="active-call" 
+        options={{
+          gestureEnabled: false,  // Disable iOS swipe-back gesture
+          headerBackVisible: false,  // Hide back button
+        }}
+      />
     </Stack>
   );
 }
