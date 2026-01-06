@@ -200,7 +200,7 @@ export function handleSocket({ socket, io }) {
 
   // Also listen for specific event types directly
   const eventTypes = [
-    "PONG", "auth", "AUTH", "CALL_STARTED", "call-started",
+    "PING", "PONG", "auth", "AUTH", "CALL_STARTED", "call-started",
     "GET_ROUTER_CAPS", "get-router-caps", "REQUEST_HOST_PRODUCER",
     "JOIN", "CONNECT_SEND_TRANSPORT", "PRODUCE", "CONNECT_RECV_TRANSPORT",
     "CONSUME", "RESUME_CONSUMER", "CALL_STOPPED", "call-stopped",
@@ -221,6 +221,28 @@ export function handleSocket({ socket, io }) {
 
   async function handleMessage(msg) {
     switch (msg.type) {
+      /* ---------------- PING (from client) ---------------- */
+      case "PING": {
+        // Client is pinging us, respond with PONG
+        const responsePayload = {
+          type: "PONG",
+        };
+        
+        // Echo back clientTimestamp if provided
+        if (msg.clientTimestamp) {
+          responsePayload.clientTimestamp = msg.clientTimestamp;
+        }
+        
+        // Also include our timestamp
+        if (msg.timestamp) {
+          responsePayload.timestamp = msg.timestamp;
+        }
+        
+        socket.emit("PONG", responsePayload);
+        console.log("[Socket.IO] Received PING from", peer?.id, "- sent PONG");
+        break;
+      }
+
       /* ---------------- PONG (ping response) ---------------- */
       case "PONG": {
         if (peer && peer.lastPingTime) {

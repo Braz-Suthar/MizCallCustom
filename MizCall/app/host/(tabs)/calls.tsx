@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
+import { ActiveCallModal } from "../../../components/ui/ActiveCallModal";
 import { apiFetch } from "../../../state/api";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { endCall, startCall } from "../../../state/callActions";
@@ -33,6 +34,9 @@ export default function HostCalls() {
 
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showActiveCallModal, setShowActiveCallModal] = useState(false);
+  const [activeCallRoomId, setActiveCallRoomId] = useState<string | undefined>();
+  const [isStartingCall, setIsStartingCall] = useState(false);
 
   const loadCallLogs = async () => {
     if (!token || role !== "host") return;
@@ -69,65 +73,162 @@ export default function HostCalls() {
   const formatDate = (dateString: string) => {
     // console.log("[calls] formatDate", dateString);
     if (!dateString) return "Unknown";
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return "Invalid date";
     
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Invalid date";
+      
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (error) {
+      console.error("[calls] Error formatting date:", error);
+      return "Invalid date";
+    }
   };
 
   const formatDuration = (startTime: string, endTime?: string | null, status?: string) => {
-    const start = new Date(startTime);
-    
-    // Validate start time
-    if (isNaN(start.getTime())) {
+    try {
+      const start = new Date(startTime);
+      
+      // Validate start time
+      if (isNaN(start.getTime())) {
+        return "Unknown";
+      }
+      
+      const startUTC = start.toISOString().slice(11, 19); // HH:MM:SS format
+      
+      // If status is not "ended" or no endTime, show start time only
+      if (status !== "ended" || !endTime) {
+        return `Started: ${startUTC} UTC`;
+      }
+      
+      const end = new Date(endTime);
+      
+      // Validate end time
+      if (isNaN(end.getTime())) {
+        return `Started: ${startUTC} UTC`;
+      }
+      
+      const endUTC = end.toISOString().slice(11, 19); // HH:MM:SS format
+      
+      // Calculate duration
+      const diffMs = end.getTime() - start.getTime();
+      
+      // If negative or unreasonably large, just show times
+      if (diffMs < 0 || diffMs > 86400000) {
+        return `${startUTC} - ${endUTC} UTC`;
+      }
+      
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      
+      // Format: "HH:MM:SS - HH:MM:SS (Xm Ys)"
+      let durationStr = "";
+      if (hours > 0) {
+        durationStr = `${hours}h ${minutes}m`;
+      } else if (minutes > 0) {
+        durationStr = `${minutes}m ${seconds}s`;
+      } else {
+        durationStr = `${seconds}s`;
+      }
+      
+      return `${startUTC} - ${endUTC} (${durationStr})`;
+    } catch (error) {
+      console.error("[calls] Error formatting duration:", error);
       return "Unknown";
     }
+  };
+
+  const handleStartCall = async () => {
+    // Prevent double-tap
+    if (isStartingCall) return;
     
-    const startUTC = start.toISOString().slice(11, 19); // HH:MM:SS format
-    
-    // If status is "started" or no endTime, show start time only
-    if (status === "started" || !endTime) {
-      return `Started: ${startUTC} UTC`;
+    // Check if there's already an active call in Redux state
+    if (activeCall || callStatus === "starting") {
+      setActiveCallRoomId(activeCall?.roomId);
+      setShowActiveCallModal(true);
+      return;
     }
     
-    const end = new Date(endTime);
-    
-    // Validate end time
-    if (isNaN(end.getTime())) {
-      return `Started: ${startUTC} UTC`;
+    // Check if there's any active call in the call logs
+    const activeCallInLogs = callLogs.find(call => call.status !== "ended");
+    if (activeCallInLogs) {
+      setActiveCallRoomId(activeCallInLogs.id);
+      setShowActiveCallModal(true);
+      return;
     }
     
-    const endUTC = end.toISOString().slice(11, 19); // HH:MM:SS format
-    
-    // Calculate duration
-    const diffMs = end.getTime() - start.getTime();
-    
-    // If negative or unreasonably large, just show times
-    if (diffMs < 0 || diffMs > 86400000) {
-      return `${startUTC} - ${endUTC} UTC`;
+    // Start new call and navigate to it
+    setIsStartingCall(true);
+    try {
+      const result = await dispatch(startCall()) as any;
+      let roomId;
+      
+      // Handle both unwrapped and regular results
+      if (result && typeof result.unwrap === 'function') {
+        roomId = await result.unwrap();
+      } else if (typeof result === 'string') {
+        roomId = result;
+      }
+      
+      // Navigate to the active call screen
+      if (roomId) {
+        router.push(`/host/active-call?roomId=${roomId}`);
+      }
+    } catch (error) {
+      console.error("[handleStartCall] Error starting call:", error);
+      // Error will be shown via callError state
+    } finally {
+      setIsStartingCall(false);
     }
-    
-    const totalSeconds = Math.floor(diffMs / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    
-    // Format: "HH:MM:SS - HH:MM:SS (Xm Ys)"
-    let durationStr = "";
-    if (hours > 0) {
-      durationStr = `${hours}h ${minutes}m`;
-    } else if (minutes > 0) {
-      durationStr = `${minutes}m ${seconds}s`;
-    } else {
-      durationStr = `${seconds}s`;
+  };
+
+  const handleJoinCallFromModal = () => {
+    setShowActiveCallModal(false);
+    if (activeCallRoomId) {
+      handleJoinCall(activeCallRoomId);
     }
+  };
+
+  const handleCancelModal = () => {
+    setShowActiveCallModal(false);
+    setActiveCallRoomId(undefined);
+  };
+
+  const handleJoinCall = (roomId?: string) => {
+    const callId = roomId || activeCall?.roomId;
+    if (callId) {
+      // Navigate to the active call screen
+      router.push(`/host/active-call?roomId=${callId}`);
+    }
+  };
+
+  const handleEndCall = async (roomId?: string) => {
+    const callId = roomId || activeCall?.roomId;
+    if (!callId) return;
     
-    return `${startUTC} - ${endUTC} (${durationStr})`;
+    Alert.alert(
+      "End Call",
+      "Are you sure you want to end this call?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "End Call",
+          style: "destructive",
+          onPress: async () => {
+            await dispatch(endCall(callId));
+            // Reload call logs to reflect the change
+            await loadCallLogs();
+          }
+        }
+      ]
+    );
   };
 
   return (
@@ -167,12 +268,20 @@ export default function HostCalls() {
               )}
             </View>
             <View style={styles.actions}>
-              <AppButton
-                label="End Call"
-                variant="danger"
-                onPress={() => dispatch(endCall())}
-                fullWidth
-              />
+              <View style={styles.actionRow}>
+                <AppButton
+                  label="Join Call"
+                  variant="primary"
+                  onPress={() => handleJoinCall()}
+                  style={{ flex: 1 }}
+                />
+                <AppButton
+                  label="End Call"
+                  variant="danger"
+                  onPress={() => handleEndCall()}
+                  style={{ flex: 1 }}
+                />
+              </View>
             </View>
           </View>
         ) : null}
@@ -196,11 +305,11 @@ export default function HostCalls() {
               <View style={[styles.logCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.logHeader}>
                   <View style={styles.logHeaderLeft}>
-                    <View style={[styles.callIcon, { backgroundColor: item.status === "started" ? PRIMARY_BLUE + "20" : colors.background }]}>
+                    <View style={[styles.callIcon, { backgroundColor: item.status !== "ended" ? PRIMARY_BLUE + "20" : colors.background }]}>
                       <Ionicons
-                        name={item.status === "started" ? "call" : "call-outline"}
+                        name={item.status !== "ended" ? "call" : "call-outline"}
                         size={20}
-                        color={item.status === "started" ? PRIMARY_BLUE : colors.text}
+                        color={item.status !== "ended" ? PRIMARY_BLUE : colors.text}
                       />
                     </View>
                     <View style={styles.logInfo}>
@@ -211,12 +320,12 @@ export default function HostCalls() {
                   <View
                     style={[
                       styles.statusBadge,
-                      { backgroundColor: item.status === "started" ? "#22c55e" : "#64748b" }
+                      { backgroundColor: item.status !== "ended" ? "#22c55e" : "#64748b" }
                     ]}
                   >
-                    {item.status === "started" && <View style={styles.statusDot} />}
+                    {item.status !== "ended" && <View style={styles.statusDot} />}
                     <Text style={styles.statusText}>
-                      {item.status === "started" ? "Active" : "Ended"}
+                      {item.status !== "ended" ? "Active" : "Ended"}
                     </Text>
                   </View>
                 </View>
@@ -237,6 +346,26 @@ export default function HostCalls() {
                     </View>
                   )}
                 </View>
+
+                {/* Action buttons for active calls in history */}
+                {item.status !== "ended" && (
+                  <View style={styles.logActions}>
+                    <AppButton
+                      label="Join Call"
+                      variant="primary"
+                      onPress={() => handleJoinCall(item.id)}
+                      size="sm"
+                      style={{ flex: 1 }}
+                    />
+                    <AppButton
+                      label="End Call"
+                      variant="danger"
+                      onPress={() => handleEndCall(item.id)}
+                      size="sm"
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                )}
               </View>
             )}
             ListEmptyComponent={
@@ -248,7 +377,24 @@ export default function HostCalls() {
           />
         </View>
       </View>
-      <Fab icon="call" accessibilityLabel="Start call" onPress={() => dispatch(startCall())} />
+
+      {/* Active Call Modal */}
+      <ActiveCallModal
+        visible={showActiveCallModal}
+        title="Active Call Exists"
+        message="You already have an active call. Do you want to join it?"
+        onCancel={handleCancelModal}
+        onConfirm={handleJoinCallFromModal}
+        confirmText="Join Call"
+        cancelText="Cancel"
+      />
+
+      <Fab 
+        icon="call" 
+        accessibilityLabel="Start call" 
+        onPress={handleStartCall}
+        loading={isStartingCall}
+      />
     </>
   );
 }
@@ -341,6 +487,10 @@ const styles = StyleSheet.create({
   actions: {
     marginTop: 4,
   },
+  actionRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
   logsSection: {
     flex: 1,
   },
@@ -402,6 +552,11 @@ const styles = StyleSheet.create({
   logDetailText: {
     fontSize: 13,
     opacity: 0.8,
+  },
+  logActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
   },
   empty: {
     fontSize: 13,

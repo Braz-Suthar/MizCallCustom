@@ -180,10 +180,12 @@ export default function ActiveCallScreen() {
     setShowEndModal(true);
   };
 
-  const handleConfirmEnd = () => {
+  const handleConfirmEnd = async () => {
     setShowEndModal(false);
-    dispatch(endCall());
     setIsEnding(true);
+    
+    // End the call with the roomId
+    await dispatch(endCall(activeCall?.roomId));
     
     // Small delay to allow usePreventRemove to update
     setTimeout(() => {

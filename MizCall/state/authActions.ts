@@ -2,6 +2,7 @@ import { AppDispatch } from "./store";
 import { CredentialsPayload, setCredentials, setHydrated, setStatus, logout } from "./authSlice";
 import { clearSession, loadSession, saveSession } from "./sessionStorage";
 import { apiFetch } from "./api";
+import { socketManager } from "../services/socketManager";
 
 export const hydrateSession = () => async (dispatch: AppDispatch) => {
   dispatch(setStatus("loading"));
@@ -102,6 +103,9 @@ export const registerUser =
   };
 
 export const signOut = () => async (dispatch: AppDispatch) => {
+  // Cleanup socket connection on logout
+  socketManager.cleanup();
+  
   await clearSession();
   dispatch(logout());
   dispatch(setHydrated(true));

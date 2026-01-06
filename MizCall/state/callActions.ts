@@ -120,16 +120,31 @@ export const startCall =
   };
 
 export const endCall =
-  () => async (dispatch: AppDispatch) => {
+  (roomId?: string) => async (dispatch: AppDispatch, getState: () => RootState) => {
+    const { token, role } = getState().auth;
+    const { activeCall } = getState().call;
+    
+    // Use provided roomId or get from activeCall
+    const callId = roomId || activeCall?.roomId;
+    
     try {
+      // Call backend API to end the call
+      if (token && role === "host" && callId) {
+        await apiFetch(`/host/calls/${callId}/end`, token, {
+          method: "PATCH",
+        });
+      }
+      
+      // Disconnect socket
       hostCallSocket?.disconnect();
-    } catch {
-      //
+    } catch (error) {
+      console.error("[endCall] Error ending call:", error);
+    } finally {
+      hostCallSocket = null;
+      dispatch(clearActiveCall());
+      dispatch(setCallStatus("idle"));
+      dispatch(setCallError(null));
+      dispatch(resetParticipants());
     }
-    hostCallSocket = null;
-    dispatch(clearActiveCall());
-    dispatch(setCallStatus("idle"));
-    dispatch(setCallError(null));
-    dispatch(resetParticipants());
   };
 

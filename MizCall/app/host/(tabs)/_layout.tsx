@@ -1,10 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useColorScheme } from "react-native";
 
 import { useAppSelector } from "../../../state/store";
-import { useSocket } from "../../../hooks/useSocket";
+import { socketManager } from "../../../services/socketManager";
 
 // Consistent primary blue color
 const PRIMARY_BLUE = "#5B9FFF";
@@ -26,7 +26,12 @@ export default function HostTabsLayout() {
     [token, role, email],
   );
 
-  useSocket(useMemo(() => session, [session]));
+  // Initialize socket manager for host
+  useEffect(() => {
+    if (token && role === "host") {
+      socketManager.initialize(token);
+    }
+  }, [token, role]);
 
   if (!session) {
     return <Redirect href="/" />;

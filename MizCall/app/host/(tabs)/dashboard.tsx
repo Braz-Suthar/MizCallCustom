@@ -3,8 +3,10 @@ import { Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, Styl
 import { useTheme } from "@react-navigation/native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { io, Socket } from "socket.io-client";
 import { Fab } from "../../../components/ui/Fab";
+import { ActiveCallModal } from "../../../components/ui/ActiveCallModal";
+import { WaveLoader } from "../../../components/WaveLoader";
+import { socketManager } from "../../../services/socketManager";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { startCall } from "../../../state/callActions";
 import { setThemeMode } from "../../../state/themeSlice";
@@ -42,7 +44,12 @@ export default function HostDashboard() {
   const [wsConnected, setWsConnected] = useState(false);
   const themeMode = useAppSelector((state) => state.theme.mode);
   const { token, role } = useAppSelector((state) => state.auth);
-  const socketRef = React.useRef<Socket | null>(null);
+  const activeCall = useAppSelector((state) => state.call.activeCall);
+  const callStatus = useAppSelector((state) => state.call.status);
+  const [callLogs, setCallLogs] = useState<Array<{ id: string; status: string }>>([]);
+  const [showActiveCallModal, setShowActiveCallModal] = useState(false);
+  const [isStartingCall, setIsStartingCall] = useState(false);
+  const isDark = colors.background === "#000" || colors.background === "#1a1d29";
   
   // Connection is good if we have latency data and it's under 1000ms
   // WebSocket connection is preferred but not required
@@ -76,6 +83,10 @@ export default function HostDashboard() {
         const apiLatency = endTime - startTime;
         setNetworkLatency(apiLatency);
       }
+
+      // Also load call logs to check for active calls
+      const callsRes = await apiFetch<{ calls: Array<{ id: string; status: string }> }>("/host/calls", token);
+      setCallLogs(callsRes.calls || []);
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
       setNetworkLatency(null);
@@ -84,73 +95,27 @@ export default function HostDashboard() {
     }
   };
 
-  // Socket.IO connection for real-time ping and latency
+  // Socket.IO connection for real-time ping and latency - persists across app
   useEffect(() => {
     if (!token) return;
 
-    console.log("[Dashboard] Connecting to Socket.IO...");
+    console.log("[Dashboard] Initializing socket connection...");
+    const socket = socketManager.initialize(token);
 
-    const socket = io(API_BASE, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 2000,
-      reconnectionDelayMax: 30000,
-      timeout: 10000,
-      autoConnect: true,
-      auth: {
-        token
-      }
-    });
-
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      console.log("[Dashboard] Socket.IO connected:", socket.id);
+    // Set up latency callback
+    socketManager.setLatencyCallback((latency) => {
+      setNetworkLatency(latency);
       setWsConnected(true);
-      
-      // Send auth message
-      socket.emit("AUTH", { type: "AUTH", token });
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("[Dashboard] Socket.IO disconnected:", reason);
-      setWsConnected(false);
-    });
-
-    socket.on("connect_error", (error) => {
-      console.log("[Dashboard] Connection error:", error.message);
-      setWsConnected(false);
-    });
-
-    socket.on("reconnect_attempt", (attempt) => {
-      console.log(`[Dashboard] Reconnect attempt ${attempt}`);
-    });
-
-    socket.on("reconnect", (attempt) => {
-      console.log(`[Dashboard] Reconnected after ${attempt} attempts`);
-      setWsConnected(true);
-    });
-
-    // Handle PING message
-    socket.on("PING", (data) => {
-      socket.emit("PONG", { type: "PONG", timestamp: data.timestamp });
-    });
-
-    // Handle latency updates
-    socket.on("LATENCY_UPDATE", (data) => {
-      setNetworkLatency(data.latency);
       console.log("[Dashboard] Network status updated:", 
-        data.latency < 1000 ? "🟢 Connected" : "🔴 Disconnected", 
-        `(${data.latency}ms)`);
+        latency < 1000 ? "🟢 Connected" : "🔴 Disconnected", 
+        `(${latency}ms)`);
     });
 
-    return () => {
-      console.log("[Dashboard] Cleaning up Socket.IO...");
-      if (socket) {
-        socket.disconnect();
-      }
-    };
+    // Check connection status
+    setWsConnected(socketManager.isConnected());
+
+    // No cleanup - socket persists across navigation
+    // Only cleanup happens on logout via socketManager.cleanup()
   }, [token]);
 
   // Load data on mount and when screen is focused
@@ -218,15 +183,47 @@ export default function HostDashboard() {
   })) || [];
 
   const handleStartCall = async () => {
+    // Prevent double-tap
+    if (isStartingCall) return;
+    
+    // Check if there's already an active call in Redux state or call logs
+    if (activeCall || callStatus === "starting" || callLogs.find(call => call.status !== "ended")) {
+      setShowActiveCallModal(true);
+      return;
+    }
+    
+    // Start new call and navigate to it
+    setIsStartingCall(true);
     try {
       const result = await dispatch(startCall()) as any;
+      let roomId;
+      
+      // Handle both unwrapped and regular results
       if (result && typeof result.unwrap === 'function') {
-        await result.unwrap();
+        roomId = await result.unwrap();
+      } else if (typeof result === 'string') {
+        roomId = result;
       }
-      router.push("/host/active-call");
+      
+      // Navigate to the active call screen
+      if (roomId) {
+        router.push(`/host/active-call?roomId=${roomId}`);
+      }
     } catch (e) {
+      console.error("[handleStartCall] Error starting call:", e);
       // ignore here; startCall already handles errors upstream
+    } finally {
+      setIsStartingCall(false);
     }
+  };
+
+  const handleViewActiveCall = () => {
+    setShowActiveCallModal(false);
+    router.push("/host/calls" as any);
+  };
+
+  const handleCancelModal = () => {
+    setShowActiveCallModal(false);
   };
 
   const onRefresh = async () => {
@@ -297,11 +294,22 @@ export default function HostDashboard() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
             <View style={styles.actionButtons}>
               <Pressable 
-                style={[styles.actionButton, styles.primaryButton]}
+                style={[
+                  styles.actionButton, 
+                  styles.primaryButton,
+                  isStartingCall && styles.actionButtonDisabled
+                ]}
                 onPress={handleStartCall}
+                disabled={isStartingCall}
               >
-                <Ionicons name="call" size={20} color="#fff" />
-                <Text style={styles.actionButtonText}>New Call</Text>
+                {isStartingCall ? (
+                  <WaveLoader variant={isDark ? "white" : "white"} size="small" />
+                ) : (
+                  <Ionicons name="call" size={20} color="#fff" />
+                )}
+                <Text style={styles.actionButtonText}>
+                  {isStartingCall ? "Starting..." : "New Call"}
+                </Text>
               </Pressable>
               <Pressable 
                 style={[styles.actionButton, styles.primaryButton]}
@@ -363,6 +371,18 @@ export default function HostDashboard() {
         </ScrollView>
         )}
       </View>
+
+      {/* Active Call Modal */}
+      <ActiveCallModal
+        visible={showActiveCallModal}
+        title="Active Call Exists"
+        message="You already have an active call. Would you like to view it in the Calls section?"
+        onCancel={handleCancelModal}
+        onConfirm={handleViewActiveCall}
+        confirmText="View Call"
+        cancelText="Cancel"
+      />
+
       <Fab
         icon="logo-whatsapp"
         accessibilityLabel="Contact via WhatsApp"
@@ -461,6 +481,9 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: PRIMARY_BLUE,
+  },
+  actionButtonDisabled: {
+    opacity: 0.6,
   },
   actionButtonText: {
     color: "#fff",
