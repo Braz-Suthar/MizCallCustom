@@ -322,15 +322,11 @@ export default function HostDashboard() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
             <View style={styles.actionButtons}>
               <Pressable 
-<<<<<<< Updated upstream
                 style={[
                   styles.actionButton, 
                   styles.primaryButton,
                   isStartingCall && styles.actionButtonDisabled
                 ]}
-=======
-                style={[styles.actionButton, { backgroundColor: PRIMARY_BG }]}
->>>>>>> Stashed changes
                 onPress={handleStartCall}
                 disabled={isStartingCall}
               >
@@ -513,7 +509,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   primaryButton: {
-    backgroundColor: PRIMARY_BLUE,
+    backgroundColor: 'rgba(0, 136, 255, 1)',
   },
   actionButtonDisabled: {
     opacity: 0.6,
@@ -574,7 +570,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: `${PRIMARY_BLUE}25`,
+    backgroundColor: 'rgba(0, 136, 255, 1)',
     alignItems: "center",
     justifyContent: "center",
   },
