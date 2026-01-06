@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
 import React, { useMemo } from "react";
-import { useColorScheme, Image } from "react-native";
+import { useColorScheme } from "react-native";
 
 import { useAppSelector } from "../../../state/store";
 import { useSocket } from "../../../hooks/useSocket";
@@ -32,25 +32,10 @@ export default function HostTabsLayout() {
     return <Redirect href="/" />;
   }
 
-  const ICON_SIZE = 28;
-
-  const renderIcon = (source: any, color: string) => (
-    <Image
-      source={source}
-      style={{
-        width: ICON_SIZE,
-        height: ICON_SIZE,
-        tintColor: color,
-        resizeMode: "contain",
-      }}
-    />
-  );
-
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
         tabBarActiveTintColor: PRIMARY_BLUE,
         tabBarInactiveTintColor: isDark ? "#888" : "#666",
         tabBarStyle: { 
@@ -71,40 +56,35 @@ export default function HostTabsLayout() {
         name="dashboard"
         options={{
           title: "Dashboard",
-          tabBarIcon: ({ color }) =>
-            renderIcon(require("../../../assets/ui_icons/dashboard.png"), color as string),
+          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="users"
         options={{
           title: "Users",
-          tabBarIcon: ({ color }) =>
-            renderIcon(require("../../../assets/ui_icons/users.png"), color as string),
+          tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="calls"
         options={{
           title: "Calls",
-          tabBarIcon: ({ color }) =>
-            renderIcon(require("../../../assets/ui_icons/calls.png"), color as string),
+          tabBarIcon: ({ color, size }) => <Ionicons name="call" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="recordings"
         options={{
           title: "Recordings",
-          tabBarIcon: ({ color }) =>
-            renderIcon(require("../../../assets/ui_icons/recordings.png"), color as string),
+          tabBarIcon: ({ color, size }) => <Ionicons name="videocam" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color }) =>
-            renderIcon(require("../../../assets/ui_icons/settings.png"), color as string),
+          tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
         }}
       />
     </Tabs>
