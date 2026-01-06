@@ -149,6 +149,7 @@ export default function HostRecordings() {
       }
       // ensure https for Android devices
       const streamUrl = `${API_BASE.replace("http://", "https://")}/recordings/${item.id}/stream?token=${encodeURIComponent(token)}`;
+      console.log("[recordings] streamUrl", streamUrl);
       const { sound } = await Audio.Sound.createAsync(
         { uri: streamUrl },
         { shouldPlay: true }

@@ -15,7 +15,7 @@ const rooms = new Map();
 // Export peers and getRoom for API access
 export { peers };
 
-const RECORDER_PORT_START = Number(process.env.RECORDER_PORT_START || 50000);
+const RECORDER_PORT_START = Number(process.env.RECORDER_PORT_START || 55000);
 let recorderPortCursor = RECORDER_PORT_START;
 
 function allocRecorderPort() {
