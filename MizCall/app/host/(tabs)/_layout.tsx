@@ -3,6 +3,8 @@ import { Redirect, Tabs } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import { useColorScheme } from "react-native";
 
+import { Image } from "expo-image";
+
 import { useAppSelector } from "../../../state/store";
 import { socketManager } from "../../../services/socketManager";
 
@@ -37,10 +39,13 @@ export default function HostTabsLayout() {
     return <Redirect href="/" />;
   }
 
+  const ICON_SIZE = 26;
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: true,
         tabBarActiveTintColor: PRIMARY_BLUE,
         tabBarInactiveTintColor: isDark ? "#888" : "#666",
         tabBarStyle: { 
@@ -61,35 +66,70 @@ export default function HostTabsLayout() {
         name="dashboard"
         options={{
           title: "Dashboard",
-          tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={require("../../../assets/ui_icons/home.svg")}
+              style={{ width: ICON_SIZE, height: ICON_SIZE }}
+              tintColor={color}
+              contentFit="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="users"
         options={{
           title: "Users",
-          tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={require("../../../assets/ui_icons/users.svg")}
+              style={{ width: ICON_SIZE, height: ICON_SIZE }}
+              tintColor={color}
+              contentFit="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="calls"
         options={{
           title: "Calls",
-          tabBarIcon: ({ color, size }) => <Ionicons name="call" size={size} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={require("../../../assets/ui_icons/calls.svg")}
+              style={{ width: ICON_SIZE, height: ICON_SIZE }}
+              tintColor={color}
+              contentFit="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="recordings"
         options={{
           title: "Recordings",
-          tabBarIcon: ({ color, size }) => <Ionicons name="videocam" size={size} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={require("../../../assets/ui_icons/recordings.svg")}
+              style={{ width: ICON_SIZE, height: ICON_SIZE }}
+              tintColor={color}
+              contentFit="contain"
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Image
+              source={require("../../../assets/ui_icons/settings.svg")}
+              style={{ width: ICON_SIZE, height: ICON_SIZE }}
+              tintColor={color}
+              contentFit="contain"
+            />
+          ),
         }}
       />
     </Tabs>

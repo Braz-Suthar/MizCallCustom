@@ -3,6 +3,7 @@ import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from "react-n
 import { useTheme } from "@react-navigation/native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Image as SvgIcon } from "expo-image";
 import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
 import { ActiveCallModal } from "../../../components/ui/ActiveCallModal";
@@ -11,7 +12,9 @@ import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { endCall, startCall } from "../../../state/callActions";
 
 // Consistent primary blue color
-const PRIMARY_BLUE = "#5B9FFF";
+const ICONS = {
+  call: require("../../../assets/ui_icons/calls.svg"),
+};
 
 type CallLog = {
   id: string;
@@ -24,6 +27,7 @@ type CallLog = {
 
 export default function HostCalls() {
   const { colors } = useTheme();
+  const PRIMARY_BLUE = colors.primary;
   const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
   const callStatus = useAppSelector((s) => s.call.status);
@@ -242,7 +246,7 @@ export default function HostCalls() {
           <View style={[styles.activeCard, { backgroundColor: colors.card, borderColor: PRIMARY_BLUE }]}>
             <View style={styles.cardHeader}>
               <View style={styles.cardHeaderLeft}>
-                <Ionicons name="call" size={20} color={PRIMARY_BLUE} />
+                <SvgIcon source={ICONS.call} style={{ width: 20, height: 20 }} tintColor={PRIMARY_BLUE} />
                 <Text style={[styles.cardTitle, { color: colors.text }]}>Active Call</Text>
               </View>
               <View style={[styles.statusBadge, { backgroundColor: "#22c55e" }]}>
@@ -305,11 +309,19 @@ export default function HostCalls() {
               <View style={[styles.logCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.logHeader}>
                   <View style={styles.logHeaderLeft}>
+<<<<<<< Updated upstream
                     <View style={[styles.callIcon, { backgroundColor: item.status !== "ended" ? PRIMARY_BLUE + "20" : colors.background }]}>
                       <Ionicons
                         name={item.status !== "ended" ? "call" : "call-outline"}
                         size={20}
                         color={item.status !== "ended" ? PRIMARY_BLUE : colors.text}
+=======
+                    <View style={[styles.callIcon, { backgroundColor: item.status === "started" ? PRIMARY_BLUE + "20" : colors.background }]}>
+                      <SvgIcon
+                        source={ICONS.call}
+                        style={{ width: 20, height: 20 }}
+                        tintColor={item.status === "started" ? PRIMARY_BLUE : colors.text}
+>>>>>>> Stashed changes
                       />
                     </View>
                     <View style={styles.logInfo}>
@@ -418,11 +430,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 2,
     gap: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
     marginBottom: 20,
   },
   cardHeader: {
@@ -504,11 +511,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     gap: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
   logHeader: {
     flexDirection: "row",

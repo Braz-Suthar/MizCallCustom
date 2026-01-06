@@ -3,6 +3,7 @@ import { Alert, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleShe
 import { useTheme } from "@react-navigation/native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Image as SvgIcon } from "expo-image";
 import * as Clipboard from "expo-clipboard";
 import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
@@ -10,11 +11,17 @@ import { DeleteConfirmationModal } from "../../../components/ui/DeleteConfirmati
 import { apiFetch } from "../../../state/api";
 import { useAppSelector } from "../../../state/store";
 
-// Consistent primary blue color
-const PRIMARY_BLUE = "#5B9FFF";
+const ICONS = {
+  search: require("../../../assets/ui_icons/Search.svg"),
+  close: require("../../../assets/ui_icons/Close_Cross_Circle.svg"),
+  eye: require("../../../assets/ui_icons/Eye.svg"),
+  edit: require("../../../assets/ui_icons/Square_Pencil.svg"),
+  trash: require("../../../assets/ui_icons/Trash.svg"),
+};
 
 export default function HostUsers() {
   const { colors } = useTheme();
+  const PRIMARY_BLUE = colors.primary;
   const router = useRouter();
   const { token, role } = useAppSelector((s) => s.auth);
   const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string }>>([]);
@@ -202,7 +209,7 @@ export default function HostUsers() {
         {/* Search and Filter Row */}
         <View style={styles.searchFilterRow}>
           <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Ionicons name="search" size={20} color={colors.text} style={styles.searchIcon} />
+            <SvgIcon source={ICONS.search} style={[styles.searchIcon, { width: 20, height: 20 }]} tintColor={colors.text} />
             <TextInput
               style={[styles.searchInput, { color: colors.text }]}
               placeholder="Search users..."
@@ -212,7 +219,7 @@ export default function HostUsers() {
             />
             {searchQuery.length > 0 && (
               <Pressable onPress={() => setSearchQuery("")}>
-                <Ionicons name="close-circle" size={20} color={colors.text} />
+                <SvgIcon source={ICONS.close} style={{ width: 20, height: 20 }} tintColor={colors.text} />
               </Pressable>
             )}
           </View>
@@ -281,7 +288,7 @@ export default function HostUsers() {
                   }]}
                   onPress={() => handleView(item)}
                 >
-                  <Ionicons name="eye-outline" size={18} color={colors.text} />
+              <SvgIcon source={ICONS.eye} style={{ width: 18, height: 18 }} tintColor={colors.text} />
                   <Text style={[styles.actionButtonText, { color: colors.text }]}>View</Text>
                 </Pressable>
 
@@ -292,7 +299,7 @@ export default function HostUsers() {
                   }]}
                   onPress={() => handleEdit(item)}
                 >
-                  <Ionicons name="create-outline" size={18} color={colors.text} />
+              <SvgIcon source={ICONS.edit} style={{ width: 18, height: 18 }} tintColor={colors.text} />
                   <Text style={[styles.actionButtonText, { color: colors.text }]}>Edit</Text>
                 </Pressable>
 
@@ -303,7 +310,7 @@ export default function HostUsers() {
                   }]}
                   onPress={() => handleDelete(item)}
                 >
-                  <Ionicons name="trash-outline" size={18} color={colors.text} />
+              <SvgIcon source={ICONS.trash} style={{ width: 18, height: 18 }} tintColor={colors.text} />
                   <Text style={[styles.actionButtonText, { color: colors.text }]}>Delete</Text>
                 </Pressable>
               </View>
@@ -607,11 +614,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
     gap: 12,
   },
   cardContent: {
@@ -694,11 +696,6 @@ const styles = StyleSheet.create({
     maxWidth: 500,
     borderRadius: 20,
     padding: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
     maxHeight: "80%",
   },
   modalHeader: {

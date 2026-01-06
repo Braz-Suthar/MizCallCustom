@@ -14,7 +14,6 @@ import { endCall, startCall } from "../../state/callActions";
 import { useHostCallMedia } from "../../hooks/useHostCallMedia";
 import { apiFetch, API_BASE } from "../../state/api";
 
-const PRIMARY_BLUE = "#5B9FFF";
 const SUCCESS_GREEN = "#22c55e";
 const DANGER_RED = "#ef4444";
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -30,6 +29,7 @@ type Participant = {
 
 export default function ActiveCallScreen() {
   const { colors } = useTheme();
+  const PRIMARY_BLUE = colors.primary;
   const router = useRouter();
   const dispatch = useAppDispatch();
   const activeCall = useAppSelector((s) => s.call.activeCall);
@@ -541,11 +541,6 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 12,
     position: "relative",
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
   speakingIndicator: {
     position: "absolute",
@@ -646,11 +641,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     gap: 12,
     borderTopWidth: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: -4 },
-    elevation: 10,
   },
   controlButton: {
     flex: 1,

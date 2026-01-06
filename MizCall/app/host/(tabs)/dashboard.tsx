@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator } from "react-native";
+import { Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator, Platform } from "react-native";
+import { Image as SvgIcon } from "expo-image";
 import { useTheme } from "@react-navigation/native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,8 +15,12 @@ import { apiFetch, API_BASE } from "../../../state/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// Consistent primary blue color for the entire app
-const PRIMARY_BLUE = "#5B9FFF";
+const ICONS = {
+  callPlus: require("../../../assets/ui_icons/Call_Plus.svg"),
+  userPlus: require("../../../assets/ui_icons/Person_User_Plus.svg"),
+  wifi: require("../../../assets/ui_icons/Wifi.svg"),
+  wifiSlash: require("../../../assets/ui_icons/Wifi_Slash.svg"),
+};
 
 type DashboardData = {
   stats: {
@@ -35,6 +40,8 @@ type DashboardData = {
 
 export default function HostDashboard() {
   const { colors } = useTheme();
+  const PRIMARY_BLUE = colors.primary;
+  const PRIMARY_BG = (colors as any).primaryBackground ?? colors.primary;
   const router = useRouter();
   const dispatch = useAppDispatch();
   const [refreshing, setRefreshing] = useState(false);
@@ -262,7 +269,7 @@ export default function HostDashboard() {
     <>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, Platform.OS === "android" && styles.headerAndroid]}>
           <View style={styles.headerLeft}>
             <View style={styles.logoContainer}>
               <Image 
@@ -282,10 +289,10 @@ export default function HostDashboard() {
               />
             </Pressable>
             <Pressable style={styles.iconButton}>
-              <Ionicons 
-                name={connectionStatus.connected ? "wifi" : "wifi-outline"} 
-                size={24} 
-                color={connectionStatus.connected ? "#22c55e" : "#ef4444"}
+              <SvgIcon
+                source={connectionStatus.connected ? ICONS.wifi : ICONS.wifiSlash}
+                style={{ width: 24, height: 24 }}
+                tintColor={connectionStatus.connected ? "#22c55e" : "#ef4444"}
               />
             </Pressable>
           </View>
@@ -315,11 +322,15 @@ export default function HostDashboard() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Quick Actions</Text>
             <View style={styles.actionButtons}>
               <Pressable 
+<<<<<<< Updated upstream
                 style={[
                   styles.actionButton, 
                   styles.primaryButton,
                   isStartingCall && styles.actionButtonDisabled
                 ]}
+=======
+                style={[styles.actionButton, { backgroundColor: PRIMARY_BG }]}
+>>>>>>> Stashed changes
                 onPress={handleStartCall}
                 disabled={isStartingCall}
               >
@@ -333,7 +344,7 @@ export default function HostDashboard() {
                 </Text>
               </Pressable>
               <Pressable 
-                style={[styles.actionButton, styles.primaryButton]}
+                style={[styles.actionButton, { backgroundColor: PRIMARY_BG }]}
                 onPress={() => router.push("/host/create-user")}
               >
                 <Ionicons name="person-add" size={20} color="#fff" />
@@ -381,7 +392,7 @@ export default function HostDashboard() {
                   key={index} 
                   style={[styles.activityCard, { backgroundColor: colors.card }]}
                 >
-                  <View style={styles.activityIconContainer}>
+                  <View style={[styles.activityIconContainer, { backgroundColor: PRIMARY_BG }]}>
                     <Ionicons name={item.icon} size={24} color={PRIMARY_BLUE} />
                   </View>
                   <View style={styles.activityContent}>
@@ -440,6 +451,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.1)",
   },
+  headerAndroid: {
+    marginTop: 12,
+  },
   headerLeft: {
     flexDirection: "row",
     alignItems: "center",
@@ -497,11 +511,6 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     paddingHorizontal: 24,
     borderRadius: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
   },
   primaryButton: {
     backgroundColor: PRIMARY_BLUE,
@@ -525,11 +534,6 @@ const styles = StyleSheet.create({
     width: (SCREEN_WIDTH - 56) / 2, // Proper 2 column layout: (screen width - padding - gap) / 2
     padding: 20,
     borderRadius: 20,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
     minHeight: 120,
     justifyContent: "space-between",
   },
@@ -565,11 +569,6 @@ const styles = StyleSheet.create({
     gap: 16,
     padding: 16,
     borderRadius: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
   },
   activityIconContainer: {
     width: 48,

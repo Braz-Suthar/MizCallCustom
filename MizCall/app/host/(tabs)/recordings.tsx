@@ -3,12 +3,17 @@ import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Tex
 import { useTheme } from "@react-navigation/native";
 import { Audio, AVPlaybackStatusSuccess } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
+import { Image as SvgIcon } from "expo-image";
 import { apiFetch, API_BASE } from "../../../state/api";
 import { useAppSelector } from "../../../state/store";
 
 // Consistent primary blue color
-const PRIMARY_BLUE = "#5B9FFF";
 const DANGER_RED = "#ef4444";
+const ICONS = {
+  trash: require("../../../assets/ui_icons/Trash.svg"),
+  sound: require("../../../assets/ui_icons/Sound_Wave_3.svg"),
+  warn: require("../../../assets/ui_icons/Warn_Triangle.svg"),
+};
 
 type HostRecordingsResponse = Record<
   string,
@@ -38,6 +43,7 @@ type GroupedUser = {
 
 export default function HostRecordings() {
   const { colors } = useTheme();
+  const PRIMARY_BLUE = colors.primary;
   const token = useAppSelector((s) => s.auth.token);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -250,7 +256,7 @@ export default function HostRecordings() {
 
       {error ? (
         <View style={[styles.errorBanner, { backgroundColor: "#ef444420", borderColor: "#ef4444" }]}>
-          <Ionicons name="alert-circle" size={20} color="#ef4444" />
+          <SvgIcon source={ICONS.warn} style={{ width: 20, height: 20 }} tintColor="#ef4444" />
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
@@ -325,7 +331,7 @@ export default function HostRecordings() {
                   }
                   style={styles.deleteIcon}
                 >
-                  <Ionicons name="trash" size={18} color="#ef4444" />
+                  <SvgIcon source={ICONS.trash} style={{ width: 18, height: 18 }} tintColor="#ef4444" />
                 </Pressable>
               </View>
 
@@ -369,7 +375,7 @@ export default function HostRecordings() {
                             }
                             style={styles.deleteIcon}
                           >
-                            <Ionicons name="trash" size={16} color="#ef4444" />
+                            <SvgIcon source={ICONS.trash} style={{ width: 16, height: 16 }} tintColor="#ef4444" />
                           </Pressable>
                         </Pressable>
 
@@ -382,7 +388,7 @@ export default function HostRecordings() {
                               >
                                 <View style={styles.recordingHeader}>
                                   <View style={[styles.audioIcon, { backgroundColor: PRIMARY_BLUE + "20" }]}>
-                                    <Ionicons name="mic" size={20} color={PRIMARY_BLUE} />
+                                    <SvgIcon source={ICONS.sound} style={{ width: 20, height: 20 }} tintColor={PRIMARY_BLUE} />
                                   </View>
                                   <View style={styles.recordingInfo}>
                                     <Text style={[styles.userName, { color: colors.text }]}>{recording.time}</Text>
@@ -536,11 +542,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderRadius: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   dateHeaderLeft: {
     flexDirection: "row",
@@ -591,11 +592,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     gap: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
   },
   recordingHeader: {
     flexDirection: "row",
@@ -682,11 +678,6 @@ const styles = StyleSheet.create({
     width: "100%",
     borderRadius: 12,
     padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
   },
   modalTitle: {
     fontSize: 16,

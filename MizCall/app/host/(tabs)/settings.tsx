@@ -13,7 +13,6 @@ import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { apiFetch } from "../../../state/api";
 
 // Consistent primary blue color
-const PRIMARY_BLUE = "#5B9FFF";
 const DANGER_RED = "#ef4444";
 const SUCCESS_GREEN = "#22c55e";
 
@@ -22,6 +21,7 @@ export default function HostSettings() {
   const themeMode = useAppSelector((s) => s.theme.mode);
   const auth = useAppSelector((s) => s.auth);
   const { colors } = useTheme();
+  const PRIMARY_BLUE = colors.primary;
   
   const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
@@ -348,11 +348,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: 16,
     borderWidth: 1,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
   },
   sectionHeader: {
     flexDirection: "row",
