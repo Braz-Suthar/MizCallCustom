@@ -3,7 +3,6 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
-const PRIMARY_BLUE = "#5B9FFF";
 const DANGER_RED = "#ef4444";
 
 type LeaveCallModalProps = {
@@ -20,6 +19,7 @@ export function LeaveCallModal({
   isHost = false,
 }: LeaveCallModalProps) {
   const { colors } = useTheme();
+  const borderColor = colors.border ?? (colors.text ? `${colors.text}55` : "rgba(255,255,255,0.35)");
 
   return (
     <Modal
@@ -55,7 +55,7 @@ export function LeaveCallModal({
           <View style={styles.buttonContainer}>
             <Pressable
               style={[styles.cancelButton, { 
-                borderColor: colors.border, 
+                borderColor: borderColor, 
                 backgroundColor: colors.background 
               }]}
               onPress={onCancel}

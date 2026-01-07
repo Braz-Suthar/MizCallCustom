@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator, Platform } from "react-native";
+import { Dimensions, Image, Linking, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, ActivityIndicator, Platform, useColorScheme } from "react-native";
 import { Image as SvgIcon } from "expo-image";
 import { useTheme } from "@react-navigation/native";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -42,6 +42,7 @@ export default function HostDashboard() {
   const { colors } = useTheme();
   const PRIMARY_BLUE = colors.primary;
   const PRIMARY_BG = (colors as any).primaryBackground ?? colors.primary;
+  const systemScheme = useColorScheme() ?? "light";
   const router = useRouter();
   const dispatch = useAppDispatch();
   const [refreshing, setRefreshing] = useState(false);
@@ -58,13 +59,20 @@ export default function HostDashboard() {
   const [isStartingCall, setIsStartingCall] = useState(false);
   const isDark = (() => {
     const bg = colors.background;
-    // Check for hex colors
-    if (bg === "#000" || bg === "#1a1d29" || bg === "#000000") return true;
-    // Check for rgb colors (dark if all values < 50)
-    const rgbMatch = bg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    const hexMatch = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hexMatch) {
+      const hex = hexMatch[1].length === 3 ? hexMatch[1].split("").map((c) => c + c).join("") : hexMatch[1];
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return luminance < 128;
+    }
+    const rgbMatch = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
     if (rgbMatch) {
       const [, r, g, b] = rgbMatch.map(Number);
-      return r < 50 && g < 50 && b < 50;
+      const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return luminance < 128;
     }
     return false;
   })();
@@ -261,7 +269,8 @@ export default function HostDashboard() {
   };
 
   const toggleTheme = () => {
-    const newTheme = themeMode === "dark" ? "light" : "dark";
+    const resolvedScheme = themeMode === "system" ? systemScheme : themeMode;
+    const newTheme = resolvedScheme === "dark" ? "light" : "dark";
     dispatch(setThemeMode(newTheme));
   };
 
@@ -283,7 +292,7 @@ export default function HostDashboard() {
           <View style={styles.headerRight}>
             <Pressable style={styles.iconButton} onPress={toggleTheme}>
               <Ionicons 
-                name={themeMode === "dark" ? "sunny" : "moon"} 
+                name={(themeMode === "system" ? systemScheme : themeMode) === "dark" ? "sunny" : "moon"} 
                 size={24} 
                 color={colors.text} 
               />
@@ -325,6 +334,7 @@ export default function HostDashboard() {
                 style={[
                   styles.actionButton, 
                   styles.primaryButton,
+                  { backgroundColor: PRIMARY_BLUE },
                   isStartingCall && styles.actionButtonDisabled
                 ]}
                 onPress={handleStartCall}
@@ -340,7 +350,7 @@ export default function HostDashboard() {
                 </Text>
               </Pressable>
               <Pressable 
-                style={[styles.actionButton, { backgroundColor: PRIMARY_BG }]}
+                style={[styles.actionButton, { backgroundColor: PRIMARY_BLUE }]}
                 onPress={() => router.push("/host/create-user")}
               >
                 <Ionicons name="person-add" size={20} color="#fff" />
@@ -509,7 +519,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   primaryButton: {
-    backgroundColor: 'rgba(0, 136, 255, 1)',
   },
   actionButtonDisabled: {
     opacity: 0.6,
@@ -570,7 +579,6 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(0, 136, 255, 1)',
     alignItems: "center",
     justifyContent: "center",
   },

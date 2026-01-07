@@ -4,7 +4,6 @@ import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const PRIMARY_BLUE = "#5B9FFF";
 
 type Props = {
   visible: boolean;
@@ -26,6 +25,9 @@ export function ActiveCallModal({
   cancelText = "Cancel",
 }: Props) {
   const { colors } = useTheme();
+  const primaryColor = colors.primary ?? "#3c82f6";
+  const primaryTint = primaryColor.startsWith("#") ? `${primaryColor}20` : primaryColor;
+  const borderColor = colors.border ?? (colors.text ? `${colors.text}55` : "rgba(255,255,255,0.35)");
 
   return (
     <Modal
@@ -41,8 +43,8 @@ export function ActiveCallModal({
           onPress={(e) => e.stopPropagation()}
         >
           {/* Icon */}
-          <View style={[styles.iconContainer, { backgroundColor: PRIMARY_BLUE + "20" }]}>
-            <Ionicons name="call" size={32} color={PRIMARY_BLUE} />
+          <View style={[styles.iconContainer, { backgroundColor: primaryTint }]}>
+            <Ionicons name="call" size={32} color={primaryColor} />
           </View>
 
           {/* Title */}
@@ -54,7 +56,11 @@ export function ActiveCallModal({
           {/* Buttons */}
           <View style={styles.buttonContainer}>
             <Pressable
-              style={[styles.button, styles.cancelButton, { backgroundColor: colors.background }]}
+              style={[
+                styles.button,
+                styles.cancelButton,
+                { backgroundColor: colors.background, borderColor },
+              ]}
               onPress={onCancel}
             >
               <Text style={[styles.buttonText, styles.cancelText, { color: colors.text }]}>
@@ -63,7 +69,11 @@ export function ActiveCallModal({
             </Pressable>
 
             <Pressable
-              style={[styles.button, styles.confirmButton, { backgroundColor: PRIMARY_BLUE }]}
+              style={[
+                styles.button,
+                styles.confirmButton,
+                { backgroundColor: primaryColor, shadowColor: primaryColor },
+              ]}
               onPress={onConfirm}
             >
               <Text style={[styles.buttonText, styles.confirmText]}>
@@ -132,10 +142,8 @@ const styles = StyleSheet.create({
   },
   cancelButton: {
     borderWidth: 1,
-    borderColor: "rgba(128, 128, 128, 0.3)",
   },
   confirmButton: {
-    shadowColor: PRIMARY_BLUE,
     shadowOpacity: 0.3,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },

@@ -1,8 +1,9 @@
-import React, { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { AppButton } from "../../../components/ui/AppButton";
 import { EditProfileModal } from "../../../components/ui/EditProfileModal";
@@ -22,9 +23,28 @@ export default function HostSettings() {
   const auth = useAppSelector((s) => s.auth);
   const { colors } = useTheme();
   const PRIMARY_BLUE = colors.primary;
+  const isDarkBg = (() => {
+    const bg = colors.background ?? "#000";
+    const hexMatch = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hexMatch) {
+      const hex = hexMatch[1].length === 3 ? hexMatch[1].split("").map((c) => c + c).join("") : hexMatch[1];
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return lum < 140;
+    }
+    return false;
+  })();
+  const buttonBorderColor = isDarkBg
+    ? "rgba(75, 85, 99, 0.8)" // darker gray for dark mode
+    : colors.border ?? "rgba(0,0,0,0.2)";
   
   const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [deviceLockEnabled, setDeviceLockEnabled] = useState(false);
+  const [emailUpdatesEnabled, setEmailUpdatesEnabled] = useState(true);
 
   // Mock membership data - replace with actual API call
   const membership = {
@@ -35,6 +55,78 @@ export default function HostSettings() {
 
   const onThemeChange = (mode: ThemeMode) => dispatch(setThemeMode(mode));
   const onLogout = () => dispatch(signOut());
+  const loadPreferences = async () => {
+    try {
+      const notif = await AsyncStorage.getItem("notificationsEnabled");
+      if (notif === "false") setNotificationsEnabled(false);
+      const emailUpd = await AsyncStorage.getItem("emailUpdatesEnabled");
+      if (emailUpd === "false") setEmailUpdatesEnabled(false);
+      const lock = await AsyncStorage.getItem("deviceLockEnabled");
+      if (lock === "true") setDeviceLockEnabled(true);
+    } catch {
+      // ignore persistence errors
+    }
+  };
+
+  useEffect(() => {
+    loadPreferences();
+  }, []);
+
+  const savePreference = async (key: string, value: boolean) => {
+    try {
+      await AsyncStorage.setItem(key, value ? "true" : "false");
+    } catch {
+      // ignore persistence errors
+    }
+  };
+
+  const handleToggleNotifications = async () => {
+    const next = !notificationsEnabled;
+    setNotificationsEnabled(next);
+    savePreference("notificationsEnabled", next);
+  };
+
+  const handleToggleEmailUpdates = async () => {
+    const next = !emailUpdatesEnabled;
+    setEmailUpdatesEnabled(next);
+    savePreference("emailUpdatesEnabled", next);
+  };
+
+  const handleToggleDeviceLock = async () => {
+    const next = !deviceLockEnabled;
+    if (!next) {
+      setDeviceLockEnabled(false);
+      savePreference("deviceLockEnabled", false);
+      return;
+    }
+
+    try {
+      const LocalAuthentication = (await import("expo-local-authentication")).default ?? (await import("expo-local-authentication"));
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!hasHardware || !enrolled) {
+        Alert.alert("Not available", "Device lock is not available or not set up on this device.");
+        return;
+      }
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: "Enable device lock",
+        fallbackLabel: "Use device passcode",
+        cancelLabel: "Cancel",
+        disableDeviceFallback: false,
+      });
+
+      if (result.success) {
+        setDeviceLockEnabled(true);
+        savePreference("deviceLockEnabled", true);
+      } else {
+        Alert.alert("Authentication required", "Could not enable device lock without authentication.");
+      }
+    } catch (e) {
+      console.warn("Device lock toggle failed", e);
+      Alert.alert("Error", "Could not enable device lock. Please ensure biometric/passcode is set up and try again.");
+    }
+  };
   
   const handleSaveProfile = async (name: string, email: string) => {
     if (!auth.token) throw new Error("Not authenticated");
@@ -153,7 +245,10 @@ export default function HostSettings() {
 
       {/* Profile Section */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Profile</Text>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="person-circle-outline" size={22} color={colors.text} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Profile</Text>
+        </View>
         
         <View style={styles.profileCard}>
         <View style={styles.profileRow}>
@@ -177,7 +272,7 @@ export default function HostSettings() {
           </View>
           
           <Pressable
-            style={[styles.editButton, { borderColor: colors.border }]}
+            style={[styles.editButton, { borderColor: buttonBorderColor, borderWidth: 1.5 }]}
             onPress={() => setEditProfileVisible(true)}
           >
             <Ionicons name="create-outline" size={20} color={PRIMARY_BLUE} />
@@ -194,7 +289,7 @@ export default function HostSettings() {
         </View>
         
         <Pressable
-          style={[styles.securityButton, { borderColor: colors.border }]}
+          style={[styles.securityButton, { borderColor: buttonBorderColor, borderWidth: 1.5 }]}
           onPress={() => setChangePasswordVisible(true)}
         >
           <View style={styles.securityButtonLeft}>
@@ -212,6 +307,134 @@ export default function HostSettings() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.text} style={{ opacity: 0.5 }} />
         </Pressable>
+      </View>
+
+      {/* Notifications Section */}
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="notifications-outline" size={22} color={colors.text} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Updates</Text>
+        </View>
+        <View style={styles.notificationRow}>
+          <View style={styles.notificationText}>
+            <Text style={[styles.notificationTitle, { color: colors.text }]}>App Notifications</Text>
+            <Text style={[styles.notificationSubtitle, { color: colors.text }]}>
+              Enable push notifications for calls and updates.
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: notificationsEnabled }}
+            onPress={handleToggleNotifications}
+            style={[
+              styles.toggleTrack,
+              {
+                backgroundColor: notificationsEnabled
+                  ? PRIMARY_BLUE + "55"
+                  : isDarkBg
+                  ? "rgba(255,255,255,0.16)"
+                  : "rgba(0,0,0,0.06)",
+                borderColor: notificationsEnabled
+                  ? colors.border ?? "transparent"
+                  : colors.border ?? (isDarkBg ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.12)"),
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.toggleThumb,
+                {
+                  backgroundColor: notificationsEnabled ? PRIMARY_BLUE : colors.card ?? "#f9fafb",
+                  transform: [{ translateX: notificationsEnabled ? 20 : 0 }],
+                  shadowColor: "#000",
+                },
+              ]}
+            />
+          </Pressable>
+        </View>
+
+        <View style={[styles.notificationRow, { marginTop: 12 }]}>
+          <View style={styles.notificationText}>
+            <Text style={[styles.notificationTitle, { color: colors.text }]}>Email / WhatsApp Updates</Text>
+            <Text style={[styles.notificationSubtitle, { color: colors.text }]}>
+              Get product news and tips via email or WhatsApp.
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: emailUpdatesEnabled }}
+            onPress={handleToggleEmailUpdates}
+            style={[
+              styles.toggleTrack,
+              {
+                backgroundColor: emailUpdatesEnabled
+                  ? PRIMARY_BLUE + "55"
+                  : isDarkBg
+                  ? "rgba(255,255,255,0.16)"
+                  : "rgba(0,0,0,0.06)",
+                borderColor: emailUpdatesEnabled
+                  ? colors.border ?? "transparent"
+                  : colors.border ?? (isDarkBg ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.12)"),
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.toggleThumb,
+                {
+                  backgroundColor: emailUpdatesEnabled ? PRIMARY_BLUE : colors.card ?? "#f9fafb",
+                  transform: [{ translateX: emailUpdatesEnabled ? 20 : 0 }],
+                  shadowColor: "#000",
+                },
+              ]}
+            />
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Privacy Section */}
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="lock-closed-outline" size={22} color={colors.text} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Privacy</Text>
+        </View>
+        <View style={styles.notificationRow}>
+          <View style={styles.notificationText}>
+            <Text style={[styles.notificationTitle, { color: colors.text }]}>Device Lock</Text>
+            <Text style={[styles.notificationSubtitle, { color: colors.text }]}>
+              Require Face/Touch ID or passcode when opening the app.
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: deviceLockEnabled }}
+            onPress={handleToggleDeviceLock}
+            style={[
+              styles.toggleTrack,
+              {
+                backgroundColor: deviceLockEnabled
+                  ? PRIMARY_BLUE + "55"
+                  : isDarkBg
+                  ? "rgba(255,255,255,0.16)"
+                  : "rgba(0,0,0,0.06)",
+                borderColor: deviceLockEnabled
+                  ? colors.border ?? "transparent"
+                  : colors.border ?? (isDarkBg ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.12)"),
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.toggleThumb,
+                {
+                  backgroundColor: deviceLockEnabled ? PRIMARY_BLUE : colors.card ?? "#f9fafb",
+                  transform: [{ translateX: deviceLockEnabled ? 20 : 0 }],
+                  shadowColor: "#000",
+                },
+              ]}
+            />
+          </Pressable>
+        </View>
       </View>
 
       {/* Appearance Section */}
@@ -521,6 +744,44 @@ const styles = StyleSheet.create({
     fontSize: 13,
     opacity: 0.7,
     marginTop: 2,
+  },
+  notificationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  notificationText: {
+    flex: 1,
+    paddingRight: 12,
+    gap: 4,
+  },
+  notificationTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  notificationSubtitle: {
+    fontSize: 13,
+    opacity: 0.7,
+  },
+  toggleTrack: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    borderWidth: 1,
+    justifyContent: "center",
+  },
+  toggleThumb: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
   },
   themeOptions: {
     flexDirection: "row",

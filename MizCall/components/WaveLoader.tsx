@@ -68,7 +68,7 @@ export const WaveLoader: React.FC<WaveLoaderProps> = ({
   }
 
   // Determine bar color based on variant
-  let barColor = '#5B9FFF'; // primary default
+  let barColor = '#3c82f6'; // primary default
   switch (variant) {
     case 'white':
       barColor = '#FFFFFF';
@@ -78,7 +78,7 @@ export const WaveLoader: React.FC<WaveLoaderProps> = ({
       break;
     case 'primary':
     default:
-      barColor = '#5B9FFF';
+      barColor = '#3c82f6';
       break;
   }
 

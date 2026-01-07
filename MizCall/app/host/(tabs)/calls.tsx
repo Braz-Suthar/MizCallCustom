@@ -309,19 +309,16 @@ export default function HostCalls() {
               <View style={[styles.logCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                 <View style={styles.logHeader}>
                   <View style={styles.logHeaderLeft}>
-<<<<<<< Updated upstream
-                    <View style={[styles.callIcon, { backgroundColor: item.status !== "ended" ? PRIMARY_BLUE + "20" : colors.background }]}>
-                      <Ionicons
-                        name={item.status !== "ended" ? "call" : "call-outline"}
-                        size={20}
-                        color={item.status !== "ended" ? PRIMARY_BLUE : colors.text}
-=======
-                    <View style={[styles.callIcon, { backgroundColor: item.status === "started" ? PRIMARY_BLUE + "20" : colors.background }]}>
+                    <View
+                      style={[
+                        styles.callIcon,
+                        { backgroundColor: item.status !== "ended" ? PRIMARY_BLUE + "20" : colors.background },
+                      ]}
+                    >
                       <SvgIcon
                         source={ICONS.call}
                         style={{ width: 20, height: 20 }}
-                        tintColor={item.status === "started" ? PRIMARY_BLUE : colors.text}
->>>>>>> Stashed changes
+                        tintColor={item.status !== "ended" ? PRIMARY_BLUE : colors.text}
                       />
                     </View>
                     <View style={styles.logInfo}>

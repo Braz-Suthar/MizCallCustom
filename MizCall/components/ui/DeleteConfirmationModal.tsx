@@ -4,8 +4,6 @@ import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { AppButton } from "./AppButton";
 
-// Consistent primary colors
-const PRIMARY_BLUE = "#5B9FFF";
 const DANGER_RED = "#ef4444";
 
 /**
@@ -79,6 +77,23 @@ export function DeleteConfirmationModal({
   loading = false,
 }: DeleteConfirmationModalProps) {
   const { colors } = useTheme();
+  const closeBorder = colors.border ?? "rgba(255,255,255,0.35)";
+  const isDarkBg = (() => {
+    const bg = colors.background ?? "#000";
+    const hex = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hex) {
+      const h = hex[1].length === 3 ? hex[1].split("").map((c) => c + c).join("") : hex[1];
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return lum < 140;
+    }
+    return false;
+  })();
+  const closeButtonBg = isDarkBg ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
+  const secondaryButtonBg = isDarkBg ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
+  const secondaryButtonBorder = colors.border ?? (isDarkBg ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)");
 
   return (
     <Modal
@@ -95,6 +110,12 @@ export function DeleteConfirmationModal({
           style={[styles.modalContent, { backgroundColor: colors.card }]}
           onPress={(e) => e.stopPropagation()}
         >
+          <Pressable
+            style={[styles.closeButton, { borderColor: closeBorder, backgroundColor: closeButtonBg }]}
+            onPress={onCancel}
+          >
+            <Ionicons name="close" size={20} color={colors.text} />
+          </Pressable>
           {/* Warning Icon */}
           <View style={[styles.iconContainer, { backgroundColor: DANGER_RED + "20" }]}>
             <Ionicons name="warning" size={40} color={DANGER_RED} />
@@ -131,6 +152,7 @@ export function DeleteConfirmationModal({
                 variant="secondary"
                 fullWidth
                 disabled={loading}
+                style={{ backgroundColor: secondaryButtonBg, borderColor: secondaryButtonBorder, borderWidth: 1 }}
               />
             </View>
             <View style={styles.buttonWrapper}>
@@ -216,6 +238,15 @@ const styles = StyleSheet.create({
   },
   buttonWrapper: {
     flex: 1,
+  },
+  closeButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    zIndex: 1,
   },
 });
 

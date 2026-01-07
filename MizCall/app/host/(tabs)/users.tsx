@@ -5,6 +5,7 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Image as SvgIcon } from "expo-image";
 import * as Clipboard from "expo-clipboard";
+import Toast from "react-native-toast-message";
 import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
 import { DeleteConfirmationModal } from "../../../components/ui/DeleteConfirmationModal";
@@ -21,7 +22,24 @@ const ICONS = {
 
 export default function HostUsers() {
   const { colors } = useTheme();
-  const PRIMARY_BLUE = colors.primary;
+  const primaryColor = colors.primary ?? "#3c82f6";
+  const closeBorderColor = colors.border ?? (colors.text ? `${colors.text}77` : "rgba(255,255,255,0.45)");
+  const isDarkBg = (() => {
+    const bg = colors.background ?? "#000";
+    const hex = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hex) {
+      const h = hex[1].length === 3 ? hex[1].split("").map((c) => c + c).join("") : hex[1];
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return lum < 140;
+    }
+    return false;
+  })();
+  const closeButtonBg = isDarkBg ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
+  const secondaryButtonBg = isDarkBg ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
+  const secondaryButtonBorder = colors.border ?? (isDarkBg ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)");
   const router = useRouter();
   const { token, role } = useAppSelector((s) => s.auth);
   const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string }>>([]);
@@ -106,10 +124,10 @@ export default function HostUsers() {
     // Fetch user details with password
     try {
       const userData = await apiFetch<{ user: any }>(`/host/users/${user.id}`, token!);
-      setSelectedUser({ ...user, password: userData.user?.password || user.id }); // Fallback to user.id if no password
+      setSelectedUser({ ...user, password: userData.user?.password ?? "" });
       setViewModalVisible(true);
     } catch (e) {
-      setSelectedUser(user);
+      setSelectedUser({ ...user, password: "" });
       setViewModalVisible(true);
     }
   };
@@ -124,14 +142,40 @@ export default function HostUsers() {
 
   const copyToClipboard = async (text: string, label: string) => {
     await Clipboard.setStringAsync(text);
-    Alert.alert("Copied!", `${label} copied to clipboard`);
+    Toast.show({
+      type: "success",
+      text1: "Copied",
+      text2: `${label} copied to clipboard`,
+      position: "top",
+      visibilityTime: 1800,
+      topOffset: 48,
+    });
   };
 
   const copyBoth = async () => {
     if (!selectedUser) return;
-    const text = `User ID: ${selectedUser.id}\nPassword: ${selectedUser.password || selectedUser.id}`;
+    const pwd = selectedUser.password ?? "";
+    if (!pwd) {
+      Toast.show({
+        type: "info",
+        text1: "Password not available",
+        text2: "No password to copy for this user.",
+        position: "top",
+        visibilityTime: 1800,
+        topOffset: 48,
+      });
+      return;
+    }
+    const text = `User ID: ${selectedUser.id}\nPassword: ${pwd}`;
     await Clipboard.setStringAsync(text);
-    Alert.alert("Copied!", "User ID and password copied to clipboard");
+    Toast.show({
+      type: "success",
+      text1: "Copied",
+      text2: "User ID and password copied to clipboard",
+      position: "top",
+      visibilityTime: 1800,
+      topOffset: 48,
+    });
   };
 
   const handleDelete = (user: any) => {
@@ -235,10 +279,10 @@ export default function HostUsers() {
             <Ionicons 
               name="filter" 
               size={20} 
-              color={filterStatus !== "all" ? PRIMARY_BLUE : colors.text} 
+              color={filterStatus !== "all" ? primaryColor : colors.text} 
             />
             {filterStatus !== "all" && (
-              <View style={styles.filterBadge} />
+              <View style={[styles.filterBadge, { backgroundColor: primaryColor }]} />
             )}
           </Pressable>
         </View>
@@ -250,7 +294,7 @@ export default function HostUsers() {
               Showing: {filterStatus === "active" ? "Active" : "Disabled"} users
             </Text>
             <Pressable onPress={() => setFilterStatus("all")}>
-              <Text style={[styles.clearFilter, { color: PRIMARY_BLUE }]}>Clear</Text>
+              <Text style={[styles.clearFilter, { color: primaryColor }]}>Clear</Text>
             </Pressable>
           </View>
         )}
@@ -258,7 +302,7 @@ export default function HostUsers() {
         <FlatList
           data={filteredUsers}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={PRIMARY_BLUE} colors={[PRIMARY_BLUE]} />}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={primaryColor} colors={[primaryColor]} />}
           renderItem={({ item }) => (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.cardContent}>
@@ -345,7 +389,10 @@ export default function HostUsers() {
           >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>User Details</Text>
-              <Pressable onPress={() => setViewModalVisible(false)}>
+              <Pressable
+                style={[styles.closeButton, { borderColor: closeBorderColor, backgroundColor: closeButtonBg }]}
+                onPress={() => setViewModalVisible(false)}
+              >
                 <Ionicons name="close" size={24} color={colors.text} />
               </Pressable>
             </View>
@@ -366,7 +413,7 @@ export default function HostUsers() {
                   <View style={styles.detailValueRow}>
                     <Text style={[styles.detailValue, { color: colors.text }]}>{selectedUser.id}</Text>
                     <Pressable onPress={() => copyToClipboard(selectedUser.id, "User ID")}>
-                      <Ionicons name="copy-outline" size={20} color={PRIMARY_BLUE} />
+                      <Ionicons name="copy-outline" size={20} color={primaryColor} />
                     </Pressable>
                   </View>
                 </View>
@@ -374,10 +421,14 @@ export default function HostUsers() {
                 <View style={styles.detailRow}>
                   <Text style={[styles.detailLabel, { color: colors.text }]}>Password</Text>
                   <View style={styles.detailValueRow}>
-                    <Text style={[styles.detailValue, { color: colors.text }]}>{selectedUser.password || selectedUser.id}</Text>
-                    <Pressable onPress={() => copyToClipboard(selectedUser.password || selectedUser.id, "Password")}>
-                      <Ionicons name="copy-outline" size={20} color={PRIMARY_BLUE} />
-                    </Pressable>
+                    <Text style={[styles.detailValue, { color: colors.text }]}>
+                      {selectedUser.password ? selectedUser.password : "Not available"}
+                    </Text>
+                    {selectedUser.password ? (
+                      <Pressable onPress={() => copyToClipboard(selectedUser.password!, "Password")}>
+                        <Ionicons name="copy-outline" size={20} color={primaryColor} />
+                      </Pressable>
+                    ) : null}
                   </View>
                 </View>
 
@@ -391,7 +442,7 @@ export default function HostUsers() {
                 {/* Copy Actions */}
                 <View style={styles.copyActions}>
                   <Pressable 
-                    style={[styles.copyButton, { backgroundColor: PRIMARY_BLUE }]}
+                    style={[styles.copyButton, { backgroundColor: primaryColor }]}
                     onPress={copyBoth}
                   >
                     <Ionicons name="copy" size={18} color="#fff" />
@@ -404,6 +455,7 @@ export default function HostUsers() {
                   onPress={() => setViewModalVisible(false)}
                   variant="secondary"
                   fullWidth
+                  style={{ backgroundColor: secondaryButtonBg, borderColor: secondaryButtonBorder, borderWidth: 1 }}
                 />
               </ScrollView>
             )}
@@ -428,7 +480,10 @@ export default function HostUsers() {
           >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Edit User</Text>
-              <Pressable onPress={() => setEditModalVisible(false)}>
+              <Pressable
+                style={[styles.closeButton, { borderColor: closeBorderColor, backgroundColor: closeButtonBg }]}
+                onPress={() => setEditModalVisible(false)}
+              >
                 <Ionicons name="close" size={24} color={colors.text} />
               </Pressable>
             </View>
@@ -473,7 +528,7 @@ export default function HostUsers() {
                     style={[
                       styles.toggleButton,
                       editEnabled && styles.toggleButtonActive,
-                      editEnabled && { backgroundColor: PRIMARY_BLUE },
+                      editEnabled && { backgroundColor: primaryColor },
                       !editEnabled && { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }
                     ]}
                     onPress={() => setEditEnabled(true)}
@@ -505,6 +560,7 @@ export default function HostUsers() {
                     onPress={() => setEditModalVisible(false)}
                     variant="secondary"
                     fullWidth
+                  style={{ backgroundColor: secondaryButtonBg, borderColor: secondaryButtonBorder, borderWidth: 1 }}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -592,7 +648,6 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: PRIMARY_BLUE,
   },
   filterIndicator: {
     flexDirection: "row",
@@ -816,6 +871,11 @@ const styles = StyleSheet.create({
   },
   toggleTextActive: {
     color: "#fff",
+  },
+  closeButton: {
+    padding: 6,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   modalActions: {
     flexDirection: "row",

@@ -12,12 +12,13 @@ import { useAppSelector } from "../../state/store";
 import { useJoinCall } from "../../hooks/useJoinCall";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const PRIMARY_BLUE = "#5B9FFF";
 const SUCCESS_GREEN = "#22c55e";
 const DANGER_RED = "#ef4444";
 
 export default function UserActiveCallScreen() {
   const { colors } = useTheme();
+  const primaryColor = colors.primary ?? "#3c82f6";
+  const primaryTint = primaryColor.startsWith("#") ? `${primaryColor}15` : primaryColor;
   const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
   const { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket } = useJoinCall();
@@ -99,8 +100,8 @@ export default function UserActiveCallScreen() {
         <View style={styles.callContainer}>
           {/* Status Card */}
           <View style={[styles.statusCard, { 
-            backgroundColor: state === "connected" ? SUCCESS_GREEN + "15" : PRIMARY_BLUE + "15",
-            borderColor: state === "connected" ? SUCCESS_GREEN : PRIMARY_BLUE,
+            backgroundColor: state === "connected" ? SUCCESS_GREEN + "15" : primaryTint,
+            borderColor: state === "connected" ? SUCCESS_GREEN : primaryColor,
           }]}>
             <View style={styles.statusRow}>
               <View style={[styles.statusDot, { 
@@ -124,7 +125,7 @@ export default function UserActiveCallScreen() {
                 styles.pttCircle,
                 {
                   backgroundColor: isPressing ? SUCCESS_GREEN : colors.card,
-                  borderColor: isPressing ? SUCCESS_GREEN : PRIMARY_BLUE,
+                  borderColor: isPressing ? SUCCESS_GREEN : primaryColor,
                   opacity: !pttReady || state !== "connected" ? 0.4 : 1,
                 },
               ]}
@@ -132,7 +133,7 @@ export default function UserActiveCallScreen() {
               <Ionicons 
                 name={isPressing ? "mic" : "mic-off"} 
                 size={80} 
-                color={isPressing ? "#fff" : PRIMARY_BLUE} 
+                color={isPressing ? "#fff" : primaryColor} 
               />
             </Pressable>
             <Text style={[styles.pttInstructionText, { color: colors.text }]}>
@@ -168,7 +169,7 @@ export default function UserActiveCallScreen() {
           {remoteStream && state === "connected" && (
             <View style={[styles.audioCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.audioHeader}>
-                <Ionicons name="volume-high" size={20} color={PRIMARY_BLUE} />
+                <Ionicons name="volume-high" size={20} color={primaryColor} />
                 <Text style={[styles.audioLabel, { color: colors.text }]}>Host Audio</Text>
               </View>
               <View style={styles.meterRow}>

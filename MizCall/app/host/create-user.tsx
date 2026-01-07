@@ -21,11 +21,15 @@ export default function CreateUser() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdUser, setCreatedUser] = useState<{ userId: string; password: string; username: string } | null>(null);
 
-  const valid = name.trim().length >= 2 && password.trim().length >= 6;
+  const valid =
+    name.trim().length >= 2 &&
+    password.trim().length >= 1 &&
+    !/^\s+$/.test(password) &&
+    !/\s/.test(password);
 
   const onSubmit = async () => {
     if (!valid) {
-      Alert.alert("Missing info", "Please provide a name and a 6+ character password.");
+      Alert.alert("Missing info", "Please provide a name and a password (no spaces).");
       return;
     }
 
@@ -90,7 +94,7 @@ export default function CreateUser() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
-          placeholder="Minimum 6 characters"
+          placeholder="Enter password (no spaces)"
         />
 
         <AppButton label="Create user" onPress={onSubmit} disabled={!valid || loading} loading={loading} fullWidth />

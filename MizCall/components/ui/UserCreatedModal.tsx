@@ -6,8 +6,6 @@ import * as Clipboard from "expo-clipboard";
 import Toast from "react-native-toast-message";
 import { AppButton } from "./AppButton";
 
-// Consistent primary colors
-const PRIMARY_BLUE = "#5B9FFF";
 const SUCCESS_GREEN = "#22c55e";
 
 type UserCreatedModalProps = {
@@ -26,6 +24,9 @@ export function UserCreatedModal({
   onClose,
 }: UserCreatedModalProps) {
   const { colors } = useTheme();
+  const primaryColor = colors.primary ?? "#3c82f6";
+  const primaryTint = primaryColor.startsWith("#") ? `${primaryColor}20` : primaryColor;
+  const closeBorder = colors.border ?? (colors.text ? `${colors.text}55` : "rgba(255,255,255,0.35)");
 
   const copyToClipboard = async (text: string, label: string) => {
     await Clipboard.setStringAsync(text);
@@ -65,6 +66,12 @@ export function UserCreatedModal({
           style={[styles.modalContent, { backgroundColor: colors.card }]}
           onPress={(e) => e.stopPropagation()}
         >
+          <Pressable
+            style={[styles.closeButton, { borderColor: closeBorder, backgroundColor: colors.background }]}
+            onPress={onClose}
+          >
+            <Ionicons name="close" size={20} color={colors.text} />
+          </Pressable>
           {/* Success Icon */}
           <View style={[styles.iconContainer, { backgroundColor: SUCCESS_GREEN + "20" }]}>
             <Ionicons name="checkmark-circle" size={60} color={SUCCESS_GREEN} />
@@ -87,10 +94,10 @@ export function UserCreatedModal({
                 <Text style={[styles.credentialValue, { color: colors.text }]}>{userId}</Text>
               </View>
               <Pressable 
-                style={[styles.copyIconButton, { backgroundColor: PRIMARY_BLUE + "20" }]}
+                style={[styles.copyIconButton, { backgroundColor: primaryTint }]}
                 onPress={() => copyToClipboard(userId, "User ID")}
               >
-                <Ionicons name="copy-outline" size={20} color={PRIMARY_BLUE} />
+                <Ionicons name="copy-outline" size={20} color={primaryColor} />
               </Pressable>
             </View>
 
@@ -101,17 +108,17 @@ export function UserCreatedModal({
                 <Text style={[styles.credentialValue, { color: colors.text }]}>{password}</Text>
               </View>
               <Pressable 
-                style={[styles.copyIconButton, { backgroundColor: PRIMARY_BLUE + "20" }]}
+                style={[styles.copyIconButton, { backgroundColor: primaryTint }]}
                 onPress={() => copyToClipboard(password, "Password")}
               >
-                <Ionicons name="copy-outline" size={20} color={PRIMARY_BLUE} />
+                <Ionicons name="copy-outline" size={20} color={primaryColor} />
               </Pressable>
             </View>
           </View>
 
           {/* Copy Both Button */}
           <Pressable 
-            style={[styles.copyBothButton, { backgroundColor: PRIMARY_BLUE }]}
+            style={[styles.copyBothButton, { backgroundColor: primaryColor, shadowColor: primaryColor }]}
             onPress={copyBoth}
           >
             <Ionicons name="copy" size={18} color="#fff" />
@@ -149,6 +156,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 12,
     alignItems: "center",
+    position: "relative",
   },
   iconContainer: {
     width: 100,
@@ -222,6 +230,15 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "600",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    zIndex: 1,
   },
 });
 

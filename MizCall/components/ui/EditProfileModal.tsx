@@ -14,8 +14,6 @@ import {
 import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
-const PRIMARY_BLUE = "#5B9FFF";
-
 type EditProfileModalProps = {
   visible: boolean;
   onClose: () => void;
@@ -32,6 +30,26 @@ export function EditProfileModal({
   onSave,
 }: EditProfileModalProps) {
   const { colors } = useTheme();
+  const primaryColor = colors.primary ?? "#3c82f6";
+  const primaryTint = primaryColor.startsWith("#") ? `${primaryColor}20` : primaryColor;
+  const primaryDim = primaryColor.startsWith("#") ? `${primaryColor}80` : primaryColor;
+  const closeBorder = colors.border ?? "rgba(255,255,255,0.35)";
+  const isDarkBg = (() => {
+    const bg = colors.background ?? "#000";
+    const hex = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (hex) {
+      const h = hex[1].length === 3 ? hex[1].split("").map((c) => c + c).join("") : hex[1];
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      return lum < 140;
+    }
+    return false;
+  })();
+  const closeButtonBg = isDarkBg ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
+  const secondaryButtonBg = isDarkBg ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
+  const secondaryButtonBorder = colors.border ?? (isDarkBg ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)");
   const [name, setName] = useState(currentName);
   const [email, setEmail] = useState(currentEmail);
   const [loading, setLoading] = useState(false);
@@ -91,14 +109,20 @@ export function EditProfileModal({
         <Pressable style={styles.backdrop} onPress={handleClose} />
         
         <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
+          <Pressable
+            style={[styles.closeButton, { borderColor: closeBorder, backgroundColor: closeButtonBg }]}
+            onPress={handleClose}
+          >
+            <Ionicons name="close" size={20} color={colors.text} />
+          </Pressable>
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
           >
             {/* Header */}
             <View style={styles.header}>
-              <View style={[styles.iconContainer, { backgroundColor: PRIMARY_BLUE + "20" }]}>
-                <Ionicons name="person" size={28} color={PRIMARY_BLUE} />
+              <View style={[styles.iconContainer, { backgroundColor: primaryTint }]}>
+                <Ionicons name="person" size={28} color={primaryColor} />
               </View>
               <Text style={[styles.title, { color: colors.text }]}>
                 Edit Profile
@@ -164,7 +188,7 @@ export function EditProfileModal({
               <Pressable
                 style={[
                   styles.cancelButton,
-                  { borderColor: colors.border, backgroundColor: colors.background },
+                  { borderColor: secondaryButtonBorder, backgroundColor: secondaryButtonBg },
                 ]}
                 onPress={handleClose}
                 disabled={loading}
@@ -176,7 +200,7 @@ export function EditProfileModal({
               <Pressable
                 style={[
                   styles.saveButton,
-                  { backgroundColor: loading ? PRIMARY_BLUE + "80" : PRIMARY_BLUE },
+                  { backgroundColor: loading ? primaryDim : primaryColor, shadowColor: primaryColor },
                 ]}
                 onPress={handleSave}
                 disabled={loading}
@@ -193,7 +217,7 @@ export function EditProfileModal({
             {loading && (
               <View style={styles.loadingOverlay}>
                 <View style={[styles.loadingBox, { backgroundColor: colors.card }]}>
-                  <ActivityIndicator size="large" color={PRIMARY_BLUE} />
+                  <ActivityIndicator size="large" color={primaryColor} />
                   <Text style={[styles.loadingText, { color: colors.text }]}>
                     Updating profile...
                   </Text>
@@ -231,6 +255,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 10 },
     elevation: 10,
     maxHeight: "85%",
+    position: "relative",
   },
   scrollContent: {
     padding: 24,
@@ -357,6 +382,15 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 14,
     fontWeight: "600",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    zIndex: 1,
   },
 });
 

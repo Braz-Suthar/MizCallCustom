@@ -139,6 +139,28 @@ router.patch(
   }
 );
 
+/* GET USER DETAILS (with password) */
+router.get(
+  "/users/:userId",
+  requireAuth,
+  requireHost,
+  async (req, res) => {
+    const { userId } = req.params;
+    const result = await query(
+      `SELECT id, username, password, enabled
+       FROM users
+       WHERE id = $1 AND host_id = $2`,
+      [userId, req.hostId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ user: result.rows[0] });
+  }
+);
+
 /* DELETE USER */
 router.delete(
   "/users/:userId",
