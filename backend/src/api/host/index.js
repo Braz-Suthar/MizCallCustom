@@ -4,8 +4,21 @@ import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
 import { generateUserId } from "../../services/id.js";
 import { broadcastCallEvent, ensureMediasoupRoom } from "../../signaling/socket-io.js";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 const router = Router();
+const uploadDir = path.join(process.cwd(), "uploads", "avatars");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "") || ".jpg";
+    cb(null, `${req.hostId || "host"}_${Date.now()}${ext}`);
+  },
+});
+const upload = multer({ storage });
 
 /* DASHBOARD STATS */
 router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
@@ -301,5 +314,22 @@ router.patch("/calls/:id/end", requireAuth, requireHost, async (req, res) => {
 
   res.json({ ok: true });
 });
+
+/* UPLOAD HOST AVATAR */
+router.post(
+  "/avatar",
+  requireAuth,
+  requireHost,
+  upload.single("avatar"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const relativePath = `/uploads/avatars/${req.file.filename}`;
+    await query(
+      `UPDATE hosts SET avatar_url = $1 WHERE id = $2`,
+      [relativePath, req.hostId]
+    );
+    res.json({ avatarUrl: relativePath });
+  }
+);
 
 export default router;

@@ -1,5 +1,7 @@
 import express from "express";
 import http from "http";
+import path from "path";
+import fs from "fs";
 
 import authRoutes from "./api/auth/index.js";
 import hostRoutes from "./api/host/index.js";
@@ -14,6 +16,11 @@ import { runMigrations } from "./db/migrate.js";
 
 const app = express();
 app.use(express.json());
+
+// Static uploads
+const uploadsDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+app.use("/uploads", express.static(uploadsDir));
 
 // Basic CORS to allow Electron/Vite and our custom domain
 app.use((req, res, next) => {

@@ -1,0 +1,2 @@
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+

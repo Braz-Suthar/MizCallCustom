@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Linking } from "react-native";
+import { Image } from "expo-image";
 import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
@@ -11,7 +12,9 @@ import { ChangePasswordModal } from "../../../components/ui/ChangePasswordModal"
 import { setThemeMode, ThemeMode } from "../../../state/themeSlice";
 import { signOut } from "../../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
-import { apiFetch } from "../../../state/api";
+import { apiFetch, API_BASE } from "../../../state/api";
+import { setAvatarUrl } from "../../../state/authSlice";
+import { saveSession } from "../../../state/sessionStorage";
 
 // Consistent primary blue color
 const DANGER_RED = "#ef4444";
@@ -77,6 +80,7 @@ export default function HostSettings() {
   useEffect(() => {
     loadPreferences();
   }, []);
+
 
   const savePreference = async (key: string, value: boolean) => {
     try {
@@ -158,6 +162,10 @@ export default function HostSettings() {
       body: JSON.stringify({ name, email }),
     });
     
+    const updated = { ...auth, displayName: name, email };
+    dispatch(setAvatarUrl(updated.avatarUrl));
+    await saveSession(updated as any);
+    
     Toast.show({
       type: "success",
       text1: "Profile Updated",
@@ -165,6 +173,11 @@ export default function HostSettings() {
       position: "top",
       visibilityTime: 3000,
     });
+  };
+
+  const handleAvatarUpdated = async (url: string) => {
+    dispatch(setAvatarUrl(url));
+    await saveSession({ ...auth, avatarUrl: url } as any);
   };
 
   const handleToggleMultipleSessions = async () => {
@@ -287,15 +300,21 @@ export default function HostSettings() {
         </View>
         
         <View style={styles.profileCard}>
-        <View style={styles.profileRow}>
-            <View style={[styles.avatar, { backgroundColor: PRIMARY_BLUE }]}>
-              <Text style={styles.avatarText}>
-                {(auth.email ?? "Host").charAt(0).toUpperCase()}
-              </Text>
-            </View>
+          <View style={styles.profileRow}>
+            <Pressable onPress={() => setEditProfileVisible(true)}>
+              {auth.avatarUrl ? (
+                <Image source={{ uri: auth.avatarUrl }} style={styles.avatarImage} contentFit="cover" />
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: PRIMARY_BLUE }]}>
+                  <Text style={styles.avatarText}>
+                    {(auth.email ?? "Host").charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
             <View style={styles.profileInfo}>
               <Text style={[styles.profileName, { color: colors.text }]}>
-                {auth.email ?? "Host User"}
+                {auth.displayName ?? auth.email ?? "Host User"}
               </Text>
               <Text style={[styles.profileEmail, { color: colors.text }]}>
                 {auth.email ?? "host@example.com"}
@@ -304,16 +323,18 @@ export default function HostSettings() {
                 <Ionicons name="shield-checkmark" size={14} color={PRIMARY_BLUE} />
                 <Text style={[styles.roleText, { color: PRIMARY_BLUE }]}>Host</Text>
               </View>
+            </View>
           </View>
+
+          <View style={styles.profileActions}>
+            <Pressable
+              style={[styles.editButton, { borderColor: buttonBorderColor, borderWidth: 1.5 }]}
+              onPress={() => setEditProfileVisible(true)}
+            >
+              <Ionicons name="create-outline" size={20} color={PRIMARY_BLUE} />
+              <Text style={[styles.editButtonText, { color: PRIMARY_BLUE }]}>Edit Profile</Text>
+            </Pressable>
           </View>
-          
-          <Pressable
-            style={[styles.editButton, { borderColor: buttonBorderColor, borderWidth: 1.5 }]}
-            onPress={() => setEditProfileVisible(true)}
-          >
-            <Ionicons name="create-outline" size={20} color={PRIMARY_BLUE} />
-            <Text style={[styles.editButtonText, { color: PRIMARY_BLUE }]}>Edit Profile</Text>
-          </Pressable>
         </View>
       </View>
 
@@ -667,9 +688,12 @@ export default function HostSettings() {
       <EditProfileModal
         visible={editProfileVisible}
         onClose={() => setEditProfileVisible(false)}
-        currentName={auth.email ?? ""}
+        currentName={auth.displayName ?? auth.email ?? ""}
         currentEmail={auth.email ?? ""}
         onSave={handleSaveProfile}
+        avatarUrl={auth.avatarUrl ?? null}
+        token={auth.token ?? null}
+        onAvatarUpdated={handleAvatarUpdated}
       />
 
       {/* Change Password Modal */}
@@ -809,6 +833,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  avatarImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#e5e7eb",
+  },
   avatarText: {
     color: "#fff",
     fontWeight: "700",
@@ -840,6 +870,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  profileActions: {
+    flexDirection: "row",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  changePhotoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
   editButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -849,6 +893,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     borderWidth: 1.5,
+    width: "100%",
   },
   editButtonText: {
     fontSize: 16,

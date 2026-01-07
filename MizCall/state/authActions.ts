@@ -79,7 +79,7 @@ export const registerUser =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; hostId: string }>(
+      const res = await apiFetch<{ token: string; hostId: string; avatarUrl?: string; name?: string }>(
         "/auth/host/register",
         "",
         {
@@ -91,6 +91,8 @@ export const registerUser =
       const session: CredentialsPayload = {
         email,
         hostId: res.hostId,
+        displayName: res.name ?? email,
+        avatarUrl: res.avatarUrl ?? null,
         role: "host",
         token: res.token,
       };

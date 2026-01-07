@@ -62,14 +62,14 @@ router.post("/host/login", async (req, res) => {
   const normalizedEmail = identifier.includes("@") ? identifier.toLowerCase() : null;
 
   const result = await query(
-    "SELECT id, password FROM hosts WHERE id = $1 OR lower(name) = $2",
+    "SELECT id, name, password, avatar_url FROM hosts WHERE id = $1 OR lower(name) = $2",
     [identifier, normalizedEmail]
   );
 
   if (result.rowCount === 0)
     return res.status(401).json({ error: "Invalid host" });
 
-  const { id, password: hashed } = result.rows[0];
+  const { id, name, password: hashed, avatar_url } = result.rows[0];
   if (!hashed) {
     return res.status(401).json({ error: "Password not set for this host" });
   }
@@ -80,7 +80,7 @@ router.post("/host/login", async (req, res) => {
   }
 
   const token = signToken({ role: "host", hostId: id });
-  res.json({ token, hostId: id });
+  res.json({ token, hostId: id, name, avatarUrl: avatar_url });
 });
 
 /* HOST REGISTRATION (name only) */
@@ -99,7 +99,7 @@ router.post("/host/register", async (req, res) => {
   );
 
   const token = signToken({ role: "host", hostId });
-  res.json({ hostId, token });
+  res.json({ hostId, token, avatarUrl: null, name: hostName });
 });
 
 /* USER LOGIN (by id or username, plain text password) */

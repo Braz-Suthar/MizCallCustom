@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Modal,
   View,
@@ -13,12 +13,19 @@ import {
 } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import Toast from "react-native-toast-message";
+import { API_BASE } from "../../state/api";
 
 type EditProfileModalProps = {
   visible: boolean;
   onClose: () => void;
   currentName: string;
   currentEmail: string;
+  avatarUrl?: string | null;
+  token: string | null;
+  onAvatarUpdated?: (url: string) => Promise<void> | void;
   onSave: (name: string, email: string) => Promise<void>;
 };
 
@@ -27,6 +34,9 @@ export function EditProfileModal({
   onClose,
   currentName,
   currentEmail,
+  avatarUrl,
+  token,
+  onAvatarUpdated,
   onSave,
 }: EditProfileModalProps) {
   const { colors } = useTheme();
@@ -54,6 +64,12 @@ export function EditProfileModal({
   const [email, setEmail] = useState(currentEmail);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  useEffect(() => {
+    setName(currentName);
+    setEmail(currentEmail);
+  }, [currentName, currentEmail, visible]);
 
   const handleSave = async () => {
     setError(null);
@@ -83,6 +99,66 @@ export function EditProfileModal({
       setError(e.message || "Failed to update profile");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChangePhoto = async () => {
+    if (!token) {
+      Toast.show({ type: "error", text1: "Not authenticated" });
+      return;
+    }
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Toast.show({ type: "error", text1: "Permission denied", text2: "Please allow photos access" });
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+
+    const asset = result.assets?.[0];
+    if (!asset?.uri) {
+      Toast.show({ type: "error", text1: "No image selected" });
+      return;
+    }
+
+    try {
+      setUploadingAvatar(true);
+      const form = new FormData();
+      form.append("avatar", {
+        uri: asset.uri,
+        name: asset.fileName || "avatar.jpg",
+        type: asset.mimeType || "image/jpeg",
+      } as any);
+
+      const res = await fetch(`${API_BASE}/host/avatar`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: form,
+      });
+
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Upload failed");
+      }
+      const data = await res.json();
+      const fullUrl = data.avatarUrl?.startsWith("http")
+        ? data.avatarUrl
+        : `${API_BASE}${data.avatarUrl}`;
+
+      if (onAvatarUpdated) await onAvatarUpdated(fullUrl);
+      Toast.show({ type: "success", text1: "Profile photo updated" });
+    } catch (e: any) {
+      Toast.show({ type: "error", text1: "Upload failed", text2: e?.message });
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -141,6 +217,30 @@ export function EditProfileModal({
             )}
 
             {/* Form Fields */}
+            <View style={styles.avatarBlock}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} contentFit="cover" />
+              ) : (
+                <View style={[styles.avatarFallback, { backgroundColor: primaryColor }]}>
+                  <Text style={styles.avatarFallbackText}>{(name || "H").charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
+              <Pressable
+                style={[styles.changePhotoButton, { borderColor: secondaryButtonBorder, backgroundColor: secondaryButtonBg }]}
+                onPress={handleChangePhoto}
+                disabled={uploadingAvatar}
+              >
+                {uploadingAvatar ? (
+                  <ActivityIndicator size="small" color={primaryColor} />
+                ) : (
+                  <Ionicons name="image-outline" size={18} color={primaryColor} />
+                )}
+                <Text style={[styles.changePhotoText, { color: primaryColor }]}>
+                  {uploadingAvatar ? "Uploading..." : "Change Photo"}
+                </Text>
+              </Pressable>
+            </View>
+
             <View style={styles.formContainer}>
               {/* Name Field */}
               <View style={styles.fieldContainer}>
@@ -300,6 +400,42 @@ const styles = StyleSheet.create({
   formContainer: {
     gap: 18,
     marginBottom: 20,
+  },
+  avatarBlock: {
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#e5e7eb",
+  },
+  avatarFallback: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarFallbackText: {
+    color: "#fff",
+    fontSize: 28,
+    fontWeight: "700",
+  },
+  changePhotoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  changePhotoText: {
+    fontSize: 15,
+    fontWeight: "600",
   },
   fieldContainer: {
     gap: 8,
