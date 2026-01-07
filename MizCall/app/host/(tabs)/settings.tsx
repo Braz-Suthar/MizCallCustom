@@ -13,7 +13,7 @@ import { setThemeMode, ThemeMode } from "../../../state/themeSlice";
 import { signOut } from "../../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { apiFetch, API_BASE } from "../../../state/api";
-import { setAvatarUrl } from "../../../state/authSlice";
+import { setAvatarUrl, setCredentials } from "../../../state/authSlice";
 import { saveSession } from "../../../state/sessionStorage";
 
 // Consistent primary blue color
@@ -157,13 +157,19 @@ export default function HostSettings() {
     if (!auth.token) throw new Error("Not authenticated");
     
     // Call API to update profile
-    await apiFetch("/host/profile", auth.token, {
+    const res = await apiFetch<{ name: string; email: string }>("/host/profile", auth.token, {
       method: "PATCH",
       body: JSON.stringify({ name, email }),
     });
     
-    const updated = { ...auth, displayName: name, email };
-    dispatch(setAvatarUrl(updated.avatarUrl));
+    const updated = {
+      ...auth,
+      displayName: res.name,
+      email: res.email,
+      token: auth.token,
+      role: auth.role ?? "host",
+    };
+    dispatch(setCredentials(updated as any));
     await saveSession(updated as any);
     
     Toast.show({

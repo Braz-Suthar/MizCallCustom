@@ -20,6 +20,20 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
+/* HOST PROFILE - UPDATE NAME/EMAIL */
+router.patch("/profile", requireAuth, requireHost, async (req, res) => {
+  const { name, email } = req.body;
+  const nextName = (name || email || "").trim();
+  if (!nextName) return res.status(400).json({ error: "name or email required" });
+
+  await query(
+    `UPDATE hosts SET name = $1 WHERE id = $2`,
+    [nextName, req.hostId]
+  );
+
+  res.json({ name: nextName, email: nextName });
+});
+
 /* DASHBOARD STATS */
 router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
   try {
