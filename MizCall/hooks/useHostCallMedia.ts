@@ -25,6 +25,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const recvTransportRef = useRef<any>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const consumerRef = useRef<any>(null);
+  const currentProducerIdRef = useRef<string | null>(null); // Track which producer we're consuming
   const pendingProduceResolve = useRef<((id: string) => void) | null>(null);
   const routerCapsRef = useRef<any>(null);
   const pendingSendParamsRef = useRef<any>(null);
@@ -48,6 +49,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       consumerRef.current?.close?.();
     } catch {}
     consumerRef.current = null;
+    currentProducerIdRef.current = null; // Clear producer ID tracking
     deviceRef.current = null;
     micStreamRef.current?.getTracks?.().forEach((t) => t.stop());
     micStreamRef.current = null;
@@ -194,17 +196,31 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "user") {
             console.log("[useHostCallMedia] NEW_PRODUCER from user:", msg.producerId);
             
-            // Check if we already have a consumer for this user
-            // With persistent producers, we should reuse the existing consumer
-            if (consumerRef.current) {
-              console.log("[useHostCallMedia] Consumer already exists, reusing it for persistent producer model");
-              // Don't close the consumer - the user's producer is persistent now
-              // The existing consumer will continue to receive audio when user speaks
+            // Check if we already have a consumer for THIS SPECIFIC producer
+            if (consumerRef.current && currentProducerIdRef.current === msg.producerId) {
+              console.log("[useHostCallMedia] Consumer already exists for this producer, reusing it");
               return;
             }
             
-            // Only create consumer if we don't have one yet (first time user creates producer)
-            console.log("[useHostCallMedia] Creating consumer for user's persistent producer");
+            // If we have a consumer but for a DIFFERENT producer (user rejoined with new producer)
+            if (consumerRef.current && currentProducerIdRef.current !== msg.producerId) {
+              console.log("[useHostCallMedia] User rejoined with NEW producer, closing old consumer");
+              console.log("[useHostCallMedia] Old producer:", currentProducerIdRef.current, "-> New producer:", msg.producerId);
+              try {
+                consumerRef.current.close?.();
+              } catch (e) {
+                console.warn("[useHostCallMedia] Failed to close old consumer:", e);
+              }
+              consumerRef.current = null;
+              currentProducerIdRef.current = null;
+              
+              // Clear processed IDs to allow new consumer creation
+              processedConsumerIdsRef.current.clear();
+            }
+            
+            // Create consumer for the new producer
+            console.log("[useHostCallMedia] Creating consumer for user's producer:", msg.producerId);
+            currentProducerIdRef.current = msg.producerId;
             
             if (recvTransportRef.current && deviceRef.current) {
               socket.emit("CONSUME", {
