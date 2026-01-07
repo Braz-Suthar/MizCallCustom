@@ -10,6 +10,7 @@ class SocketManager {
   private appStateListener: any = null;
   private latencyCallback: ((latency: number) => void) | null = null;
   private pingInterval: any = null;
+  private statusCallback: ((connected: boolean) => void) | null = null;
 
   initialize(token: string) {
     // Don't reinitialize if already connected with same token
@@ -51,6 +52,7 @@ class SocketManager {
 
     socket.on("connect", () => {
       console.log("[SocketManager] ✅ Connected:", socket.id);
+      if (this.statusCallback) this.statusCallback(true);
       
       // Send auth message
       socket.emit("AUTH", { type: "AUTH", token });
@@ -62,6 +64,7 @@ class SocketManager {
 
     socket.on("disconnect", (reason) => {
       console.log("[SocketManager] ⚠️  Disconnected:", reason);
+      if (this.statusCallback) this.statusCallback(false);
       
       // Stop ping interval on disconnect
       this.stopPingInterval();
@@ -75,6 +78,7 @@ class SocketManager {
 
     socket.on("connect_error", (error) => {
       console.log("[SocketManager] ❌ Connection error:", error.message);
+      if (this.statusCallback) this.statusCallback(false);
     });
 
     socket.on("reconnect_attempt", (attempt) => {
@@ -83,6 +87,7 @@ class SocketManager {
 
     socket.on("reconnect", (attempt) => {
       console.log(`[SocketManager] ✅ Reconnected after ${attempt} attempts`);
+      if (this.statusCallback) this.statusCallback(true);
       
       // Re-authenticate after reconnection
       if (this.token) {
@@ -96,11 +101,13 @@ class SocketManager {
 
     socket.on("reconnect_error", (error) => {
       console.log("[SocketManager] ❌ Reconnect error:", error.message);
+      if (this.statusCallback) this.statusCallback(false);
     });
 
     socket.on("reconnect_failed", () => {
       console.log("[SocketManager] ❌ Reconnect failed after all attempts");
       this.stopPingInterval();
+      if (this.statusCallback) this.statusCallback(false);
     });
 
     // Handle PING message (for server-initiated pings)
@@ -170,6 +177,10 @@ class SocketManager {
   // Set callback for latency updates
   setLatencyCallback(callback: (latency: number) => void) {
     this.latencyCallback = callback;
+  }
+
+  setStatusCallback(callback: ((connected: boolean) => void) | null) {
+    this.statusCallback = callback;
   }
 
   // Only disconnect when app is being closed, not when navigating

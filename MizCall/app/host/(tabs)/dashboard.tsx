@@ -147,6 +147,13 @@ export default function HostDashboard() {
         `(${latency}ms)`);
     });
 
+    socketManager.setStatusCallback((connected) => {
+      setWsConnected(connected);
+      if (!connected) {
+        setNetworkLatency(null);
+      }
+    });
+
     // Check connection status
     setWsConnected(socketManager.isConnected());
 
