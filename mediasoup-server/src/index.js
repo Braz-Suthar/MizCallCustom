@@ -38,17 +38,49 @@ async function handleProduce(room, transportId, rtpParameters) {
 
 async function handleConsume(room, transportId, producer, rtpCapabilities) {
     const transport = room.transports.get(transportId);
+    
+    console.log("[Mediasoup handleConsume] Input:", {
+        transportId,
+        producerId: producer.id,
+        hasTransport: !!transport,
+        availableTransports: Array.from(room.transports.keys())
+    });
 
-    if (!room.router.canConsume({
+    if (!transport) {
+        console.error("[Mediasoup handleConsume] Transport not found:", transportId);
+        return null;
+    }
+
+    const canConsume = room.router.canConsume({
         producerId: producer.id,
         rtpCapabilities
-    })) return null;
-
-    return transport.consume({
-        producerId: producer.id,
-        rtpCapabilities,
-        paused: false
     });
+    
+    console.log("[Mediasoup handleConsume] canConsume:", canConsume);
+
+    if (!canConsume) {
+        console.error("[Mediasoup handleConsume] Router cannot consume this producer");
+        return null;
+    }
+
+    try {
+        const consumer = await transport.consume({
+            producerId: producer.id,
+            rtpCapabilities,
+            paused: false
+        });
+        
+        console.log("[Mediasoup handleConsume] Consumer created successfully:", {
+            consumerId: consumer.id,
+            producerId: producer.id,
+            kind: consumer.kind
+        });
+        
+        return consumer;
+    } catch (error) {
+        console.error("[Mediasoup handleConsume] Error creating consumer:", error);
+        return null;
+    }
 }
 
 wss.on("connection", async (socket) => {

@@ -463,7 +463,11 @@ export function handleSocket({ socket, io }) {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
         const room = await ensureMediasoupRoom(roomId);
         
-        console.log("[Socket.IO] PRODUCE:", { roomId, owner: peer.id });
+        console.log("[Socket.IO] PRODUCE request:", { 
+          roomId, 
+          owner: peer.id,
+          ownerRole: peer.role
+        });
         
         try {
           const res = await sendMediasoup({
@@ -474,11 +478,28 @@ export function handleSocket({ socket, io }) {
             ownerId: peer.id,
           });
           
+          console.log("[Socket.IO] PRODUCE response from mediasoup:", {
+            producerId: res.producerId,
+            ownerId: peer.id
+          });
+          
           peer.producer = { id: res.producerId };
           room.producerIdToOwner.set(res.producerId, peer.id);
           
+          console.log("[Socket.IO] Producer mapping created:", {
+            producerId: res.producerId,
+            ownerId: peer.id,
+            totalMappings: room.producerIdToOwner.size,
+            allMappings: Array.from(room.producerIdToOwner.entries())
+          });
+          
           if (peer.role === "host") {
             room.hostProducerId = res.producerId;
+            
+            console.log("[Socket.IO] Host producer set:", {
+              hostProducerId: res.producerId,
+              hostId: peer.id
+            });
             
             // Notify all users about host producer
             for (const other of room.peers.values()) {
@@ -538,13 +559,25 @@ export function handleSocket({ socket, io }) {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
         const room = getRoom(roomId);
         
+        console.log("[Socket.IO] CONSUME request received:", {
+          roomId,
+          requestedProducerId: msg.producerId,
+          peerId: peer?.id,
+          peerRole: peer?.role
+        });
+        
         // Get the owner ID from the producer ID
         const producerOwnerId = room.producerIdToOwner.get(msg.producerId);
         
-        console.log("[Socket.IO] CONSUME:", { roomId, producerId: msg.producerId, producerOwnerId });
+        console.log("[Socket.IO] Producer lookup:", {
+          requestedProducerId: msg.producerId,
+          foundOwnerId: producerOwnerId,
+          allProducerMappings: Array.from(room.producerIdToOwner.entries())
+        });
         
         if (!producerOwnerId) {
           console.error("[Socket.IO] CONSUME failed: producer owner not found for producerId:", msg.producerId);
+          console.error("[Socket.IO] Available producer mappings:", Array.from(room.producerIdToOwner.entries()));
           socket.emit("CONSUME_ERROR", {
             type: "CONSUME_ERROR",
             error: "Producer not found"
@@ -587,6 +620,11 @@ export function handleSocket({ socket, io }) {
           }
           
           requirePeer().consumers.set(consumerId, { id: consumerId });
+          
+          console.log("[Socket.IO] Consumer stored in peer:", {
+            consumerId: consumerId,
+            totalConsumers: requirePeer().consumers.size
+          });
           
           console.log("[Socket.IO] CONSUME successful:", {
             consumerId: consumerId,
