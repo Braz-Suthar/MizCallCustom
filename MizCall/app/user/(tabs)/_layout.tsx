@@ -1,11 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, Tabs } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { StyleSheet, useColorScheme } from "react-native";
 import { useTheme } from "@react-navigation/native";
 
 import { useAppSelector } from "../../../state/store";
-import { useSocket } from "../../../hooks/useSocket";
+import { socketManager } from "../../../services/socketManager";
 
 export default function UserTabsLayout() {
   const token = useAppSelector((s) => s.auth.token);
@@ -26,7 +26,13 @@ export default function UserTabsLayout() {
     return null;
   }, [token, role, userId]);
 
-  useSocket(useMemo(() => session, [session]));
+  // Initialize persistent socket connection
+  useEffect(() => {
+    if (token && role === "user") {
+      console.log("[UserTabsLayout] Initializing socketManager for user");
+      socketManager.initialize(token);
+    }
+  }, [token, role]);
 
   if (!session) {
     return <Redirect href="/" />;

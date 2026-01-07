@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Device } from "mediasoup-client";
 type RtpCapabilities = any;
 import { MediaStream, mediaDevices } from "react-native-webrtc";
-import { io, Socket } from "socket.io-client";
+import { Socket } from "socket.io-client";
 import Toast from "react-native-toast-message";
 
 import { useAppSelector, useAppDispatch } from "../state/store";
 import { clearActiveCall } from "../state/callSlice";
 import { disableSpeakerphone, enableSpeakerphone, isMobilePlatform, startCallAudio, stopCallAudio } from "../utils/callAudio";
+import { socketManager } from "../services/socketManager";
 
 const SOCKET_URL = "https://custom.mizcall.com";
 
@@ -45,8 +46,11 @@ export function useJoinCall() {
     } catch {
       // ignore
     }
-    socketRef.current?.disconnect();
+    
+    // DON'T disconnect the socket - it's managed by socketManager
+    // socketRef.current?.disconnect(); // REMOVED
     socketRef.current = null;
+    
     recvTransportRef.current?.close?.();
     recvTransportRef.current = null;
     sendTransportRef.current?.close?.();
@@ -115,18 +119,17 @@ export function useJoinCall() {
     setError(null);
     setRemoteStream(null);
 
-    console.log("[useJoinCall] Connecting to Socket.IO...");
+    console.log("[useJoinCall] Using global socket from socketManager");
 
-    const socket = io(SOCKET_URL, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
-      timeout: 10000,
-      auth: {
-        token
-      }
-    });
+    // Use the global socket from socketManager instead of creating a new one
+    const socket = socketManager.getSocket();
+    
+    if (!socket) {
+      console.error("[useJoinCall] No socket available from socketManager");
+      setError("Connection not available");
+      setState("error");
+      return;
+    }
 
     socketRef.current = socket;
 
@@ -135,7 +138,22 @@ export function useJoinCall() {
       console.log(`[useJoinCall] Socket event: ${eventName}`, args);
     });
 
-    socket.on("connect", async () => {
+    // Check if already connected
+    if (socket.connected) {
+      console.log("[useJoinCall] Socket already connected:", socket.id);
+      try {
+        startCallAudio();
+        enableSpeakerphone();
+      } catch {
+        // best effort
+      }
+      // Emit JOIN to join the call room
+      socket.emit("JOIN", { type: "JOIN", token, roomId });
+    } else {
+      console.log("[useJoinCall] Socket not connected, waiting for connection...");
+    }
+
+    const handleConnect = () => {
       console.log("[useJoinCall] Socket.IO connected:", socket.id);
       try {
         startCallAudio();
@@ -143,23 +161,27 @@ export function useJoinCall() {
       } catch {
         // best effort
       }
-      socket.emit("auth", { type: "auth", token });
       socket.emit("JOIN", { type: "JOIN", token, roomId });
-    });
+    };
 
-    socket.on("disconnect", (reason) => {
+    const handleDisconnect = (reason: string) => {
       console.log("[useJoinCall] Socket.IO disconnected:", reason);
-      socketRef.current = null;
+      // Don't clear socketRef - it's managed globally
       if (state !== "connected") {
         setState("idle");
       }
-    });
+    };
 
-    socket.on("connect_error", (error) => {
+    const handleConnectError = (error: Error) => {
       console.log("[useJoinCall] Connection error:", error.message);
       setError("Connection error");
       setState("error");
-    });
+    };
+
+    // Add event listeners
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
+    socket.on("connect_error", handleConnectError);
 
     const handleMessage = async (msg: any) => {
       console.log("[useJoinCall] message:", msg.type);
@@ -466,7 +488,25 @@ export function useJoinCall() {
       console.log("[useJoinCall] Received 'call-stopped' event:", msg);
       handleMessage({ type: "call-stopped", ...msg });
     });
-  }, [token, role, activeCall?.routerRtpCapabilities]);
+
+    // Cleanup function to remove event listeners
+    return () => {
+      console.log("[useJoinCall] Removing event listeners from socket");
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
+      socket.off("connect_error", handleConnectError);
+      socket.off("message", (msg) => handleMessage(msg));
+      socket.off("SEND_TRANSPORT_CREATED");
+      socket.off("RECV_TRANSPORT_CREATED");
+      socket.off("NEW_PRODUCER");
+      socket.off("HOST_PRODUCER");
+      socket.off("CONSUMER_CREATED");
+      socket.off("CONSUMED");
+      socket.off("CALL_STOPPED");
+      socket.off("call-stopped");
+      socket.offAny();
+    };
+  }, [token, role, activeCall?.routerRtpCapabilities, dispatch, roomId]);
 
   const startSpeaking = useCallback(async () => {
     if (!pttReady || !sendTransportRef.current || speaking) return;
