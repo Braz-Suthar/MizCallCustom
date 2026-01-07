@@ -113,7 +113,24 @@ wss.on("connection", async (socket) => {
 
         if (msg.type === "consume") {
             const room = rooms.get(msg.roomId);
-            const producer = room.producers.get(msg.producerOwnerId);
+            if (!room) {
+                socket.send(JSON.stringify({
+                    requestId: msg.requestId,
+                    ok: false,
+                    error: "room not found"
+                }));
+                return;
+            }
+
+            const producer = room.producers?.get(msg.producerOwnerId);
+            if (!producer) {
+                socket.send(JSON.stringify({
+                    requestId: msg.requestId,
+                    ok: false,
+                    error: "producer not found"
+                }));
+                return;
+            }
 
             const consumer = await handleConsume(
                 room,
@@ -122,8 +139,18 @@ wss.on("connection", async (socket) => {
                 msg.rtpCapabilities
             );
 
+            if (!consumer) {
+                socket.send(JSON.stringify({
+                    requestId: msg.requestId,
+                    ok: false,
+                    error: "failed to create consumer"
+                }));
+                return;
+            }
+
             socket.send(JSON.stringify({
                 requestId: msg.requestId,
+                ok: true,
                 id: consumer.id,
                 producerId: producer.id,
                 rtpParameters: consumer.rtpParameters
