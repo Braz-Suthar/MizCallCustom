@@ -5,6 +5,7 @@ import fs from "fs";
 
 import authRoutes from "./api/auth/index.js";
 import hostRoutes from "./api/host/index.js";
+import userRoutes from "./api/user/index.js";
 import recordingRoutes from "./api/recordings/index.js";
 import recordingsRoutes from "./routes/recordings.js";
 import { requireAuth } from "./middleware/auth.js";
@@ -40,6 +41,7 @@ app.use((req, res, next) => {
 app.use("/auth", authRoutes);
 app.use(requireAuth, recordingsRoutes);
 app.use("/host", hostRoutes);
+app.use("/user", userRoutes);
 app.use("/recordings", recordingRoutes);
 
 app.get("/health", (req, res) => {

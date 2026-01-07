@@ -3,8 +3,10 @@ import { Device } from "mediasoup-client";
 type RtpCapabilities = any;
 import { MediaStream, mediaDevices } from "react-native-webrtc";
 import { io, Socket } from "socket.io-client";
+import Toast from "react-native-toast-message";
 
-import { useAppSelector } from "../state/store";
+import { useAppSelector, useAppDispatch } from "../state/store";
+import { clearActiveCall } from "../state/callSlice";
 import { disableSpeakerphone, enableSpeakerphone, isMobilePlatform, startCallAudio, stopCallAudio } from "../utils/callAudio";
 
 const SOCKET_URL = "https://custom.mizcall.com";
@@ -14,12 +16,14 @@ type JoinState = "idle" | "connecting" | "connected" | "error";
 export function useJoinCall() {
   const { token, role } = useAppSelector((s) => s.auth);
   const activeCall = useAppSelector((s) => s.call.activeCall);
+  const dispatch = useAppDispatch();
   const [state, setState] = useState<JoinState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState(0);
   const [speaking, setSpeaking] = useState(false);
   const [pttReady, setPttReady] = useState(false);
+  const [callEnded, setCallEnded] = useState(false);
 
   const roomId = activeCall?.roomId || (activeCall as any)?.id;
 
@@ -391,6 +395,27 @@ export function useJoinCall() {
             setState("error");
           }
         }
+
+        // Handle call stopped by host
+        if (msg.type === "CALL_STOPPED" || msg.type === "call-stopped") {
+          console.log("[useJoinCall] Call stopped by host");
+          setCallEnded(true);
+          
+          // Show toast notification
+          Toast.show({
+            type: "info",
+            text1: "Call Ended",
+            text2: "The call has been ended by the host",
+            position: "top",
+            visibilityTime: 3000,
+            topOffset: 48,
+          });
+          
+          // Clear active call from Redux
+          dispatch(clearActiveCall());
+          
+          // Cleanup will happen via useEffect when activeCall becomes null
+        }
       } catch (e) {
         console.warn("[useJoinCall] message error:", e);
       }
@@ -430,6 +455,16 @@ export function useJoinCall() {
     socket.on("CONSUMED", (msg) => {
       console.log("[useJoinCall] Received 'CONSUMED' event:", msg);
       handleMessage({ type: "CONSUMED", ...msg });
+    });
+    
+    socket.on("CALL_STOPPED", (msg) => {
+      console.log("[useJoinCall] Received 'CALL_STOPPED' event:", msg);
+      handleMessage({ type: "CALL_STOPPED", ...msg });
+    });
+    
+    socket.on("call-stopped", (msg) => {
+      console.log("[useJoinCall] Received 'call-stopped' event:", msg);
+      handleMessage({ type: "call-stopped", ...msg });
     });
   }, [token, role, activeCall?.routerRtpCapabilities]);
 
@@ -497,6 +532,6 @@ export function useJoinCall() {
     }
   }, [roomId]);
 
-  return { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket: socketRef.current };
+  return { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket: socketRef.current, callEnded };
 }
 
