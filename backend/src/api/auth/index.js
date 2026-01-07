@@ -4,6 +4,7 @@ import { signToken } from "../../services/auth.js";
 import { generateHostId } from "../../services/id.js";
 import nodemailer from "nodemailer";
 import { setOtp, verifyOtp } from "../../services/otpStore.js";
+import bcrypt from "bcryptjs";
 
 const router = Router();
 
@@ -54,21 +55,30 @@ router.post("/otp/verify", async (req, res) => {
 
 /* HOST LOGIN (by hostId or email; email is stored in hosts.name for now) */
 router.post("/host/login", async (req, res) => {
-  const { hostId, email } = req.body;
+  const { hostId, email, password } = req.body;
   const identifier = (hostId || email)?.trim();
-  if (!identifier) return res.status(400).json({ error: "hostId or email required" });
+  if (!identifier || !password) return res.status(400).json({ error: "hostId/email and password required" });
 
   const normalizedEmail = identifier.includes("@") ? identifier.toLowerCase() : null;
 
   const result = await query(
-    "SELECT id FROM hosts WHERE id = $1 OR lower(name) = $2",
+    "SELECT id, password FROM hosts WHERE id = $1 OR lower(name) = $2",
     [identifier, normalizedEmail]
   );
 
   if (result.rowCount === 0)
     return res.status(401).json({ error: "Invalid host" });
 
-  const id = result.rows[0].id;
+  const { id, password: hashed } = result.rows[0];
+  if (!hashed) {
+    return res.status(401).json({ error: "Password not set for this host" });
+  }
+
+  const match = await bcrypt.compare(password, hashed);
+  if (!match) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
   const token = signToken({ role: "host", hostId: id });
   res.json({ token, hostId: id });
 });
@@ -77,14 +87,15 @@ router.post("/host/login", async (req, res) => {
 router.post("/host/register", async (req, res) => {
   const { name, email, password } = req.body;
   const hostName = (name || email || "").trim();
-  if (!hostName) return res.status(400).json({ error: "name or email required" });
+  if (!hostName || !password) return res.status(400).json({ error: "name/email and password required" });
 
   const hostId = await generateHostId();
+  const hashed = await bcrypt.hash(password, 10);
 
   await query(
     `INSERT INTO hosts (id, name, password)
      VALUES ($1, $2, $3)`,
-    [hostId, hostName, password || ""]
+    [hostId, hostName, hashed]
   );
 
   const token = signToken({ role: "host", hostId });

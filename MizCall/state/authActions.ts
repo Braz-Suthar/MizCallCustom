@@ -85,7 +85,7 @@ export const registerUser =
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: email.trim() }),
+          body: JSON.stringify({ name: email.trim(), password }),
         },
       );
       const session: CredentialsPayload = {
