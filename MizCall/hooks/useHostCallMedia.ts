@@ -194,20 +194,17 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "user") {
             console.log("[useHostCallMedia] NEW_PRODUCER from user:", msg.producerId);
             
-            // Close old consumer if exists (user created new producer by pressing PTT again)
+            // Check if we already have a consumer for this user
+            // With persistent producers, we should reuse the existing consumer
             if (consumerRef.current) {
-              console.log("[useHostCallMedia] Closing old consumer before creating new one");
-              try {
-                consumerRef.current.close?.();
-              } catch (e) {
-                console.warn("[useHostCallMedia] Failed to close old consumer:", e);
-              }
-              consumerRef.current = null;
+              console.log("[useHostCallMedia] Consumer already exists, reusing it for persistent producer model");
+              // Don't close the consumer - the user's producer is persistent now
+              // The existing consumer will continue to receive audio when user speaks
+              return;
             }
             
-            // Clear processed consumer IDs to allow new consumer creation
-            processedConsumerIdsRef.current.clear();
-            console.log("[useHostCallMedia] Cleared processed consumer IDs, ready for new consumer");
+            // Only create consumer if we don't have one yet (first time user creates producer)
+            console.log("[useHostCallMedia] Creating consumer for user's persistent producer");
             
             if (recvTransportRef.current && deviceRef.current) {
               socket.emit("CONSUME", {

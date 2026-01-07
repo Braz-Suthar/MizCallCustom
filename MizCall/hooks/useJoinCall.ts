@@ -47,16 +47,25 @@ export function useJoinCall() {
     recvTransportRef.current = null;
     sendTransportRef.current?.close?.();
     sendTransportRef.current = null;
+    
+    // Close producer when leaving call
     try {
-      producerRef.current?.close?.();
-    } catch {
-      // ignore
+      if (producerRef.current) {
+        console.log("[useJoinCall] Closing producer on cleanup");
+        producerRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[useJoinCall] Error closing producer:", e);
     }
     producerRef.current = null;
+    
+    // Stop all media tracks
     if (localStreamRef.current) {
+      console.log("[useJoinCall] Stopping local media tracks");
       localStreamRef.current.getTracks().forEach((t) => t.stop());
       localStreamRef.current = null;
     }
+    
     deviceRef.current = null;
     consumerRef.current = null;
     if (meterIntervalRef.current) {
@@ -426,13 +435,32 @@ export function useJoinCall() {
 
   const startSpeaking = useCallback(async () => {
     if (!pttReady || !sendTransportRef.current || speaking) return;
+    
     try {
-      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
-      localStreamRef.current = stream;
-      const track = stream.getAudioTracks()[0];
-      producerRef.current = await sendTransportRef.current.produce({ track });
+      // If producer doesn't exist, create it once
+      if (!producerRef.current) {
+        console.log("[useJoinCall] Creating persistent producer (first time)");
+        const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+        localStreamRef.current = stream;
+        const track = stream.getAudioTracks()[0];
+        
+        // Start with track disabled
+        track.enabled = false;
+        
+        // Create producer once
+        producerRef.current = await sendTransportRef.current.produce({ track });
+        console.log("[useJoinCall] Persistent producer created:", producerRef.current.id);
+      }
+      
+      // Enable the audio track to start sending audio
+      if (localStreamRef.current) {
+        localStreamRef.current.getAudioTracks().forEach((t) => {
+          t.enabled = true;
+        });
+      }
+      
       setSpeaking(true);
-      console.log("[useJoinCall] started speaking");
+      console.log("[useJoinCall] started speaking (track enabled)");
       
       // Notify backend that user started speaking
       if (socketRef.current) {
@@ -449,18 +477,15 @@ export function useJoinCall() {
   }, [pttReady, speaking, roomId]);
 
   const stopSpeaking = useCallback(() => {
-    try {
-      producerRef.current?.close?.();
-    } catch {
-      // ignore
-    }
-    producerRef.current = null;
+    // Don't close producer, just disable the audio track
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
+      localStreamRef.current.getAudioTracks().forEach((t) => {
+        t.enabled = false;
+      });
     }
+    
     setSpeaking(false);
-    console.log("[useJoinCall] stopped speaking");
+    console.log("[useJoinCall] stopped speaking (track disabled)");
     
     // Notify backend that user stopped speaking
     if (socketRef.current) {
