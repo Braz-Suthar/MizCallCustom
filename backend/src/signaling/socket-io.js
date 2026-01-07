@@ -143,10 +143,10 @@ export function handleSocket({ socket, io }) {
       meetingId: roomId,
       userPort,
       hostPort,
-      userPreSeconds: 2,
-      hostPreSeconds: 5,
-      userPostSeconds: 2,
-      hostPostSeconds: 5,
+      userPreSeconds: 3,
+      hostPreSeconds: 3,
+      userPostSeconds: 3,
+      hostPostSeconds: 3,
     });
     
     sendRecorder({
@@ -762,10 +762,6 @@ export function handleSocket({ socket, io }) {
             if (userPeer.role === "user") {
               sendRecorder({ type: "STOP_CLIP", userId: userId });
               sendRecorder({ type: "STOP_USER", userId: userId });
-              sendRecorder({
-                type: "STOP_CLIP",
-                userId: userId
-              });
             }
           }
         }
