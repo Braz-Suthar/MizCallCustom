@@ -2,11 +2,13 @@ import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
+import Toast from "react-native-toast-message";
 
 import { AppButton } from "../../components/ui/AppButton";
 import { AppTextInput } from "../../components/ui/AppTextInput";
 import { registerUser } from "../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../state/store";
+import { apiFetch } from "../../state/api";
 
 export default function Register() {
   const [fullName, setFullName] = useState("");
@@ -17,6 +19,7 @@ export default function Register() {
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((s) => s.auth);
   const router = useRouter();
+  const [sendingOtp, setSendingOtp] = useState(false);
 
   const formValid =
     fullName.trim().length >= 2 &&
@@ -30,17 +33,39 @@ export default function Register() {
       return;
     }
 
-    // Navigate to OTP screen with the entered details
-    router.push({
-      pathname: "/(auth)/register-otp",
-      params: {
-        fullName: fullName.trim(),
-        email: email.trim(),
-        password: password.trim(),
-      },
-    });
+    try {
+      setSendingOtp(true);
+      await apiFetch("/auth/otp/send", "", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+
+      Toast.show({
+        type: "info",
+        text1: "OTP sent",
+        text2: `Check your inbox for an OTP from mizcallofficial@gmail.com`,
+        position: "top",
+        visibilityTime: 1800,
+        topOffset: 48,
+      });
+
+      router.push({
+        pathname: "/(auth)/register-otp",
+        params: {
+          fullName: fullName.trim(),
+          email: email.trim(),
+          password: password.trim(),
+        },
+      });
+    } catch (e: any) {
+      console.warn("[register] otp send failed", e);
+      Alert.alert("OTP failed", e?.message ?? "Could not send OTP. Please try again.");
+    } finally {
+      setSendingOtp(false);
+    }
   };
-  const disable = status === "loading" || !formValid;
+  const disable = status === "loading" || sendingOtp || !formValid;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>

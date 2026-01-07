@@ -147,7 +147,7 @@ router.get(
   async (req, res) => {
     const { userId } = req.params;
     const result = await query(
-      `SELECT id, username, password, enabled
+      `SELECT id, username, password, enabled, device_info
        FROM users
        WHERE id = $1 AND host_id = $2`,
       [userId, req.hostId]

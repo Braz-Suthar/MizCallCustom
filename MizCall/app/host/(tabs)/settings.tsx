@@ -45,6 +45,8 @@ export default function HostSettings() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [deviceLockEnabled, setDeviceLockEnabled] = useState(false);
   const [emailUpdatesEnabled, setEmailUpdatesEnabled] = useState(true);
+  const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
+  const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
 
   // Mock membership data - replace with actual API call
   const membership = {
@@ -63,6 +65,10 @@ export default function HostSettings() {
       if (emailUpd === "false") setEmailUpdatesEnabled(false);
       const lock = await AsyncStorage.getItem("deviceLockEnabled");
       if (lock === "true") setDeviceLockEnabled(true);
+      const oneDevice = await AsyncStorage.getItem("oneDeviceOnly");
+      if (oneDevice === "true") setOneDeviceOnly(true);
+      const multiSessions = await AsyncStorage.getItem("allowMultipleSessions");
+      if (multiSessions === "false") setAllowMultipleSessions(false);
     } catch {
       // ignore persistence errors
     }
@@ -77,6 +83,21 @@ export default function HostSettings() {
       await AsyncStorage.setItem(key, value ? "true" : "false");
     } catch {
       // ignore persistence errors
+    }
+  };
+
+  const handleToggleOneDevice = async () => {
+    const next = !oneDeviceOnly;
+    setOneDeviceOnly(next);
+    savePreference("oneDeviceOnly", next);
+    if (next) {
+      Toast.show({
+        type: "info",
+        text1: "One Device mode enabled",
+        text2: "Users will be restricted to the first device they log in on.",
+        position: "top",
+        visibilityTime: 2000,
+      });
     }
   };
 
@@ -143,6 +164,21 @@ export default function HostSettings() {
       text2: "Your profile has been updated successfully",
       position: "top",
       visibilityTime: 3000,
+    });
+  };
+
+  const handleToggleMultipleSessions = async () => {
+    const next = !allowMultipleSessions;
+    setAllowMultipleSessions(next);
+    savePreference("allowMultipleSessions", next);
+    Toast.show({
+      type: "info",
+      text1: next ? "Multiple sessions allowed" : "Single session enforced",
+      text2: next
+        ? "Users can stay signed in on multiple devices."
+        : "Users will be limited to one active session at a time.",
+      position: "top",
+      visibilityTime: 2000,
     });
   };
 
@@ -399,7 +435,7 @@ export default function HostSettings() {
           </Pressable>
         </View>
 
-        <View style={[styles.notificationRow, { marginTop: 12 }]}>
+        {/* <View style={[styles.notificationRow, { marginTop: 12 }]}>
           <View style={styles.notificationText}>
             <Text style={[styles.notificationTitle, { color: colors.text }]}>Email / WhatsApp Updates</Text>
             <Text style={[styles.notificationSubtitle, { color: colors.text }]}>
@@ -435,7 +471,7 @@ export default function HostSettings() {
               ]}
             />
           </Pressable>
-        </View>
+        </View> */}
       </View>
 
       {/* Privacy Section */}
@@ -481,10 +517,86 @@ export default function HostSettings() {
             />
           </Pressable>
         </View>
+
+        <View style={[styles.notificationRow, { marginTop: 12 }]}>
+          <View style={styles.notificationText}>
+            <Text style={[styles.notificationTitle, { color: colors.text }]}>One User, One Device</Text>
+            <Text style={[styles.notificationSubtitle, { color: colors.text }]}>
+              Lock each user to their first login device. Hosts can approve device changes.
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: oneDeviceOnly }}
+            onPress={handleToggleOneDevice}
+            style={[
+              styles.toggleTrack,
+              {
+                backgroundColor: oneDeviceOnly
+                  ? PRIMARY_BLUE + "55"
+                  : isDarkBg
+                  ? "rgba(255,255,255,0.16)"
+                  : "rgba(0,0,0,0.06)",
+                borderColor: oneDeviceOnly
+                  ? colors.border ?? "transparent"
+                  : colors.border ?? (isDarkBg ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.12)"),
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.toggleThumb,
+                {
+                  backgroundColor: oneDeviceOnly ? PRIMARY_BLUE : colors.card ?? "#f9fafb",
+                  transform: [{ translateX: oneDeviceOnly ? 20 : 0 }],
+                  shadowColor: "#000",
+                },
+              ]}
+            />
+          </Pressable>
+        </View>
+
+        <View style={[styles.notificationRow, { marginTop: 12 }]}>
+          <View style={styles.notificationText}>
+            <Text style={[styles.notificationTitle, { color: colors.text }]}>Concurrent Sessions</Text>
+            <Text style={[styles.notificationSubtitle, { color: colors.text }]}>
+              Allow users to stay signed in on multiple devices at once.
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: allowMultipleSessions }}
+            onPress={handleToggleMultipleSessions}
+            style={[
+              styles.toggleTrack,
+              {
+                backgroundColor: allowMultipleSessions
+                  ? PRIMARY_BLUE + "55"
+                  : isDarkBg
+                  ? "rgba(255,255,255,0.16)"
+                  : "rgba(0,0,0,0.06)",
+                borderColor: allowMultipleSessions
+                  ? colors.border ?? "transparent"
+                  : colors.border ?? (isDarkBg ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.12)"),
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.toggleThumb,
+                {
+                  backgroundColor: allowMultipleSessions ? PRIMARY_BLUE : colors.card ?? "#f9fafb",
+                  transform: [{ translateX: allowMultipleSessions ? 20 : 0 }],
+                  shadowColor: "#000",
+                },
+              ]}
+            />
+          </Pressable>
+        </View>
       </View>
 
       {/* Support Section */}
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {/* <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.sectionHeader}>
           <Ionicons name="help-circle-outline" size={22} color={colors.text} />
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Support</Text>
@@ -511,7 +623,7 @@ export default function HostSettings() {
             <Ionicons name="chevron-forward" size={18} color={colors.text} style={{ opacity: 0.6 }} />
           </Pressable>
         </View>
-      </View>
+      </View> */}
 
       {/* Account Section */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>

@@ -42,7 +42,7 @@ export default function HostUsers() {
   const secondaryButtonBorder = colors.border ?? (isDarkBg ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)");
   const router = useRouter();
   const { token, role } = useAppSelector((s) => s.auth);
-  const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "disabled">("all");
@@ -51,7 +51,7 @@ export default function HostUsers() {
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<{ id: string; username: string; enabled: boolean; password?: string } | null>(null);
+  const [selectedUser, setSelectedUser] = useState<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string } | null>(null);
   
   // Edit form states
   const [editUsername, setEditUsername] = useState("");
@@ -59,6 +59,16 @@ export default function HostUsers() {
   const [editPassword, setEditPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const handleAllowDeviceChange = () => {
+    Toast.show({
+      type: "info",
+      text1: "Request noted",
+      text2: "Approve device change from the host dashboard.",
+      position: "top",
+      visibilityTime: 1800,
+      topOffset: 48,
+    });
+  };
 
   const load = async () => {
     if (!token || role !== "host") return;
@@ -124,10 +134,14 @@ export default function HostUsers() {
     // Fetch user details with password
     try {
       const userData = await apiFetch<{ user: any }>(`/host/users/${user.id}`, token!);
-      setSelectedUser({ ...user, password: userData.user?.password ?? "" });
+      setSelectedUser({
+        ...user,
+        password: userData.user?.password ?? "",
+        deviceInfo: userData.user?.device_info ?? "",
+      });
       setViewModalVisible(true);
     } catch (e) {
-      setSelectedUser({ ...user, password: "" });
+      setSelectedUser({ ...user, password: "", deviceInfo: "" });
       setViewModalVisible(true);
     }
   };
@@ -439,6 +453,14 @@ export default function HostUsers() {
                   </Text>
                 </View>
 
+                <View style={styles.detailRow}>
+                  <Text style={[styles.detailLabel, { color: colors.text }]}>Device</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>
+                    {selectedUser.deviceInfo ? selectedUser.deviceInfo : "No device recorded"}
+                  </Text>
+                </View>
+
+
                 {/* Copy Actions */}
                 <View style={styles.copyActions}>
                   <Pressable 
@@ -572,6 +594,16 @@ export default function HostUsers() {
                     fullWidth
                   />
                 </View>
+              </View>
+
+              <View style={styles.modalActions}>
+                <AppButton
+                  label="Allow device change"
+                  variant="secondary"
+                  onPress={handleAllowDeviceChange}
+                  fullWidth
+                  style={{ borderColor: secondaryButtonBorder, backgroundColor: secondaryButtonBg, borderWidth: 1 }}
+                />
               </View>
             </ScrollView>
           </Pressable>

@@ -2,8 +2,55 @@ import { Router } from "express";
 import { query } from "../../services/db.js";
 import { signToken } from "../../services/auth.js";
 import { generateHostId } from "../../services/id.js";
+import nodemailer from "nodemailer";
+import { setOtp, verifyOtp } from "../../services/otpStore.js";
 
 const router = Router();
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER || "mizcallofficial@gmail.com",
+    pass: process.env.EMAIL_PASS || "",
+  },
+});
+
+const fromAddress = process.env.EMAIL_FROM || "mizcallofficial@gmail.com";
+
+router.post("/otp/send", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: "email required" });
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  setOtp(email.trim().toLowerCase(), otp);
+
+  if (!transporter.options?.auth?.pass) {
+    console.warn("[otp/send] EMAIL_PASS not configured; skipping real send. OTP:", otp);
+    return res.json({ ok: true, mock: true });
+  }
+
+  try {
+    await transporter.sendMail({
+      from: fromAddress,
+      to: email,
+      subject: "Your MizCall OTP",
+      text: `Your MizCall OTP is ${otp}. It expires in 5 minutes.`,
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[otp/send] sendMail failed", e);
+    res.status(500).json({ error: "Failed to send OTP" });
+  }
+});
+
+router.post("/otp/verify", async (req, res) => {
+  const { email, otp } = req.body;
+  if (!email || !otp) return res.status(400).json({ error: "email and otp required" });
+
+  const ok = verifyOtp(email.trim().toLowerCase(), String(otp).trim());
+  if (!ok) return res.status(400).json({ error: "Invalid or expired OTP" });
+  res.json({ ok: true });
+});
 
 /* HOST LOGIN (by hostId or email; email is stored in hosts.name for now) */
 router.post("/host/login", async (req, res) => {
@@ -28,16 +75,16 @@ router.post("/host/login", async (req, res) => {
 
 /* HOST REGISTRATION (name only) */
 router.post("/host/register", async (req, res) => {
-  const { name, email } = req.body;
+  const { name, email, password } = req.body;
   const hostName = (name || email || "").trim();
   if (!hostName) return res.status(400).json({ error: "name or email required" });
 
   const hostId = await generateHostId();
 
   await query(
-    `INSERT INTO hosts (id, name)
-     VALUES ($1, $2)`,
-    [hostId, hostName]
+    `INSERT INTO hosts (id, name, password)
+     VALUES ($1, $2, $3)`,
+    [hostId, hostName, password || ""]
   );
 
   const token = signToken({ role: "host", hostId });
