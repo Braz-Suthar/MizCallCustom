@@ -17,8 +17,8 @@ export function startUserRecording({
     hostPostSeconds = 5,
 }) {
     if (streams.has(userId)) {
-        console.log("[recorder] START_USER ignored, already tracking", userId);
-        return;
+        console.log("[recorder] START_USER restart, stopping previous", userId);
+        stopUserRecording(userId);
     }
 
     const controller = new ClipController({
@@ -40,19 +40,51 @@ export function startUserRecording({
 
     console.log("[recorder] START_USER", { hostId, userId, meetingId, userPort, hostPort });
 
+    let failed = false;
+    const fail = (reason) => {
+        if (failed) return;
+        failed = true;
+        console.error("[recorder] START_USER failed", { userId, reason });
+        stopUserRecording(userId);
+        sendToBackend({
+            type: "START_USER_RESULT",
+            ok: false,
+            reason,
+            hostId,
+            userId,
+            meetingId,
+            userPort,
+            hostPort
+        });
+    };
+
     const userStream = new RtpStream({
         port: userPort,
         label: `user-${userId}`,
-        onPcm: (pcm) => controller.onUserPcm(pcm)
+        onPcm: (pcm) => controller.onUserPcm(pcm),
+        onError: fail
     });
 
     const hostStream = new RtpStream({
         port: hostPort,
         label: `host-${userId}`,
-        onPcm: (pcm) => controller.onHostPcm(pcm)
+        onPcm: (pcm) => controller.onHostPcm(pcm),
+        onError: fail
     });
 
     streams.set(userId, { userStream, hostStream, controller });
+
+    // Notify backend that streams are up (optimistic). If bind fails later,
+    // fail() will send ok:false.
+    sendToBackend({
+        type: "START_USER_RESULT",
+        ok: true,
+        hostId,
+        userId,
+        meetingId,
+        userPort,
+        hostPort
+    });
 }
 
 export function startClip(userId) {

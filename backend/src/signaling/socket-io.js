@@ -148,11 +148,6 @@ export function handleSocket({ socket, io }) {
       userPostSeconds: 3,
       hostPostSeconds: 3,
     });
-    
-    sendRecorder({
-      type: "START_CLIP",
-      userId: peer.id
-    });
 
     try {
       await sendMediasoup({
