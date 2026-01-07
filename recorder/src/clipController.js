@@ -60,6 +60,11 @@ export class ClipController {
 
     stop() {
         if (this.finalized) return;
+        // If we never started, skip finalize
+        if (!this.recording && !this.startedAt) {
+            this.finalized = true;
+            return;
+        }
         // keep recording for post-roll before finalizing
         const postMs = Math.max(this.userPostSeconds, this.hostPostSeconds) * 1000;
         if (this.stopTimeout) clearTimeout(this.stopTimeout);
@@ -72,6 +77,10 @@ export class ClipController {
 
     write() {
         if (this.finalized) return;
+        if (!this.startedAt) {
+            this.finalized = true;
+            return;
+        }
         const date = this.startedAt.toISOString().slice(0, 10);
         const time = this.startedAt.toISOString().slice(11, 19).replace(/:/g, "-");
 
