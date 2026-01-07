@@ -1,16 +1,46 @@
 import { RtpStream } from "./rtpStream.js";
 import { ClipController } from "./clipController.js";
 import { sendToBackend } from "./ws.js";
+import dgram from "dgram";
 
 const streams = new Map();
-// userId → { userStream, hostStream, controller }
+// userId → { userStream, hostStream, controller, userPort, hostPort }
+const reservedPorts = new Set();
 
-export function startUserRecording({
+async function getFreeUdpPort() {
+    return new Promise((resolve, reject) => {
+        const socket = dgram.createSocket("udp4");
+        socket.once("error", (err) => {
+            socket.close();
+            reject(err);
+        });
+        socket.bind(0, () => {
+            const { port } = socket.address();
+            socket.close();
+            resolve(port);
+        });
+    });
+}
+
+async function reservePort() {
+    for (let i = 0; i < 20; i++) {
+        const port = await getFreeUdpPort();
+        if (!reservedPorts.has(port)) {
+            reservedPorts.add(port);
+            return port;
+        }
+    }
+    throw new Error("no free port");
+}
+
+function releasePort(port) {
+    if (port) reservedPorts.delete(port);
+}
+
+export async function startUserRecording({
     hostId,
     userId,
     meetingId,
-    userPort,
-    hostPort,
     userPreSeconds = 2,
     hostPreSeconds = 5,
     userPostSeconds = 2,
@@ -41,6 +71,8 @@ export function startUserRecording({
     console.log("[recorder] START_USER", { hostId, userId, meetingId, userPort, hostPort });
 
     let failed = false;
+    let userPort = null;
+    let hostPort = null;
     const fail = (reason) => {
         if (failed) return;
         failed = true;
@@ -58,6 +90,13 @@ export function startUserRecording({
         });
     };
 
+    try {
+        userPort = await reservePort();
+        hostPort = await reservePort();
+    } catch (err) {
+        return fail("no free ports");
+    }
+
     const userStream = new RtpStream({
         port: userPort,
         label: `user-${userId}`,
@@ -72,7 +111,7 @@ export function startUserRecording({
         onError: fail
     });
 
-    streams.set(userId, { userStream, hostStream, controller });
+    streams.set(userId, { userStream, hostStream, controller, userPort, hostPort });
 
     // Notify backend that streams are up (optimistic). If bind fails later,
     // fail() will send ok:false.
@@ -128,5 +167,7 @@ export function stopUserRecording(userId) {
     entry.controller.stop();
     entry.userStream.close();
     entry.hostStream.close();
+    releasePort(entry.userPort);
+    releasePort(entry.hostPort);
     streams.delete(userId);
 }

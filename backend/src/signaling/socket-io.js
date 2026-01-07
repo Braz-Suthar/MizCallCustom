@@ -132,76 +132,77 @@ export function handleSocket({ socket, io }) {
   let peer = null;
 
   async function startRecorderForUser(roomId, room, peer) {
-    let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 4;
     const remoteIp = process.env.RECORDER_IP || "recorder";
 
-    return new Promise((resolve) => {
-      const tryStart = () => {
-        attempts += 1;
-        const userPort = allocRecorderPort();
-        const hostPort = allocRecorderPort();
-
-        const onResult = async (msg) => {
-          if (msg.userId !== peer.id) return;
-          recorderEvents.off("start_user_result", onResult);
-
-          if (!msg.ok) {
-            console.error("[Socket.IO] START_USER failed, attempt", attempts, msg.reason);
-            if (attempts < maxAttempts) {
-              return tryStart();
-            }
-            console.error("[Socket.IO] START_USER exhausted retries for", peer.id);
-            return resolve(false);
-          }
-
-          try {
-            await sendMediasoup({
-              type: MS.CREATE_RECORDER,
-              roomId,
-              producerOwnerId: peer.id,
-              remotePort: msg.userPort,
-              remoteIp
-            });
-
-            if (room.hostProducerId) {
-              await sendMediasoup({
-                type: MS.CREATE_RECORDER,
-                roomId,
-                producerOwnerId: peer.hostId,
-                remotePort: msg.hostPort,
-                remoteIp
-              });
-            }
-          } catch (err) {
-            console.error("[Socket.IO] CREATE_RECORDER failed:", err?.message || err);
-            if (attempts < maxAttempts) {
-              return tryStart();
-            }
-            return resolve(false);
-          }
-
-          resolve(true);
+    const waitForResult = (userId, timeoutMs = 1200) =>
+      new Promise((resolve) => {
+        const handler = (msg) => {
+          if (msg.userId !== userId) return;
+          recorderEvents.off("start_user_result", handler);
+          resolve(msg);
         };
-
-        recorderEvents.on("start_user_result", onResult);
-
-        sendRecorder({
-          type: "START_USER",
-          hostId: peer.hostId,
-          userId: peer.id,
-          meetingId: roomId,
-          userPort,
-          hostPort,
-          userPreSeconds: 3,
-          hostPreSeconds: 3,
-          userPostSeconds: 3,
-          hostPostSeconds: 3,
+        const timer = setTimeout(() => {
+          recorderEvents.off("start_user_result", handler);
+          resolve({ ok: false, reason: "timeout" });
+        }, timeoutMs);
+        recorderEvents.on("start_user_result", (msg) => {
+          if (msg.userId !== userId) return;
+          clearTimeout(timer);
+          handler(msg);
         });
-      };
+      });
 
-      tryStart();
-    });
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log("[Socket.IO] START_USER attempt", attempt, {
+        userId: peer.id,
+      });
+
+      sendRecorder({
+        type: "START_USER",
+        hostId: peer.hostId,
+        userId: peer.id,
+        meetingId: roomId,
+        userPreSeconds: 3,
+        hostPreSeconds: 3,
+        userPostSeconds: 3,
+        hostPostSeconds: 3,
+      });
+
+      const result = await waitForResult(peer.id);
+      if (!result.ok) {
+        console.error("[Socket.IO] START_USER failed attempt", attempt, result.reason);
+        continue;
+      }
+
+      try {
+        await sendMediasoup({
+          type: MS.CREATE_RECORDER,
+          roomId,
+          producerOwnerId: peer.id,
+          remotePort: result.userPort,
+          remoteIp,
+        });
+
+        if (room.hostProducerId) {
+          await sendMediasoup({
+            type: MS.CREATE_RECORDER,
+            roomId,
+            producerOwnerId: peer.hostId,
+            remotePort: result.hostPort,
+            remoteIp,
+          });
+        }
+      } catch (err) {
+        console.error("[Socket.IO] CREATE_RECORDER failed attempt", attempt, err?.message || err);
+        continue;
+      }
+
+      return true;
+    }
+
+    console.error("[Socket.IO] START_USER exhausted retries for", peer.id);
+    return false;
   }
 
   const requirePeer = () => {
