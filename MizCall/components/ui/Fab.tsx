@@ -33,7 +33,7 @@ export function Fab({ icon, onPress, style, accessibilityLabel, loading, disable
       {loading ? (
         <WaveLoader variant="white" size="small" />
       ) : (
-        <Ionicons name={icon} size={24} color="#fff" />
+      <Ionicons name={icon} size={24} color="#fff" />
       )}
     </Pressable>
   );

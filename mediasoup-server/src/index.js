@@ -153,6 +153,7 @@ wss.on("connection", async (socket) => {
                 ok: true,
                 id: consumer.id,
                 producerId: producer.id,
+                kind: consumer.kind || "audio",
                 rtpParameters: consumer.rtpParameters
             }));
         }

@@ -529,15 +529,15 @@ export function useJoinCall() {
       // If producer doesn't exist, create it once
       if (!producerRef.current) {
         console.log("[useJoinCall] Creating persistent producer (first time)");
-        const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
-        localStreamRef.current = stream;
-        const track = stream.getAudioTracks()[0];
+      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
+      const track = stream.getAudioTracks()[0];
         
         // Start with track disabled
         track.enabled = false;
         
         // Create producer once
-        producerRef.current = await sendTransportRef.current.produce({ track });
+      producerRef.current = await sendTransportRef.current.produce({ track });
         console.log("[useJoinCall] Persistent producer created:", producerRef.current.id);
       }
       

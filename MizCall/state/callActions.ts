@@ -140,11 +140,11 @@ export const endCall =
     } catch (error) {
       console.error("[endCall] Error ending call:", error);
     } finally {
-      hostCallSocket = null;
-      dispatch(clearActiveCall());
-      dispatch(setCallStatus("idle"));
-      dispatch(setCallError(null));
-      dispatch(resetParticipants());
+    hostCallSocket = null;
+    dispatch(clearActiveCall());
+    dispatch(setCallStatus("idle"));
+    dispatch(setCallError(null));
+    dispatch(resetParticipants());
     }
   };
 

@@ -105,8 +105,8 @@ export default function UserDashboard() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.text }]}>User Dashboard</Text>
-        <Text style={[styles.subtitle, { color: colors.text }]}>Quick access to your recordings and activity.</Text>
+      <Text style={[styles.title, { color: colors.text }]}>User Dashboard</Text>
+      <Text style={[styles.subtitle, { color: colors.text }]}>Quick access to your recordings and activity.</Text>
       </View>
 
       <ScrollView
@@ -148,14 +148,14 @@ export default function UserDashboard() {
                 </View>
               )}
             </View>
-            <AppButton
+          <AppButton
               label="Join Call"
-              onPress={() => router.push("/user/active-call")}
-              fullWidth
+            onPress={() => router.push("/user/active-call")}
+            fullWidth
               variant="primary"
-            />
-          </View>
-        ) : (
+          />
+        </View>
+      ) : (
           <View style={styles.emptyContainer}>
             <Ionicons name="call-outline" size={64} color={colors.text} style={{ opacity: 0.3 }} />
             <Text style={[styles.emptyTitle, { color: colors.text }]}>No Active Calls</Text>
@@ -163,7 +163,7 @@ export default function UserDashboard() {
               When a call is started by your host, it will appear here.
             </Text>
           </View>
-        )}
+      )}
       </ScrollView>
     </View>
   );
