@@ -17,14 +17,11 @@ router.get("/active-call", requireAuth, requireUser, async (req, res) => {
     // Find active call for this user's host
     const result = await query(
       `SELECT 
-        id, 
-        room_id, 
-        started_at, 
-        ended_at, 
-        status,
-        router_rtp_capabilities,
-        host_producer_id
-       FROM calls 
+        id,
+        started_at,
+        ended_at,
+        status
+       FROM rooms
        WHERE host_id = $1 
          AND status = 'started'
        ORDER BY started_at DESC 
@@ -41,12 +38,9 @@ router.get("/active-call", requireAuth, requireUser, async (req, res) => {
     res.json({
       call: {
         id: call.id,
-        room_id: call.room_id,
         started_at: call.started_at,
         ended_at: call.ended_at,
         status: call.status,
-        router_rtp_capabilities: call.router_rtp_capabilities,
-        host_producer_id: call.host_producer_id,
       }
     });
   } catch (error) {
