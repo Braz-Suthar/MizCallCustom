@@ -97,6 +97,8 @@ export async function startUserRecording({
         return fail("no free ports");
     }
 
+    console.log("[recorder] START_USER", { hostId, userId, meetingId, userPort, hostPort });
+
     const userStream = new RtpStream({
         port: userPort,
         label: `user-${userId}`,
