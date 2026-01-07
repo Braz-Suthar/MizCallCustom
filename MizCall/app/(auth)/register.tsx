@@ -9,23 +9,38 @@ import { registerUser } from "../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../state/store";
 
 export default function Register() {
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const { colors } = useTheme();
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((s) => s.auth);
   const router = useRouter();
 
-  const onSubmit = async () => {
-    try {
-      await dispatch(registerUser(email.trim(), password)).unwrap?.();
-      router.replace("/host/dashboard");
-    } catch (e) {
-      Alert.alert("Registration failed", "Please check your details and try again.");
-    }
-  };
+  const formValid =
+    fullName.trim().length >= 2 &&
+    email.trim().length > 0 &&
+    password.trim().length >= 6 &&
+    confirmPassword === password;
 
-  const disable = status === "loading" || !email.trim() || password.trim().length < 6;
+  const onSubmit = async () => {
+    if (!formValid) {
+      Alert.alert("Missing info", "Please complete all fields and ensure passwords match.");
+      return;
+    }
+
+    // Navigate to OTP screen with the entered details
+    router.push({
+      pathname: "/(auth)/register-otp",
+      params: {
+        fullName: fullName.trim(),
+        email: email.trim(),
+        password: password.trim(),
+      },
+    });
+  };
+  const disable = status === "loading" || !formValid;
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>
@@ -35,12 +50,30 @@ export default function Register() {
           <Text style={[styles.subtitle, { color: colors.text }]}>Hosts register with email and password.</Text>
 
           <AppTextInput
+            label="Full Name"
+            value={fullName}
+            onChangeText={setFullName}
+            placeholder="John Doe"
+            style={{
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+              shadowOpacity: 0,
+              elevation: 0,
+            }}
+          />
+          <AppTextInput
             label="Email"
             value={email}
             autoCapitalize="none"
             keyboardType="email-address"
             onChangeText={setEmail}
             placeholder="you@example.com"
+            style={{
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+              shadowOpacity: 0,
+              elevation: 0,
+            }}
           />
           <AppTextInput
             label="Password"
@@ -48,9 +81,37 @@ export default function Register() {
             onChangeText={setPassword}
             secureTextEntry
             placeholder="Minimum 6 characters"
+            style={{
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+              shadowOpacity: 0,
+              elevation: 0,
+            }}
+          />
+          <AppTextInput
+            label="Confirm Password"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            placeholder="Re-enter password"
+            style={{
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+              shadowOpacity: 0,
+              elevation: 0,
+            }}
           />
 
-          <AppButton label="Create account" onPress={onSubmit} disabled={disable} loading={status === "loading"} />
+          <AppButton
+            label="Send OTP"
+            onPress={onSubmit}
+            disabled={disable}
+            loading={status === "loading"}
+          />
+
+          <Text style={[styles.terms, { color: colors.text }]}>
+            By creating an account you agree to our Terms & Conditions and Privacy Policy.
+          </Text>
 
           <Text style={[styles.helper, { color: colors.text }]}>Already have an account?</Text>
           <AppButton label="Back to login" variant="ghost" onPress={() => router.back()} />
@@ -90,6 +151,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#6b7280",
     fontSize: 13,
+  },
+  terms: {
+    textAlign: "center",
+    fontSize: 12,
+    opacity: 0.7,
+    marginTop: 8,
+    lineHeight: 18,
   },
 });
 

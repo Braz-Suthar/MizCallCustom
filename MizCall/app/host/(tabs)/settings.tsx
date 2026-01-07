@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Linking } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
@@ -289,13 +289,10 @@ export default function HostSettings() {
         </View>
         
         <Pressable
-          style={[styles.securityButton, { borderColor: buttonBorderColor, borderWidth: 1.5 }]}
+          style={[styles.securityButton, { borderWidth: 0 }]}
           onPress={() => setChangePasswordVisible(true)}
         >
           <View style={styles.securityButtonLeft}>
-            <View style={[styles.securityIcon, { backgroundColor: PRIMARY_BLUE + "20" }]}>
-              <Ionicons name="key" size={18} color={PRIMARY_BLUE} />
-            </View>
             <View>
               <Text style={[styles.securityButtonTitle, { color: colors.text }]}>
                 Change Password
@@ -307,6 +304,55 @@ export default function HostSettings() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.text} style={{ opacity: 0.5 }} />
         </Pressable>
+      </View>
+
+      {/* Appearance Section */}
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="color-palette-outline" size={22} color={colors.text} />
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
+        </View>
+        
+        <View style={styles.themeOptions}>
+          {(["light", "dark", "system"] as ThemeMode[]).map((mode) => (
+            <Pressable
+              key={mode}
+              style={[
+                styles.themeOption,
+                {
+                  backgroundColor: themeMode === mode ? PRIMARY_BLUE : colors.background,
+                  borderColor: themeMode === mode ? PRIMARY_BLUE : colors.border,
+                },
+              ]}
+              onPress={() => onThemeChange(mode)}
+            >
+              <Ionicons
+                name={
+                  mode === "light"
+                    ? "sunny"
+                    : mode === "dark"
+                    ? "moon"
+                    : "phone-portrait-outline"
+                }
+                size={24}
+                color={themeMode === mode ? "#fff" : colors.text}
+              />
+              <Text
+                style={[
+                  styles.themeOptionText,
+                  { color: themeMode === mode ? "#fff" : colors.text },
+                ]}
+              >
+                {mode === "system" ? "System" : mode === "dark" ? "Dark" : "Light"}
+              </Text>
+              {themeMode === mode && (
+                <View style={styles.checkmark}>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                </View>
+              )}
+            </Pressable>
+          ))}
+        </View>
       </View>
 
       {/* Notifications Section */}
@@ -437,52 +483,33 @@ export default function HostSettings() {
         </View>
       </View>
 
-      {/* Appearance Section */}
+      {/* Support Section */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.sectionHeader}>
-          <Ionicons name="color-palette-outline" size={22} color={colors.text} />
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Appearance</Text>
+          <Ionicons name="help-circle-outline" size={22} color={colors.text} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Support</Text>
         </View>
-        
-        <View style={styles.themeOptions}>
-          {(["light", "dark", "system"] as ThemeMode[]).map((mode) => (
-            <Pressable
-              key={mode}
-              style={[
-                styles.themeOption,
-                {
-                  backgroundColor: themeMode === mode ? PRIMARY_BLUE : colors.background,
-                  borderColor: themeMode === mode ? PRIMARY_BLUE : colors.border,
-                },
-              ]}
-              onPress={() => onThemeChange(mode)}
-            >
-              <Ionicons
-                name={
-                  mode === "light"
-                    ? "sunny"
-                    : mode === "dark"
-                    ? "moon"
-                    : "phone-portrait-outline"
-                }
-                size={24}
-                color={themeMode === mode ? "#fff" : colors.text}
-              />
-              <Text
-                style={[
-                  styles.themeOptionText,
-                  { color: themeMode === mode ? "#fff" : colors.text },
-                ]}
-              >
-                {mode === "system" ? "System" : mode === "dark" ? "Dark" : "Light"}
-              </Text>
-              {themeMode === mode && (
-                <View style={styles.checkmark}>
-                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                </View>
-              )}
-            </Pressable>
-          ))}
+        <View style={styles.infoRows}>
+          <Pressable
+            style={[styles.infoRowPressable, { borderColor: colors.border }]}
+            onPress={() => Linking.openURL("https://wa.me/918000244655")}
+          >
+            <View style={styles.infoRowLeft}>
+              <Ionicons name="logo-whatsapp" size={20} color={PRIMARY_BLUE} />
+              <Text style={[styles.infoLabel, { color: colors.text }]}>WhatsApp (+918000244655)</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.text} style={{ opacity: 0.6 }} />
+          </Pressable>
+          <Pressable
+            style={[styles.infoRowPressable, { borderColor: colors.border }]}
+            onPress={() => Linking.openURL("mailto:mizcallofficial@gamil.com")}
+          >
+            <View style={styles.infoRowLeft}>
+              <Ionicons name="mail-outline" size={20} color={PRIMARY_BLUE} />
+              <Text style={[styles.infoLabel, { color: colors.text }]}>Email (mizcallofficial@gamil.com)</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.text} style={{ opacity: 0.6 }} />
+          </Pressable>
         </View>
       </View>
 
@@ -823,6 +850,19 @@ const styles = StyleSheet.create({
   },
   infoRows: {
     gap: 12,
+  },
+  infoRowPressable: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+  },
+  infoRowLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   infoRow: {
     flexDirection: "row",

@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
 
 import { AppButton } from "../../components/ui/AppButton";
@@ -62,6 +62,12 @@ export default function Login() {
               keyboardType="email-address"
               onChangeText={setEmail}
               placeholder="host@example.com"
+              style={{
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                shadowOpacity: 0,
+                elevation: 0,
+              }}
             />
           ) : (
             <AppTextInput
@@ -70,6 +76,12 @@ export default function Login() {
               autoCapitalize="characters"
               onChangeText={setUserId}
               placeholder="U123456"
+              style={{
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                shadowOpacity: 0,
+                elevation: 0,
+              }}
             />
           )}
           <AppTextInput
@@ -78,9 +90,19 @@ export default function Login() {
             onChangeText={setPassword}
             secureTextEntry
             placeholder="••••••••"
+            style={{
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+              shadowOpacity: 0,
+              elevation: 0,
+            }}
           />
 
           <AppButton label="Continue" onPress={onSubmit} disabled={disable} loading={status === "loading"} />
+
+        <Pressable onPress={() => router.push("/(auth)/forgot-password")}>
+          <Text style={[styles.forgot, { color: colors.text }]}>Forgot Password?</Text>
+        </Pressable>
 
           <Text style={[styles.helper, { color: colors.text }]}>Need an account? Register to get started.</Text>
           <AppButton
@@ -120,6 +142,11 @@ const styles = StyleSheet.create({
   helper: {
     textAlign: "center",
     fontSize: 13,
+  },
+  forgot: {
+    textAlign: "center",
+    fontSize: 13,
+    marginTop: 4,
   },
 });
 

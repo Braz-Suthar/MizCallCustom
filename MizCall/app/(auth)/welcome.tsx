@@ -12,7 +12,7 @@ export default function Welcome() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Image source={require("../../assets/images/icon.png")} style={styles.logo} />
       <Text style={[styles.title, { color: colors.text }]}>Welcome to MizCall</Text>
-      <Text style={[styles.subtitle, { color: colors.text }]}>Fast, secure calls and recordings with an iOS-polished feel.</Text>
+      <Text style={[styles.subtitle, { color: colors.text }]}>Fast, secure calls and recordings with a polished, modern feel.</Text>
 
       <View style={styles.actions}>
         <Link href="/(auth)/login" asChild>
