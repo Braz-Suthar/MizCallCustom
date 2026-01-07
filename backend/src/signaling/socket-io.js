@@ -4,7 +4,7 @@ import { Peer } from "./peer.js";
 import { sendMediasoup } from "../mediasoup/client.js";
 import { MS } from "../mediasoup/commands.js";
 import { v4 as uuid } from "uuid";
-import { sendRecorder } from "../recorder/client.js";
+import { sendRecorder, recorderEvents } from "../recorder/client.js";
 
 const peers = new Map();
 let io = null;
@@ -15,7 +15,7 @@ const rooms = new Map();
 // Export peers and getRoom for API access
 export { peers };
 
-const RECORDER_PORT_START = Number(process.env.RECORDER_PORT_START || 55000);
+const RECORDER_PORT_START = Number(process.env.RECORDER_PORT_START || 56000);
 let recorderPortCursor = RECORDER_PORT_START;
 
 function allocRecorderPort() {
@@ -132,44 +132,76 @@ export function handleSocket({ socket, io }) {
   let peer = null;
 
   async function startRecorderForUser(roomId, room, peer) {
-    const userPort = allocRecorderPort();
-    const hostPort = allocRecorderPort();
+    let attempts = 0;
+    const maxAttempts = 3;
     const remoteIp = process.env.RECORDER_IP || "recorder";
 
-    sendRecorder({
-      type: "START_USER",
-      hostId: peer.hostId,
-      userId: peer.id,
-      meetingId: roomId,
-      userPort,
-      hostPort,
-      userPreSeconds: 3,
-      hostPreSeconds: 3,
-      userPostSeconds: 3,
-      hostPostSeconds: 3,
-    });
+    return new Promise((resolve) => {
+      const tryStart = () => {
+        attempts += 1;
+        const userPort = allocRecorderPort();
+        const hostPort = allocRecorderPort();
 
-    try {
-      await sendMediasoup({
-        type: MS.CREATE_RECORDER,
-        roomId,
-        producerOwnerId: peer.id,
-        remotePort: userPort,
-        remoteIp
-      });
+        const onResult = async (msg) => {
+          if (msg.userId !== peer.id) return;
+          recorderEvents.off("start_user_result", onResult);
 
-      if (room.hostProducerId) {
-        await sendMediasoup({
-          type: MS.CREATE_RECORDER,
-          roomId,
-          producerOwnerId: peer.hostId,
-          remotePort: hostPort,
-          remoteIp
+          if (!msg.ok) {
+            console.error("[Socket.IO] START_USER failed, attempt", attempts, msg.reason);
+            if (attempts < maxAttempts) {
+              return tryStart();
+            }
+            console.error("[Socket.IO] START_USER exhausted retries for", peer.id);
+            return resolve(false);
+          }
+
+          try {
+            await sendMediasoup({
+              type: MS.CREATE_RECORDER,
+              roomId,
+              producerOwnerId: peer.id,
+              remotePort: msg.userPort,
+              remoteIp
+            });
+
+            if (room.hostProducerId) {
+              await sendMediasoup({
+                type: MS.CREATE_RECORDER,
+                roomId,
+                producerOwnerId: peer.hostId,
+                remotePort: msg.hostPort,
+                remoteIp
+              });
+            }
+          } catch (err) {
+            console.error("[Socket.IO] CREATE_RECORDER failed:", err?.message || err);
+            if (attempts < maxAttempts) {
+              return tryStart();
+            }
+            return resolve(false);
+          }
+
+          resolve(true);
+        };
+
+        recorderEvents.on("start_user_result", onResult);
+
+        sendRecorder({
+          type: "START_USER",
+          hostId: peer.hostId,
+          userId: peer.id,
+          meetingId: roomId,
+          userPort,
+          hostPort,
+          userPreSeconds: 3,
+          hostPreSeconds: 3,
+          userPostSeconds: 3,
+          hostPostSeconds: 3,
         });
-      }
-    } catch (err) {
-      console.error("[Socket.IO] Recorder setup failed:", err?.message || err);
-    }
+      };
+
+      tryStart();
+    });
   }
 
   const requirePeer = () => {
