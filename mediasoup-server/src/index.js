@@ -114,6 +114,7 @@ wss.on("connection", async (socket) => {
         if (msg.type === "consume") {
             const room = rooms.get(msg.roomId);
             if (!room) {
+                console.error("[Mediasoup] CONSUME: Room not found:", msg.roomId);
                 socket.send(JSON.stringify({
                     requestId: msg.requestId,
                     ok: false,
@@ -122,8 +123,16 @@ wss.on("connection", async (socket) => {
                 return;
             }
 
+            console.log("[Mediasoup] CONSUME request:", {
+                roomId: msg.roomId,
+                producerOwnerId: msg.producerOwnerId,
+                transportId: msg.transportId
+            });
+
             const producer = room.producers?.get(msg.producerOwnerId);
             if (!producer) {
+                console.error("[Mediasoup] CONSUME: Producer not found for owner:", msg.producerOwnerId);
+                console.log("[Mediasoup] Available producers:", Array.from(room.producers?.keys() || []));
                 socket.send(JSON.stringify({
                     requestId: msg.requestId,
                     ok: false,
@@ -131,6 +140,8 @@ wss.on("connection", async (socket) => {
                 }));
                 return;
             }
+
+            console.log("[Mediasoup] Found producer:", { producerId: producer.id, kind: producer.kind });
 
             const consumer = await handleConsume(
                 room,
@@ -140,6 +151,7 @@ wss.on("connection", async (socket) => {
             );
 
             if (!consumer) {
+                console.error("[Mediasoup] CONSUME: Failed to create consumer");
                 socket.send(JSON.stringify({
                     requestId: msg.requestId,
                     ok: false,
@@ -148,14 +160,25 @@ wss.on("connection", async (socket) => {
                 return;
             }
 
-            socket.send(JSON.stringify({
+            console.log("[Mediasoup] Consumer created:", {
+                consumerId: consumer.id,
+                producerId: producer.id,
+                kind: consumer.kind,
+                hasRtpParameters: !!consumer.rtpParameters
+            });
+
+            const response = {
                 requestId: msg.requestId,
                 ok: true,
                 id: consumer.id,
                 producerId: producer.id,
                 kind: consumer.kind || "audio",
                 rtpParameters: consumer.rtpParameters
-            }));
+            };
+
+            console.log("[Mediasoup] Sending CONSUME response:", JSON.stringify(response, null, 2));
+
+            socket.send(JSON.stringify(response));
         }
 
         if (msg.type === "create-recorder") {

@@ -553,6 +553,13 @@ export function handleSocket({ socket, io }) {
         }
         
         try {
+          console.log("[Socket.IO] Sending CONSUME request to mediasoup:", {
+            roomId,
+            transportId: requirePeer().recvTransport.id,
+            producerOwnerId: producerOwnerId,
+            hasRtpCapabilities: !!msg.rtpCapabilities
+          });
+          
           const res = await sendMediasoup({
             type: MS.CONSUME,
             roomId,
@@ -561,14 +568,17 @@ export function handleSocket({ socket, io }) {
             rtpCapabilities: msg.rtpCapabilities,
           });
           
-          console.log("[Socket.IO] Mediasoup CONSUME response:", JSON.stringify(res, null, 2));
+          console.log("[Socket.IO] Mediasoup CONSUME response (raw):", JSON.stringify(res, null, 2));
+          console.log("[Socket.IO] Response keys:", Object.keys(res));
+          console.log("[Socket.IO] Response.id:", res.id);
+          console.log("[Socket.IO] Response.consumerId:", res.consumerId);
           
           // Mediasoup returns: { id, producerId, kind, rtpParameters }
           const consumerId = res.id || res.consumerId;
           const kind = res.kind || "audio"; // Get kind from response or default to audio
           
           if (!consumerId) {
-            console.error("[Socket.IO] CRITICAL: Mediasoup did not return consumer ID! Response:", res);
+            console.error("[Socket.IO] CRITICAL: Mediasoup did not return consumer ID! Full response:", JSON.stringify(res, null, 2));
             socket.emit("CONSUME_ERROR", {
               type: "CONSUME_ERROR",
               error: "Failed to create consumer - no ID returned"

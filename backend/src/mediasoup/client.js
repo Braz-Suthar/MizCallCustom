@@ -51,9 +51,23 @@ export function sendMediasoup(cmd) {
         : connectMediasoup();
 
     return ensure.then(() => {
-        return new Promise((resolve) => {
+        return new Promise((resolve, reject) => {
             const requestId = randomUUID();
-            pending.set(requestId, resolve);
+            pending.set(requestId, (response) => {
+                // Log the response from mediasoup-server
+                console.log("[mediasoup-client] Response for", cmd.type, ":", JSON.stringify(response, null, 2));
+                
+                // Check if response indicates an error
+                if (response.ok === false) {
+                    console.error("[mediasoup-client] Mediasoup returned error:", response.error);
+                    reject(new Error(response.error || "Mediasoup operation failed"));
+                    return;
+                }
+                
+                resolve(response);
+            });
+            
+            console.log("[mediasoup-client] Sending command:", cmd.type, "with requestId:", requestId);
             socket.send(JSON.stringify({ ...cmd, requestId }));
         });
     });
