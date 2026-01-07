@@ -283,8 +283,25 @@ export function useJoinCall() {
           // Handle both message formats (params object or root level)
           const consumerId = msg.params?.id || msg.id;
           const producerId = msg.params?.producerId || msg.producerId;
+          const kind = msg.params?.kind || msg.kind || "audio";
+          const rtpParameters = msg.params?.rtpParameters || msg.rtpParameters;
           
           console.log("[useJoinCall] CONSUMER event received:", msg.type, "Consumer ID:", consumerId);
+          console.log("[useJoinCall] Full message:", JSON.stringify(msg, null, 2));
+          
+          // Validate required fields
+          if (!consumerId) {
+            console.error("[useJoinCall] Missing consumer ID in message:", msg);
+            return;
+          }
+          if (!producerId) {
+            console.error("[useJoinCall] Missing producer ID in message:", msg);
+            return;
+          }
+          if (!rtpParameters) {
+            console.error("[useJoinCall] Missing rtpParameters in message:", msg);
+            return;
+          }
           
           // Skip if we already have ANY consumer (prevent duplicate creation)
           if (consumerRef.current) {
@@ -298,9 +315,6 @@ export function useJoinCall() {
           }
           
           try {
-            const kind = msg.params?.kind || msg.kind || "audio";
-            const rtpParameters = msg.params?.rtpParameters || msg.rtpParameters;
-            
             console.log("[useJoinCall] Creating consumer:", { consumerId, producerId, kind });
             
             const consumer = await recvTransportRef.current.consume({

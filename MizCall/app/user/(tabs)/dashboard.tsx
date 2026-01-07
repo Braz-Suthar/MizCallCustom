@@ -7,6 +7,7 @@ import { AppButton } from "../../../components/ui/AppButton";
 import { useAppSelector, useAppDispatch } from "../../../state/store";
 import { setActiveCall } from "../../../state/callSlice";
 import { apiFetch } from "../../../state/api";
+import { socketManager } from "../../../services/socketManager";
 
 const SUCCESS_GREEN = "#22c55e";
 
@@ -60,6 +61,42 @@ export default function UserDashboard() {
     // Fetch active call when component mounts
     fetchActiveCall();
   }, [token]);
+
+  // Listen for real-time call events
+  useEffect(() => {
+    const socket = socketManager.getSocket();
+    if (!socket) return;
+
+    const handleCallStarted = (data: any) => {
+      console.log("[UserDashboard] call-started event received:", data);
+      dispatch(setActiveCall({
+        roomId: data.roomId,
+        routerRtpCapabilities: data.routerRtpCapabilities || {},
+        hostProducerId: data.hostProducerId || null,
+        startedAt: new Date().toISOString(),
+      }));
+    };
+
+    const handleCallStopped = () => {
+      console.log("[UserDashboard] call-stopped event received");
+      // The call will be cleared by useJoinCall, but we can also clear here
+      // This ensures dashboard shows "No Active Calls" immediately
+    };
+
+    socket.on("call-started", handleCallStarted);
+    socket.on("CALL_STARTED", handleCallStarted);
+    socket.on("call-stopped", handleCallStopped);
+    socket.on("CALL_STOPPED", handleCallStopped);
+
+    console.log("[UserDashboard] Listening for call events on socket:", socket.id);
+
+    return () => {
+      socket.off("call-started", handleCallStarted);
+      socket.off("CALL_STARTED", handleCallStarted);
+      socket.off("call-stopped", handleCallStopped);
+      socket.off("CALL_STOPPED", handleCallStopped);
+    };
+  }, [dispatch]);
 
   const onRefresh = () => {
     fetchActiveCall(true);

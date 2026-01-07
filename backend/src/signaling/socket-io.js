@@ -561,21 +561,30 @@ export function handleSocket({ socket, io }) {
             rtpCapabilities: msg.rtpCapabilities,
           });
           
-          // Mediasoup returns: { id, producerId, rtpParameters }
+          // Mediasoup returns: { id, producerId, kind, rtpParameters }
           const consumerId = res.id;
+          const kind = res.kind || "audio"; // Get kind from response or default to audio
           requirePeer().consumers.set(consumerId, { id: consumerId });
+          
+          console.log("[Socket.IO] CONSUME successful:", {
+            consumerId: consumerId,
+            producerId: msg.producerId,
+            kind: kind
+          });
           
           // Send both message types for compatibility
           const consumeResponse = {
             type: "CONSUMED",
             producerId: msg.producerId,
             id: consumerId,
-            kind: "audio",  // Always audio for now
+            consumerId: consumerId, // Also include as consumerId
+            kind: kind,
             rtpParameters: res.rtpParameters,
             params: {
               id: consumerId,
+              consumerId: consumerId,
               producerId: msg.producerId,
-              kind: "audio",
+              kind: kind,
               rtpParameters: res.rtpParameters,
             }
           };
@@ -585,7 +594,8 @@ export function handleSocket({ socket, io }) {
           
           console.log("[Socket.IO] CONSUMED successfully:", {
             consumerId: consumerId,
-            producerId: msg.producerId
+            producerId: msg.producerId,
+            kind: kind
           });
         } catch (e) {
           console.error("[Socket.IO] CONSUME failed:", e?.message || e);
