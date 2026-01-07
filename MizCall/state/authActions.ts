@@ -19,7 +19,7 @@ export const loginHost =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; hostId?: string; name?: string; avatarUrl?: string }>(
+      const res = await apiFetch<{ token: string; hostId?: string; name?: string; email?: string; avatarUrl?: string }>(
         "/auth/host/login",
         "",
         {
@@ -29,7 +29,7 @@ export const loginHost =
         },
       );
       const session: CredentialsPayload = {
-        email,
+        email: res.email ?? email,
         hostId: res.hostId,
         displayName: res.name ?? email,
         password,
@@ -79,7 +79,7 @@ export const registerUser =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; hostId: string; avatarUrl?: string; name?: string }>(
+      const res = await apiFetch<{ token: string; hostId: string; avatarUrl?: string; name?: string; email?: string }>(
         "/auth/host/register",
         "",
         {
@@ -89,7 +89,7 @@ export const registerUser =
         },
       );
       const session: CredentialsPayload = {
-        email,
+        email: res.email ?? email,
         hostId: res.hostId,
         displayName: res.name ?? email,
         avatarUrl: res.avatarUrl ?? null,

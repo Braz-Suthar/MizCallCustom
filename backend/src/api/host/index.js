@@ -23,15 +23,23 @@ const upload = multer({ storage });
 /* HOST PROFILE - UPDATE NAME/EMAIL */
 router.patch("/profile", requireAuth, requireHost, async (req, res) => {
   const { name, email } = req.body;
-  const nextName = (name || email || "").trim();
-  if (!nextName) return res.status(400).json({ error: "name or email required" });
+  const displayName = (name || "").trim();
+  const emailValue = (email || "").trim();
+
+  if (!displayName && !emailValue) {
+    return res.status(400).json({ error: "name or email required" });
+  }
+
+  if (!emailValue) {
+    return res.status(400).json({ error: "email is required" });
+  }
 
   await query(
-    `UPDATE hosts SET name = $1 WHERE id = $2`,
-    [nextName, req.hostId]
+    `UPDATE hosts SET display_name = $1, name = $2 WHERE id = $3`,
+    [displayName || emailValue, emailValue, req.hostId]
   );
 
-  res.json({ name: nextName, email: nextName });
+  res.json({ name: displayName || emailValue, email: emailValue });
 });
 
 /* DASHBOARD STATS */

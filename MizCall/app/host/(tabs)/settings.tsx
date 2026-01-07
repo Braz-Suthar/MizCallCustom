@@ -81,6 +81,11 @@ export default function HostSettings() {
     loadPreferences();
   }, []);
 
+  // Debug log for host data
+  useEffect(() => {
+    console.log("[Settings] auth state:", auth);
+  }, [auth]);
+
 
   const savePreference = async (key: string, value: boolean) => {
     try {

@@ -400,20 +400,32 @@ export default function HostDashboard() {
         <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Activity</Text>
           <View style={styles.activityList}>
-              {recent.map((item, index) => (
-                <View 
-                  key={index} 
-                  style={[styles.activityCard, { backgroundColor: colors.card }]}
-                >
-                  <View style={[styles.activityIconContainer, { backgroundColor: PRIMARY_BG }]}>
-                    <Ionicons name={item.icon} size={24} color={PRIMARY_BLUE} />
-                  </View>
-                  <View style={styles.activityContent}>
-                  <Text style={[styles.activityTitle, { color: colors.text }]}>{item.title}</Text>
-                  <Text style={[styles.activityDetail, { color: colors.text }]}>{item.detail}</Text>
+              {recent.length === 0 ? (
+                <View style={[styles.emptyActivity, { backgroundColor: colors.card }]}>
+                  <Ionicons name="time-outline" size={28} color={colors.text} style={{ opacity: 0.6 }} />
+                  <Text style={[styles.emptyActivityText, { color: colors.text }]}>
+                    No recent activity
+                  </Text>
+                  <Text style={[styles.emptyActivitySub, { color: colors.text }]}>
+                    New calls or users will appear here.
+                  </Text>
                 </View>
-              </View>
-            ))}
+              ) : (
+                recent.map((item, index) => (
+                  <View 
+                    key={index} 
+                    style={[styles.activityCard, { backgroundColor: colors.card }]}
+                  >
+                    <View style={[styles.activityIconContainer, { backgroundColor: PRIMARY_BG }]}>
+                      <Ionicons name={item.icon} size={24} color={PRIMARY_BLUE} />
+                    </View>
+                    <View style={styles.activityContent}>
+                      <Text style={[styles.activityTitle, { color: colors.text }]}>{item.title}</Text>
+                      <Text style={[styles.activityDetail, { color: colors.text }]}>{item.detail}</Text>
+                    </View>
+                  </View>
+                ))
+              )}
           </View>
         </View>
         </ScrollView>
@@ -599,6 +611,22 @@ const styles = StyleSheet.create({
   },
   activityDetail: {
     fontSize: 14,
+    opacity: 0.7,
+  },
+  emptyActivity: {
+    padding: 16,
+    borderRadius: 14,
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.05)",
+  },
+  emptyActivityText: {
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  emptyActivitySub: {
+    fontSize: 13,
     opacity: 0.7,
   },
 });
