@@ -47,9 +47,25 @@ export async function startUserRecording({
     userPostSeconds = 2,
     hostPostSeconds = 5,
 }) {
-    if (streams.has(userId)) {
-        console.log("[recorder] START_USER restart, stopping previous", userId);
-        stopUserRecording(userId);
+    // If already tracking this user, do not restart; just acknowledge and honor any queued start.
+    const existing = streams.get(userId);
+    if (existing) {
+        console.log("[recorder] START_USER already active, keeping current streams", { userId });
+        if (pendingStarts.has(userId)) {
+            pendingStarts.delete(userId);
+            existing.controller.start();
+            console.log("[recorder] START_CLIP (queued) now started", { userId });
+        }
+        sendToBackend({
+            type: "START_USER_RESULT",
+            ok: true,
+            hostId,
+            userId,
+            meetingId,
+            userPort: existing.userPort,
+            hostPort: existing.hostPort
+        });
+        return;
     }
 
     const controller = new ClipController({
