@@ -15,15 +15,14 @@ router.get("/active-call", requireAuth, requireUser, async (req, res) => {
     
     console.log("[GET /user/active-call]", { userId, hostId });
     
-    // Find active call for this user's host
+    // Find active call for this user's host (table is called 'rooms', not 'calls')
     const result = await query(
       `SELECT 
         id,
-        room_id,
         started_at,
         ended_at,
         status
-       FROM calls
+       FROM rooms
        WHERE host_id = $1 
          AND status = 'started'
        ORDER BY started_at DESC 
@@ -37,7 +36,7 @@ router.get("/active-call", requireAuth, requireUser, async (req, res) => {
     }
     
     const call = result.rows[0];
-    const roomId = call.room_id || call.id;
+    const roomId = call.id; // In rooms table, id IS the room_id
     
     console.log("[GET /user/active-call] Call found:", {
       id: call.id,
@@ -70,7 +69,7 @@ router.get("/active-call", requireAuth, requireUser, async (req, res) => {
     res.json({
       call: {
         id: call.id,
-        room_id: roomId,
+        room_id: roomId, // Same as id for rooms table
         started_at: call.started_at,
         ended_at: call.ended_at,
         status: call.status,
