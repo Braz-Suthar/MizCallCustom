@@ -22,7 +22,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 
 import { store, useAppSelector } from "../state/store";
-import { useCallEvents } from "../hooks/useCallEvents";
 import { SplashScreen } from "../components/SplashScreen";
 
 const LightTheme: Theme = {
@@ -57,7 +56,8 @@ function RootLayoutNav() {
   const [lockChecked, setLockChecked] = useState(false);
   const [lockError, setLockError] = useState<string | null>(null);
   const [authing, setAuthing] = useState(false);
-  useCallEvents();
+  
+  // useCallEvents removed - socketManager handles all connections now
   registerGlobals();
 
   // Request mic permission early (Android)

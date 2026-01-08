@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppButton } from "../../../components/ui/AppButton";
 import { useAppSelector, useAppDispatch } from "../../../state/store";
@@ -19,6 +19,7 @@ export default function UserDashboard() {
   const { token } = useAppSelector((s) => s.auth);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [socketReady, setSocketReady] = useState(false);
 
   const fetchActiveCall = async (isRefresh = false) => {
     if (!token) return;
@@ -71,13 +72,56 @@ export default function UserDashboard() {
     fetchActiveCall();
   }, [token]);
 
+  // Check for socket availability periodically
+  useEffect(() => {
+    const checkSocket = () => {
+      const socket = socketManager.getSocket();
+      if (socket && socket.connected) {
+        console.log("[UserDashboard] ✅ Socket is ready:", socket.id);
+        setSocketReady(true);
+        return true;
+      }
+      return false;
+    };
+
+    // Check immediately
+    if (checkSocket()) return;
+
+    // If not ready, check every 100ms for up to 5 seconds
+    console.log("[UserDashboard] Socket not ready, will check periodically...");
+    const interval = setInterval(() => {
+      if (checkSocket()) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    const timeout = setTimeout(() => {
+      clearInterval(interval);
+      if (!socketReady) {
+        console.error("[UserDashboard] Socket not available after 5 seconds");
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []);
+
   // Listen for real-time call events (PRIMARY source of call updates)
   useEffect(() => {
-    const socket = socketManager.getSocket();
-    if (!socket) {
-      console.warn("[UserDashboard] No socket available for real-time updates");
+    if (!socketReady) {
+      console.log("[UserDashboard] Waiting for socket to be ready...");
       return;
     }
+
+    const socket = socketManager.getSocket();
+    if (!socket) {
+      console.error("[UserDashboard] Socket should be ready but getSocket() returned null");
+      return;
+    }
+
+    console.log("[UserDashboard] 📡 Setting up event listeners on socket:", socket.id);
 
     // Debug: Log ALL socket events to see what we're receiving
     const debugHandler = (eventName: string, ...args: any[]) => {
@@ -137,7 +181,7 @@ export default function UserDashboard() {
       console.log("[UserDashboard] ✅ Socket authenticated:", data);
     });
 
-    console.log("[UserDashboard] 📡 Listening for real-time call events on socket:", socket.id);
+    console.log("[UserDashboard] ✅ All event listeners registered successfully");
 
     return () => {
       console.log("[UserDashboard] 🔌 Removing call event listeners");
@@ -149,7 +193,7 @@ export default function UserDashboard() {
       socket.off("CALL_STOPPED", handleCallStopped);
       socket.off("authenticated");
     };
-  }, [dispatch]);
+  }, [dispatch, socketReady]);
 
   const onRefresh = () => {
     fetchActiveCall(true);

@@ -43,6 +43,7 @@ async function handleConsume(room, transportId, producer, rtpCapabilities) {
         transportId,
         producerId: producer.id,
         hasTransport: !!transport,
+        transportConnectionState: transport?.connectionState,
         availableTransports: Array.from(room.transports.keys())
     });
 
@@ -78,7 +79,13 @@ async function handleConsume(room, transportId, producer, rtpCapabilities) {
         
         return consumer;
     } catch (error) {
-        console.error("[Mediasoup handleConsume] Error creating consumer:", error);
+        console.error("[Mediasoup handleConsume] Error creating consumer:", error.message);
+        
+        // If error is about duplicate connect, still return null but log it differently
+        if (error.message?.includes("already called")) {
+            console.warn("[Mediasoup handleConsume] Transport already connected, this is expected for subsequent consumes");
+        }
+        
         return null;
     }
 }
@@ -116,11 +123,47 @@ wss.on("connection", async (socket) => {
         if (msg.type === "connect-transport") {
             const room = rooms.get(msg.roomId);
             const transport = room.transports.get(msg.transportId);
-            await transport.connect({ dtlsParameters: msg.dtlsParameters });
-            socket.send(JSON.stringify({
-                requestId: msg.requestId,
-                ok: true
-            }));
+            
+            console.log("[Mediasoup] CONNECT_TRANSPORT request:", {
+                roomId: msg.roomId,
+                transportId: msg.transportId,
+                connectionState: transport?.connectionState
+            });
+            
+            // Check if transport is already connected
+            if (transport.connectionState === "connected") {
+                console.log("[Mediasoup] Transport already connected, skipping connect()");
+                socket.send(JSON.stringify({
+                    requestId: msg.requestId,
+                    ok: true
+                }));
+                return;
+            }
+            
+            try {
+                await transport.connect({ dtlsParameters: msg.dtlsParameters });
+                console.log("[Mediasoup] Transport connected successfully");
+                socket.send(JSON.stringify({
+                    requestId: msg.requestId,
+                    ok: true
+                }));
+            } catch (error) {
+                // If already connected, that's OK
+                if (error.message?.includes("already called")) {
+                    console.log("[Mediasoup] Transport already connected (race condition)");
+                    socket.send(JSON.stringify({
+                        requestId: msg.requestId,
+                        ok: true
+                    }));
+                } else {
+                    console.error("[Mediasoup] Transport connect error:", error.message);
+                    socket.send(JSON.stringify({
+                        requestId: msg.requestId,
+                        ok: false,
+                        error: error.message
+                    }));
+                }
+            }
         }
 
         if (msg.type === "produce") {
