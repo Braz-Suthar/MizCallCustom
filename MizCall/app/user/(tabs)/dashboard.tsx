@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { AppButton } from "../../../components/ui/AppButton";
 import { useAppSelector, useAppDispatch } from "../../../state/store";
-import { setActiveCall } from "../../../state/callSlice";
+import { setActiveCall, clearActiveCall } from "../../../state/callSlice";
 import { apiFetch } from "../../../state/api";
 import { socketManager } from "../../../services/socketManager";
 
@@ -30,15 +30,15 @@ export default function UserDashboard() {
     }
 
     try {
-      console.log("[UserDashboard] Fetching active call...");
+      console.log("[UserDashboard] Fetching active call from API...");
       const response = await apiFetch<{ call: any }>("/user/active-call", token);
       
       if (response.call) {
-        console.log("[UserDashboard] Active call found:", response.call);
+        console.log("[UserDashboard] Active call found from API:", response.call);
         
         // Only set active call if we have the required fields
         if (response.call.router_rtp_capabilities && response.call.host_producer_id) {
-          console.log("[UserDashboard] Setting active call with complete data");
+          console.log("[UserDashboard] Setting active call with complete data from API");
           dispatch(setActiveCall({
             roomId: response.call.room_id || response.call.id,
             routerRtpCapabilities: response.call.router_rtp_capabilities,
@@ -46,11 +46,11 @@ export default function UserDashboard() {
             startedAt: response.call.started_at,
           }));
         } else {
-          console.warn("[UserDashboard] Active call missing router caps or host producer - will wait for socket event");
-          // Don't set active call yet - wait for the socket event with complete data
+          console.warn("[UserDashboard] Active call from API missing complete data - socket events will provide updates");
+          // Don't set incomplete data - wait for socket event
         }
       } else {
-        console.log("[UserDashboard] No active call found");
+        console.log("[UserDashboard] No active call found from API");
       }
     } catch (error: any) {
       // If 404, it means no active call - that's OK
@@ -65,22 +65,35 @@ export default function UserDashboard() {
     }
   };
 
+  // Fetch active call ONLY on mount and on pull-to-refresh
   useEffect(() => {
-    // Fetch active call when component mounts
+    console.log("[UserDashboard] Component mounted - fetching active call from API");
     fetchActiveCall();
   }, [token]);
 
-  // Listen for real-time call events
+  // Listen for real-time call events (PRIMARY source of call updates)
   useEffect(() => {
     const socket = socketManager.getSocket();
-    if (!socket) return;
+    if (!socket) {
+      console.warn("[UserDashboard] No socket available for real-time updates");
+      return;
+    }
+
+    // Debug: Log ALL socket events to see what we're receiving
+    const debugHandler = (eventName: string, ...args: any[]) => {
+      // Filter out ping/pong spam
+      if (eventName !== "PONG" && eventName !== "PING") {
+        console.log(`[UserDashboard] 🔍 Socket event: ${eventName}`, args);
+      }
+    };
+    socket.onAny(debugHandler);
 
     const handleCallStarted = (data: any) => {
-      console.log("[UserDashboard] call-started event received:", data);
+      console.log("[UserDashboard] 🔔 call-started event received (REAL-TIME):", data);
       
       // Ensure we have the required fields from socket event
       if (data.routerRtpCapabilities) {
-        console.log("[UserDashboard] Setting active call from socket event with complete data");
+        console.log("[UserDashboard] ✅ Setting active call from socket event with complete data");
         dispatch(setActiveCall({
           roomId: data.roomId,
           routerRtpCapabilities: data.routerRtpCapabilities,
@@ -88,28 +101,53 @@ export default function UserDashboard() {
           startedAt: new Date().toISOString(),
         }));
       } else {
-        console.warn("[UserDashboard] call-started event missing router caps");
+        console.warn("[UserDashboard] ⚠️ call-started event missing router caps, fetching from API");
+        // Fallback to API if socket event incomplete
+        fetchActiveCall(true);
       }
     };
 
     const handleCallStopped = () => {
-      console.log("[UserDashboard] call-stopped event received");
-      // The call will be cleared by useJoinCall, but we can also clear here
-      // This ensures dashboard shows "No Active Calls" immediately
+      console.log("[UserDashboard] 🔔 call-stopped event received (REAL-TIME)");
+      // Clear active call immediately
+      dispatch(clearActiveCall());
+      console.log("[UserDashboard] ✅ Active call cleared from dashboard");
     };
 
+    // Handle generic "message" events (backend sends broadcasts this way)
+    const handleMessage = (data: any) => {
+      console.log("[UserDashboard] 📨 message event received:", data);
+      
+      if (data.type === "call-started") {
+        handleCallStarted(data);
+      } else if (data.type === "call-stopped") {
+        handleCallStopped();
+      }
+    };
+
+    // Listen for both specific events AND generic "message" events
+    socket.on("message", handleMessage);
     socket.on("call-started", handleCallStarted);
     socket.on("CALL_STARTED", handleCallStarted);
     socket.on("call-stopped", handleCallStopped);
     socket.on("CALL_STOPPED", handleCallStopped);
+    
+    // Debug: Log authentication status
+    socket.on("authenticated", (data) => {
+      console.log("[UserDashboard] ✅ Socket authenticated:", data);
+    });
 
-    console.log("[UserDashboard] Listening for call events on socket:", socket.id);
+    console.log("[UserDashboard] 📡 Listening for real-time call events on socket:", socket.id);
 
     return () => {
+      console.log("[UserDashboard] 🔌 Removing call event listeners");
+      socket.offAny(debugHandler);
+      socket.off("message", handleMessage);
       socket.off("call-started", handleCallStarted);
       socket.off("CALL_STARTED", handleCallStarted);
       socket.off("call-stopped", handleCallStopped);
       socket.off("CALL_STOPPED", handleCallStopped);
+      socket.off("authenticated");
     };
   }, [dispatch]);
 

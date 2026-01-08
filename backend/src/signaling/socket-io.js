@@ -116,16 +116,30 @@ export function broadcastCallEvent(hostId, payload, roomId = null) {
     if (room?.routerRtpCapabilities && !payload.routerRtpCapabilities) {
       payload.routerRtpCapabilities = room.routerRtpCapabilities;
     }
+    
+    // Also attach host producer ID if available
+    if (room?.hostProducerId && !payload.hostProducerId) {
+      payload.hostProducerId = room.hostProducerId;
+    }
   }
 
   let sent = 0;
   for (const peer of peers.values()) {
     if (peer.role === "user" && peer.hostId === hostId) {
+      // Emit both as 'message' (for compatibility) and as specific event type
       peer.socket.emit("message", payload);
+      peer.socket.emit(payload.type, payload); // ✅ Also emit as specific event
       sent++;
+      
+      console.log("[Socket.IO] Sent", payload.type, "to user:", peer.id);
     }
   }
-  console.log("[Socket.IO] Broadcast sent to", sent, "users");
+  console.log("[Socket.IO] Broadcast sent to", sent, "users for host:", hostId);
+  
+  if (sent === 0) {
+    console.warn("[Socket.IO] No users found for host:", hostId, "- Total peers:", peers.size);
+    console.log("[Socket.IO] All peers:", Array.from(peers.entries()).map(([id, p]) => ({ id, role: p.role, hostId: p.hostId })));
+  }
 }
 
 export function handleSocket({ socket, io }) {
@@ -287,7 +301,10 @@ export function handleSocket({ socket, io }) {
       /* ---------------- AUTH ---------------- */
       case "auth":
       case "AUTH": {
-        if (peer) break; // Already authed
+        if (peer) {
+          console.log("[Socket.IO] AUTH: Already authenticated as:", peer.id, peer.role);
+          break; // Already authed
+        }
         try {
           const decoded = verifyJwt(msg.token);
           const role = decoded.role;
@@ -295,7 +312,7 @@ export function handleSocket({ socket, io }) {
           const hostId = decoded.hostId;
           const id = role === "host" ? hostId : userId;
           
-          console.log("[Socket.IO] AUTH success:", { id, role, hostId, userId });
+          console.log("[Socket.IO] AUTH success:", { id, role, hostId, userId, socketId: socket.id });
           
           peer = new Peer({
             id,
@@ -304,6 +321,13 @@ export function handleSocket({ socket, io }) {
             hostId
           });
           peers.set(peer.id, peer);
+          
+          console.log("[Socket.IO] Peer added to peers Map:", {
+            peerId: peer.id,
+            role: peer.role,
+            hostId: peer.hostId,
+            totalPeers: peers.size
+          });
           
           socket.emit("authenticated", { success: true, id, role });
         } catch (e) {
@@ -316,7 +340,10 @@ export function handleSocket({ socket, io }) {
       /* ---------------- CALL STARTED ---------------- */
       case "CALL_STARTED":
       case "call-started": {
-        if (!peer || peer.role !== "host") break;
+        if (!peer || peer.role !== "host") {
+          console.warn("[Socket.IO] CALL_STARTED: Not authorized (peer role:", peer?.role, ")");
+          break;
+        }
         
         const roomId = msg.roomId || peer.roomId || peer.hostId || "main-room";
         peer.roomId = roomId;
@@ -325,6 +352,8 @@ export function handleSocket({ socket, io }) {
         if (!room.hostId) {
           room.hostId = peer.hostId;
         }
+        
+        console.log("[Socket.IO] CALL_STARTED: Broadcasting to users of host:", peer.hostId);
         
         broadcastCallEvent(peer.hostId, {
           type: "call-started",
@@ -801,5 +830,6 @@ export function handleSocket({ socket, io }) {
     }
   }
 }
+
 
 
