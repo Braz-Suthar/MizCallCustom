@@ -40,21 +40,26 @@ export function useJoinCall() {
   const localStreamRef = useRef<MediaStream | null>(null);
 
   const cleanup = () => {
+    console.log("[useJoinCall] Starting cleanup...");
+    
+    // Stop call audio
     try {
       stopCallAudio();
       disableSpeakerphone();
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn("[useJoinCall] Error stopping call audio:", e);
     }
     
-    // DON'T disconnect the socket - it's managed by socketManager
-    // socketRef.current?.disconnect(); // REMOVED
-    socketRef.current = null;
-    
-    recvTransportRef.current?.close?.();
-    recvTransportRef.current = null;
-    sendTransportRef.current?.close?.();
-    sendTransportRef.current = null;
+    // Close consumer first (before transport)
+    try {
+      if (consumerRef.current) {
+        console.log("[useJoinCall] Closing consumer on cleanup");
+        consumerRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[useJoinCall] Error closing consumer:", e);
+    }
+    consumerRef.current = null;
     
     // Close producer when leaving call
     try {
@@ -66,22 +71,58 @@ export function useJoinCall() {
       console.warn("[useJoinCall] Error closing producer:", e);
     }
     producerRef.current = null;
+    producerIdRef.current = null;
+    
+    // Close transports
+    try {
+      if (recvTransportRef.current) {
+        console.log("[useJoinCall] Closing recv transport");
+        recvTransportRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[useJoinCall] Error closing recv transport:", e);
+    }
+    recvTransportRef.current = null;
+    
+    try {
+      if (sendTransportRef.current) {
+        console.log("[useJoinCall] Closing send transport");
+        sendTransportRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[useJoinCall] Error closing send transport:", e);
+    }
+    sendTransportRef.current = null;
     
     // Stop all media tracks
     if (localStreamRef.current) {
       console.log("[useJoinCall] Stopping local media tracks");
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current.getTracks().forEach((t) => {
+        console.log("[useJoinCall] Stopping track:", t.id, t.label);
+        t.stop();
+      });
       localStreamRef.current = null;
     }
     
+    // Clear device
     deviceRef.current = null;
-    consumerRef.current = null;
+    
+    // Clear meter interval
     if (meterIntervalRef.current) {
       clearInterval(meterIntervalRef.current);
       meterIntervalRef.current = null;
     }
+    
+    // Clear remote stream
+    setRemoteStream(null);
     setAudioLevel(0);
     zeroLevelCountRef.current = 0;
+    
+    // DON'T disconnect the socket - it's managed by socketManager
+    // But clear the ref so we know we're not in a call
+    socketRef.current = null;
+    
+    console.log("[useJoinCall] ✅ Cleanup complete");
   };
 
   useEffect(() => cleanup, []);

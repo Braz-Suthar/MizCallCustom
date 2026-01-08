@@ -760,59 +760,126 @@ function App() {
   };
 
   const cleanupCallMedia = () => {
+    console.log("[Desktop] Starting call media cleanup...");
+    
+    // Close consumer first (before transport)
     try {
-      producerRef.current?.close?.();
-    } catch {
-      // ignore
-    }
-    producerRef.current = null;
-    try {
-      consumerRef.current?.close?.();
-    } catch {
-      // ignore
+      if (consumerRef.current) {
+        console.log("[Desktop] Closing consumer");
+        consumerRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[Desktop] Error closing consumer:", e);
     }
     consumerRef.current = null;
+    
+    // Close producer
     try {
-      sendTransportRef.current?.close?.();
-      recvTransportRef.current?.close?.();
-    } catch {
-      // ignore
+      if (producerRef.current) {
+        console.log("[Desktop] Closing producer");
+        producerRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[Desktop] Error closing producer:", e);
+    }
+    producerRef.current = null;
+    
+    // Close transports
+    try {
+      if (sendTransportRef.current) {
+        console.log("[Desktop] Closing send transport");
+        sendTransportRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[Desktop] Error closing send transport:", e);
     }
     sendTransportRef.current = null;
+    
+    try {
+      if (recvTransportRef.current) {
+        console.log("[Desktop] Closing recv transport");
+        recvTransportRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[Desktop] Error closing recv transport:", e);
+    }
     recvTransportRef.current = null;
+    
+    // Stop all local media tracks
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      console.log("[Desktop] Stopping local media tracks");
+      localStreamRef.current.getTracks().forEach((t) => {
+        console.log("[Desktop] Stopping track:", t.id, t.label);
+        t.stop();
+      });
       localStreamRef.current = null;
     }
+    
+    // Clear remote audio element
     if (remoteAudioElRef.current) {
+      console.log("[Desktop] Clearing remote audio element");
       remoteAudioElRef.current.srcObject = null;
+      remoteAudioElRef.current.pause();
+      remoteAudioElRef.current = null;
     }
+    
+    // Disconnect audio context nodes
     try {
-      audioSourceRef.current?.disconnect();
-    } catch {
-      //
-    }
-    try {
-      gainNodeRef.current?.disconnect();
-    } catch {
-      //
+      if (audioSourceRef.current) {
+        console.log("[Desktop] Disconnecting audio source");
+        audioSourceRef.current.disconnect();
+      }
+    } catch (e) {
+      console.warn("[Desktop] Error disconnecting audio source:", e);
     }
     audioSourceRef.current = null;
+    
+    try {
+      if (gainNodeRef.current) {
+        console.log("[Desktop] Disconnecting gain node");
+        gainNodeRef.current.disconnect();
+      }
+    } catch (e) {
+      console.warn("[Desktop] Error disconnecting gain node:", e);
+    }
     gainNodeRef.current = null;
+    
+    // Close audio context
     if (audioCtxRef.current) {
-      audioCtxRef.current.close().catch(() => {});
+      console.log("[Desktop] Closing audio context");
+      audioCtxRef.current.close().catch((e) => {
+        console.warn("[Desktop] Error closing audio context:", e);
+      });
       audioCtxRef.current = null;
     }
+    
+    // Clear remote stream
     setRemoteAudioStream(null);
-    callSocketRef.current?.emit?.("CALL_STOPPED", { roomId: activeCall?.id });
-    callSocketRef.current?.disconnect?.();
+    
+    // Cleanup socket
+    if (callSocketRef.current) {
+      console.log("[Desktop] Cleaning up socket");
+      // Emit CALL_STOPPED if we have an active call
+      if (activeCall?.id) {
+        callSocketRef.current.emit?.("CALL_STOPPED", { roomId: activeCall.id });
+      }
+      // Remove all listeners before disconnecting
+      callSocketRef.current.removeAllListeners();
+      callSocketRef.current.disconnect?.();
+    }
     callSocketRef.current = null;
+    
+    // Clear device and refs
     deviceRef.current = null;
     hostProducerIdRef.current = null;
     routerCapsRef.current = null;
+    
+    // Reset state
     setCallJoinState("idle");
     setCallError(null);
     setPttActive(false);
+    
+    console.log("[Desktop] ✅ Call media cleanup complete");
   };
 
   const attachRemoteStream = (stream: MediaStream) => {

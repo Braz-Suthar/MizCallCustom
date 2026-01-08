@@ -171,8 +171,17 @@ export default function ActiveCallScreen() {
     });
 
     return () => {
-      socket.offAny();
-      socket.disconnect();
+      console.log("[host-active-call] Cleaning up speaking status socket...");
+      const socketToCleanup = statusSocketRef.current;
+      if (socketToCleanup) {
+        // Remove all listeners
+        socketToCleanup.offAny();
+        socketToCleanup.removeAllListeners();
+        // Disconnect
+        socketToCleanup.disconnect();
+        console.log("[host-active-call] ✅ Speaking status socket disconnected and cleaned up");
+      }
+      statusSocketRef.current = null;
     };
   }, [token, activeCall?.roomId]);
 

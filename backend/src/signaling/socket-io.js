@@ -75,25 +75,60 @@ export async function startWebSocketServer(httpServer) {
     console.log("[Socket.IO] Client connected:", socket.id);
     handleSocket({ socket, io });
 
-    socket.on("disconnect", (reason) => {
+    socket.on("disconnect", async (reason) => {
       console.log("[Socket.IO] Client disconnected:", socket.id, "Reason:", reason);
       
       // Cleanup peer
       for (const [peerId, peer] of peers.entries()) {
         if (peer.socket === socket) {
+          const roomId = peer.roomId;
+          const room = roomId ? rooms.get(roomId) : null;
+          
+          console.log("[Socket.IO] Cleaning up peer:", peerId, "role:", peer.role, "room:", roomId);
+          
+          // Remove producer from room's producer mapping
+          // Note: Mediasoup will automatically close producers/consumers when transports close
+          if (peer.producer?.id && room) {
+            console.log("[Socket.IO] Removing producer mapping:", peer.producer.id);
+            room.producerIdToOwner.delete(peer.producer.id);
+            if (room.hostProducerId === peer.producer.id) {
+              room.hostProducerId = null;
+              console.log("[Socket.IO] Cleared host producer ID");
+            }
+          }
+          
           // finalize any recorder session for this user
           if (peer.role === "user") {
             sendRecorder({ type: "STOP_CLIP", userId: peer.id });
             sendRecorder({ type: "STOP_USER", userId: peer.id });
           }
-          peers.delete(peerId);
           
-          // Remove from rooms
-          for (const room of rooms.values()) {
-            room.peers.delete(peerId);
+          // Notify other peers in the room
+          if (room) {
+            for (const [otherPeerId, otherPeer] of room.peers.entries()) {
+              if (otherPeerId !== peerId && otherPeer.socket) {
+                if (peer.role === "user" && otherPeer.role === "host") {
+                  otherPeer.socket.emit("USER_LEFT", {
+                    type: "USER_LEFT",
+                    userId: peer.id,
+                  });
+                }
+              }
+            }
           }
           
-          console.log("[Socket.IO] Cleaned up peer:", peerId);
+          // Remove from rooms
+          if (room) {
+            room.peers.delete(peerId);
+            console.log("[Socket.IO] Removed peer from room, remaining peers:", room.peers.size);
+            
+            // If room is empty, we could clean it up, but keep it for potential reconnection
+            // The mediasoup server will handle transport cleanup automatically
+          }
+          
+          peers.delete(peerId);
+          
+          console.log("[Socket.IO] ✅ Cleaned up peer:", peerId);
           break;
         }
       }

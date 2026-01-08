@@ -35,34 +35,89 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const processedConsumerIdsRef = useRef<Set<string>>(new Set());
 
   const cleanup = useCallback(() => {
-    socketRef.current?.disconnect();
+    console.log("[useHostCallMedia] Starting cleanup...");
+    
+    // Remove all socket listeners first
+    if (socketRef.current) {
+      console.log("[useHostCallMedia] Removing socket listeners and disconnecting");
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+    }
     socketRef.current = null;
+    
+    // Close consumer first (before transport)
     try {
-      sendTransportRef.current?.close?.();
-    } catch {}
-    sendTransportRef.current = null;
-    try {
-      recvTransportRef.current?.close?.();
-    } catch {}
-    recvTransportRef.current = null;
-    try {
-      consumerRef.current?.close?.();
-    } catch {}
+      if (consumerRef.current) {
+        console.log("[useHostCallMedia] Closing consumer");
+        consumerRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[useHostCallMedia] Error closing consumer:", e);
+    }
     consumerRef.current = null;
-    currentProducerIdRef.current = null; // Clear producer ID tracking
+    currentProducerIdRef.current = null;
+    processedConsumerIdsRef.current.clear();
+    
+    // Close transports
+    try {
+      if (recvTransportRef.current) {
+        console.log("[useHostCallMedia] Closing recv transport");
+        recvTransportRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[useHostCallMedia] Error closing recv transport:", e);
+    }
+    recvTransportRef.current = null;
+    
+    try {
+      if (sendTransportRef.current) {
+        console.log("[useHostCallMedia] Closing send transport");
+        sendTransportRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[useHostCallMedia] Error closing send transport:", e);
+    }
+    sendTransportRef.current = null;
+    
+    // Clear device
     deviceRef.current = null;
-    micStreamRef.current?.getTracks?.().forEach((t) => t.stop());
-    micStreamRef.current = null;
+    
+    // Stop and close all microphone tracks
+    if (micStreamRef.current) {
+      console.log("[useHostCallMedia] Stopping microphone tracks");
+      micStreamRef.current.getTracks?.().forEach((t) => {
+        console.log("[useHostCallMedia] Stopping track:", t.id, t.label);
+        t.stop();
+      });
+      micStreamRef.current = null;
+    }
+    
+    // Stop call audio
     try {
       stopCallAudio();
       disableSpeakerphone();
-    } catch {}
+    } catch (e) {
+      console.warn("[useHostCallMedia] Error stopping call audio:", e);
+    }
+    
+    // Clear remote stream
+    setRemoteStream(null);
+    
+    // Clear refs
+    routerCapsRef.current = null;
+    pendingSendParamsRef.current = null;
+    turnConfigRef.current = null;
+    pendingConsumeRef.current = [];
+    producedRef.current = false;
+    
+    console.log("[useHostCallMedia] ✅ Cleanup complete");
   }, []);
 
   useEffect(() => cleanup, [cleanup]);
 
   useEffect(() => {
     if (!token || role !== "host" || !call) {
+      console.log("[useHostCallMedia] No call or not authorized, cleaning up");
       cleanup();
       setState("idle");
       setError(null);
@@ -71,7 +126,10 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
     }
 
     // Avoid spinning multiple sockets
-    if (socketRef.current) return;
+    if (socketRef.current) {
+      console.log("[useHostCallMedia] Socket already exists, skipping initialization");
+      return;
+    }
 
     let cancelled = false;
 
