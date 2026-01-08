@@ -112,6 +112,10 @@ export default function ActiveCallScreen() {
     socket.on("connect", () => {
       console.log("[host-active-call] Socket.IO connected for speaking status");
       socket.emit("auth", { type: "auth", token });
+      
+      // Important: JOIN the room to receive events
+      socket.emit("JOIN", { type: "JOIN", token, roomId: activeCall.roomId });
+      console.log("[host-active-call] Sent JOIN for room:", activeCall.roomId);
     });
 
     // Debug: Log ALL events

@@ -750,7 +750,10 @@ export function handleSocket({ socket, io }) {
 
       /* ---------------- USER SPEAKING STATUS ---------------- */
       case "USER_SPEAKING_START": {
-        if (!peer || peer.role !== "user") break;
+        if (!peer || peer.role !== "user") {
+          console.warn("[Socket.IO] USER_SPEAKING_START: Invalid peer or not a user", { hasPeer: !!peer, role: peer?.role });
+          break;
+        }
         
         const roomId = peer.roomId || peer.hostId || "main-room";
         console.log("[Socket.IO] USER_SPEAKING_START:", { userId: peer.id, roomId });
@@ -761,21 +764,38 @@ export function handleSocket({ socket, io }) {
         // Notify host about user speaking
         const room = getRoom(roomId);
         if (room) {
+          let notifiedHosts = 0;
           for (const [peerId, otherPeer] of room.peers) {
             if (otherPeer.role === "host") {
-              otherPeer.socket.emit("USER_SPEAKING_STATUS", {
+              console.log("[Socket.IO] Notifying host:", peerId, "about user speaking:", peer.id);
+              
+              const statusPayload = {
                 type: "USER_SPEAKING_STATUS",
                 userId: peer.id,
                 speaking: true,
-              });
+              };
+              
+              // Send both as specific event and as message
+              otherPeer.socket.emit("USER_SPEAKING_STATUS", statusPayload);
+              otherPeer.socket.emit("message", statusPayload);
+              notifiedHosts++;
             }
+          }
+          console.log("[Socket.IO] USER_SPEAKING_START: Notified", notifiedHosts, "hosts");
+          
+          if (notifiedHosts === 0) {
+            console.warn("[Socket.IO] No hosts found in room to notify about speaking");
+            console.log("[Socket.IO] Room peers:", Array.from(room.peers.entries()).map(([id, p]) => ({ id, role: p.role })));
           }
         }
         break;
       }
 
       case "USER_SPEAKING_STOP": {
-        if (!peer || peer.role !== "user") break;
+        if (!peer || peer.role !== "user") {
+          console.warn("[Socket.IO] USER_SPEAKING_STOP: Invalid peer or not a user", { hasPeer: !!peer, role: peer?.role });
+          break;
+        }
         
         const roomId = peer.roomId || peer.hostId || "main-room";
         console.log("[Socket.IO] USER_SPEAKING_STOP:", { userId: peer.id, roomId });
@@ -786,14 +806,27 @@ export function handleSocket({ socket, io }) {
         // Notify host about user stopped speaking
         const room = getRoom(roomId);
         if (room) {
+          let notifiedHosts = 0;
           for (const [peerId, otherPeer] of room.peers) {
             if (otherPeer.role === "host") {
-              otherPeer.socket.emit("USER_SPEAKING_STATUS", {
+              console.log("[Socket.IO] Notifying host:", peerId, "about user stopped speaking:", peer.id);
+              
+              const statusPayload = {
                 type: "USER_SPEAKING_STATUS",
                 userId: peer.id,
                 speaking: false,
-              });
+              };
+              
+              // Send both as specific event and as message
+              otherPeer.socket.emit("USER_SPEAKING_STATUS", statusPayload);
+              otherPeer.socket.emit("message", statusPayload);
+              notifiedHosts++;
             }
+          }
+          console.log("[Socket.IO] USER_SPEAKING_STOP: Notified", notifiedHosts, "hosts");
+          
+          if (notifiedHosts === 0) {
+            console.warn("[Socket.IO] No hosts found in room to notify about stop speaking");
           }
         }
         break;
