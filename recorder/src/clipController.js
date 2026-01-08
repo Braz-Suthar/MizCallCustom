@@ -50,17 +50,14 @@ export class ClipController {
     }
 
     start() {
-        // If we're already recording this clip, nothing to do.
-        if (this.recording) return;
-
-        // If we were in the post-buffer grace window waiting to finalize,
-        // cancel the finalize and keep appending to the same clip.
+        // Always cancel pending finalize; we may be mid-grace.
         if (this.stopTimeout) {
             clearTimeout(this.stopTimeout);
             this.stopTimeout = null;
-            this.recording = true;
-            return;
         }
+
+        // If we're already recording this clip, nothing else to do.
+        if (this.recording) return;
 
         // Fresh clip
         this.recording = true;
