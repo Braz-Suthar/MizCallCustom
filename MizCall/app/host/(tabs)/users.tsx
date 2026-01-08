@@ -42,7 +42,7 @@ export default function HostUsers() {
   const secondaryButtonBorder = colors.border ?? (isDarkBg ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)");
   const router = useRouter();
   const { token, role } = useAppSelector((s) => s.auth);
-  const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string; avatar_url?: string | null }>>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "disabled">("all");
@@ -51,7 +51,7 @@ export default function HostUsers() {
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string } | null>(null);
+  const [selectedUser, setSelectedUser] = useState<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string; avatar_url?: string | null } | null>(null);
   
   // Edit form states
   const [editUsername, setEditUsername] = useState("");
@@ -74,7 +74,7 @@ export default function HostUsers() {
     if (!token || role !== "host") return;
     setLoading(true);
     try {
-      const res = await apiFetch<{ users: { id: string; username: string; enabled: boolean }[] }>(
+      const res = await apiFetch<{ users: { id: string; username: string; enabled: boolean; avatar_url?: string | null }[] }>(
         "/host/users",
         token,
       );
@@ -133,11 +133,12 @@ export default function HostUsers() {
   const handleView = async (user: any) => {
     // Fetch user details with password
     try {
-      const userData = await apiFetch<{ user: any }>(`/host/users/${user.id}`, token!);
+    const userData = await apiFetch<{ user: any }>(`/host/users/${user.id}`, token!);
       setSelectedUser({
         ...user,
         password: userData.user?.password ?? "",
         deviceInfo: userData.user?.device_info ?? "",
+      avatar_url: userData.user?.avatar_url ?? user.avatar_url ?? null,
       });
       setViewModalVisible(true);
     } catch (e) {
@@ -321,9 +322,17 @@ export default function HostUsers() {
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.cardContent}>
                 {/* Profile Picture */}
-                <View style={[styles.profilePic, { backgroundColor: getProfileColor(item.username) }]}>
-                  <Text style={styles.profileInitials}>{getInitials(item.username)}</Text>
-                </View>
+                {item.avatar_url ? (
+                  <SvgIcon
+                    source={{ uri: item.avatar_url }}
+                    style={styles.profilePicImage}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={[styles.profilePic, { backgroundColor: getProfileColor(item.username) }]}>
+                    <Text style={styles.profileInitials}>{getInitials(item.username)}</Text>
+                  </View>
+                )}
 
                 {/* User Info */}
                 <View style={styles.userInfo}>
@@ -713,6 +722,12 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     alignItems: "center",
     justifyContent: "center",
+  },
+  profilePicImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    overflow: "hidden",
   },
   profileInitials: {
     color: "#fff",

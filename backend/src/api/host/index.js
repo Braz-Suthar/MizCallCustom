@@ -182,7 +182,7 @@ router.get(
   async (req, res) => {
     const { userId } = req.params;
     const result = await query(
-      `SELECT id, username, password, enabled, device_info
+      `SELECT id, username, password, enabled, device_info, avatar_url
        FROM users
        WHERE id = $1 AND host_id = $2`,
       [userId, req.hostId]
@@ -214,7 +214,7 @@ router.delete(
 /* LIST USERS FOR HOST */
 router.get("/users", requireAuth, requireHost, async (req, res) => {
   const result = await query(
-    `SELECT id, username, enabled, last_speaking
+    `SELECT id, username, enabled, last_speaking, avatar_url
      FROM users
      WHERE host_id = $1
      ORDER BY username`,
