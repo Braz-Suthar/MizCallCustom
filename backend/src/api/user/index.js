@@ -106,6 +106,7 @@ router.post("/avatar", requireAuth, requireUser, upload.single("avatar"), async 
 
   const avatarPath = `/uploads/avatars/${req.file.filename}`;
   await query(`UPDATE users SET avatar_url = $1 WHERE id = $2`, [avatarPath, req.userId]);
+  console.log("[user/avatar] stored", { userId: req.userId, avatarPath });
 
   res.json({ avatarUrl: avatarPath });
 });

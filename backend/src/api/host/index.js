@@ -220,6 +220,7 @@ router.get("/users", requireAuth, requireHost, async (req, res) => {
      ORDER BY username`,
     [req.hostId]
   );
+  console.log("[host/users] returning", result.rows.length, "users");
   res.json({ users: result.rows });
 });
 

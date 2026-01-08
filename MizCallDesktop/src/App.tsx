@@ -1722,7 +1722,7 @@ function App() {
     avatarInputRef.current?.click();
   };
 
-  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -1730,13 +1730,48 @@ function App() {
       e.target.value = "";
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const url = reader.result as string;
-      setSession((prev) => (prev ? { ...prev, avatarUrl: url } : prev));
-      showToast("Profile picture updated", "success");
-    };
-    reader.readAsDataURL(file);
+    if (!session?.token) {
+      showToast("Not authenticated", "error");
+      e.target.value = "";
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("avatar", file);
+    const endpoint = session.role === "host" ? "/host/avatar" : "/user/avatar";
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: formData,
+      });
+      const data = await res.json();
+      console.log("[desktop] avatar upload resp", endpoint, data);
+      if (!res.ok) {
+        showToast("Upload failed", "error");
+        return;
+      }
+      const avatarUrl =
+        typeof data.avatarUrl === "string" && data.avatarUrl
+          ? data.avatarUrl.startsWith("http")
+            ? data.avatarUrl
+            : `${API_BASE}${data.avatarUrl}`
+          : null;
+      if (avatarUrl) {
+        setSession((prev) => (prev ? { ...prev, avatarUrl } : prev));
+        showToast("Profile picture updated", "success");
+      } else {
+        showToast("Upload succeeded but no URL returned", "info");
+      }
+    } catch (err) {
+      console.error("[desktop] avatar upload error", err);
+      showToast("Upload failed", "error");
+    } finally {
+      e.target.value = "";
+    }
     e.target.value = "";
   };
 
