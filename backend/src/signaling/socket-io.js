@@ -4,7 +4,7 @@ import { Peer } from "./peer.js";
 import { sendMediasoup } from "../mediasoup/client.js";
 import { MS } from "../mediasoup/commands.js";
 import { v4 as uuid } from "uuid";
-import { sendRecorder } from "../recorder/client.js";
+import { sendRecorder, recorderEvents } from "../recorder/client.js";
 
 const peers = new Map();
 let io = null;
@@ -15,7 +15,7 @@ const rooms = new Map();
 // Export peers and getRoom for API access
 export { peers };
 
-const RECORDER_PORT_START = Number(process.env.RECORDER_PORT_START || 55000);
+const RECORDER_PORT_START = Number(process.env.RECORDER_PORT_START || 56000);
 let recorderPortCursor = RECORDER_PORT_START;
 
 function allocRecorderPort() {
@@ -132,49 +132,77 @@ export function handleSocket({ socket, io }) {
   let peer = null;
 
   async function startRecorderForUser(roomId, room, peer) {
-    const userPort = allocRecorderPort();
-    const hostPort = allocRecorderPort();
+    const maxAttempts = 4;
     const remoteIp = process.env.RECORDER_IP || "recorder";
 
-    sendRecorder({
-      type: "START_USER",
-      hostId: peer.hostId,
-      userId: peer.id,
-      meetingId: roomId,
-      userPort,
-      hostPort,
-      userPreSeconds: 2,
-      hostPreSeconds: 5,
-      userPostSeconds: 2,
-      hostPostSeconds: 5,
-    });
-    
-    sendRecorder({
-      type: "START_CLIP",
-      userId: peer.id
-    });
-
-    try {
-      await sendMediasoup({
-        type: MS.CREATE_RECORDER,
-        roomId,
-        producerOwnerId: peer.id,
-        remotePort: userPort,
-        remoteIp
+    const waitForResult = (userId, timeoutMs = 1200) =>
+      new Promise((resolve) => {
+        const handler = (msg) => {
+          if (msg.userId !== userId) return;
+          recorderEvents.off("start_user_result", handler);
+          resolve(msg);
+        };
+        const timer = setTimeout(() => {
+          recorderEvents.off("start_user_result", handler);
+          resolve({ ok: false, reason: "timeout" });
+        }, timeoutMs);
+        recorderEvents.on("start_user_result", (msg) => {
+          if (msg.userId !== userId) return;
+          clearTimeout(timer);
+          handler(msg);
+        });
       });
 
-      if (room.hostProducerId) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log("[Socket.IO] START_USER attempt", attempt, {
+        userId: peer.id,
+      });
+
+      sendRecorder({
+        type: "START_USER",
+        hostId: peer.hostId,
+        userId: peer.id,
+        meetingId: roomId,
+        userPreSeconds: 3,
+        hostPreSeconds: 3,
+        userPostSeconds: 3,
+        hostPostSeconds: 3,
+      });
+
+      const result = await waitForResult(peer.id);
+      if (!result.ok) {
+        console.error("[Socket.IO] START_USER failed attempt", attempt, result.reason);
+        continue;
+      }
+
+      try {
         await sendMediasoup({
           type: MS.CREATE_RECORDER,
           roomId,
-          producerOwnerId: peer.hostId,
-          remotePort: hostPort,
-          remoteIp
+          producerOwnerId: peer.id,
+          remotePort: result.userPort,
+          remoteIp,
         });
+
+        if (room.hostProducerId) {
+          await sendMediasoup({
+            type: MS.CREATE_RECORDER,
+            roomId,
+            producerOwnerId: peer.hostId,
+            remotePort: result.hostPort,
+            remoteIp,
+          });
+        }
+      } catch (err) {
+        console.error("[Socket.IO] CREATE_RECORDER failed attempt", attempt, err?.message || err);
+        continue;
       }
-    } catch (err) {
-      console.error("[Socket.IO] Recorder setup failed:", err?.message || err);
+
+      return true;
     }
+
+    console.error("[Socket.IO] START_USER exhausted retries for", peer.id);
+    return false;
   }
 
   const requirePeer = () => {
@@ -762,10 +790,6 @@ export function handleSocket({ socket, io }) {
             if (userPeer.role === "user") {
               sendRecorder({ type: "STOP_CLIP", userId: userId });
               sendRecorder({ type: "STOP_USER", userId: userId });
-              sendRecorder({
-                type: "STOP_CLIP",
-                userId: userId
-              });
             }
           }
         }

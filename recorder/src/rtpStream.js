@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 
 export class RtpStream {
-    constructor({ port, onPcm, label = "stream" }) {
+    constructor({ port, onPcm, label = "stream", onError }) {
         this.closed = false;
         this.packets = 0;
         this.bytes = 0;
@@ -42,13 +42,21 @@ export class RtpStream {
         this.ffmpeg.on("error", (err) => {
             console.error("[recorder] ffmpeg error", err?.message || err);
             this.closed = true;
+            onError?.(err?.message || "ffmpeg error");
         });
         this.ffmpeg.on("close", () => {
             this.closed = true;
         });
         this.ffmpeg.stderr.on("data", (data) => {
             const msg = data.toString().trim();
-            if (msg) console.error("[recorder] ffmpeg stderr", msg);
+            if (msg) {
+                console.error("[recorder] ffmpeg stderr", msg);
+                if (msg.includes("bind failed")) {
+                    onError?.("bind failed");
+                } else if (msg.includes("Invalid data found when processing input")) {
+                    onError?.("invalid input");
+                }
+            }
         });
     }
 

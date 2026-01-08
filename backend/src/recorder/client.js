@@ -1,8 +1,10 @@
 import WebSocket from "ws";
+import { EventEmitter } from "events";
 import { pool } from "../db/pool.js";
 
 const RECORDER_WS = "ws://recorder:7000";
 let socket = null;
+export const recorderEvents = new EventEmitter(); // emits start_user_result
 
 export function connectRecorder() {
   socket = new WebSocket(RECORDER_WS);
@@ -33,6 +35,10 @@ export function connectRecorder() {
           msg.filePath
         ]
       );
+    }
+
+    if (msg.type === "START_USER_RESULT") {
+      recorderEvents.emit("start_user_result", msg);
     }
   });
 }
