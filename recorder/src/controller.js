@@ -4,7 +4,7 @@ import { sendToBackend } from "./ws.js";
 import dgram from "dgram";
 
 const streams = new Map();
-// userId → { userStream, hostStream, controller, userPort, hostPort }
+// userId → { userStream, hostStream, controller, userPort, hostPort, closeRequested }
 const reservedPorts = new Set();
 const pendingStarts = new Set(); // startClip requests that arrived before stream setup
 
@@ -36,6 +36,16 @@ async function reservePort() {
 
 function releasePort(port) {
     if (port) reservedPorts.delete(port);
+}
+
+function cleanupStreams(userId) {
+    const entry = streams.get(userId);
+    if (!entry) return;
+    entry.userStream?.close();
+    entry.hostStream?.close();
+    releasePort(entry.userPort);
+    releasePort(entry.hostPort);
+    streams.delete(userId);
 }
 
 export async function startUserRecording({
@@ -77,12 +87,23 @@ export async function startUserRecording({
         userPostSeconds,
         hostPostSeconds,
     });
+    const entry = {
+        controller,
+        userStream: null,
+        hostStream: null,
+        userPort: null,
+        hostPort: null,
+        closeRequested: false,
+    };
 
     controller.onFinalized = (meta) => {
         sendToBackend({
             type: "CLIP_FINALIZED",
             ...meta
         });
+        if (entry.closeRequested) {
+            cleanupStreams(userId);
+        }
     };
 
     let failed = false;
@@ -108,6 +129,8 @@ export async function startUserRecording({
     try {
         userPort = await reservePort();
         hostPort = await reservePort();
+        entry.userPort = userPort;
+        entry.hostPort = hostPort;
     } catch (err) {
         return fail("no free ports");
     }
@@ -128,7 +151,9 @@ export async function startUserRecording({
         onError: fail
     });
 
-    streams.set(userId, { userStream, hostStream, controller, userPort, hostPort });
+    entry.userStream = userStream;
+    entry.hostStream = hostStream;
+    streams.set(userId, entry);
 
     // If a START_CLIP arrived before streams were ready, honor it now.
     if (pendingStarts.has(userId)) {
@@ -191,11 +216,10 @@ export function stopUserRecording(userId) {
         userBytes: entry.userStream.bytes,
         hostBytes: entry.hostStream.bytes,
     });
-    // ensure clip is finalized
+    // ensure clip is finalized; defer cleanup until after final write
+    entry.closeRequested = true;
     entry.controller.stop();
-    entry.userStream.close();
-    entry.hostStream.close();
-    releasePort(entry.userPort);
-    releasePort(entry.hostPort);
-    streams.delete(userId);
+    if (entry.controller.finalized) {
+        cleanupStreams(userId);
+    }
 }
