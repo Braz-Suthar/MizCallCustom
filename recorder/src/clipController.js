@@ -34,6 +34,7 @@ export class ClipController {
         this.stopTimeout = null;
         this.sequence = 0;
         this.finalized = false;
+        this.graceMs = Math.max(this.userPostSeconds, this.hostPostSeconds) * 1000;
     }
 
     onUserPcm(pcm) {
@@ -49,10 +50,25 @@ export class ClipController {
     }
 
     start() {
+        // If we're already recording this clip, nothing to do.
+        if (this.recording) return;
+
+        // If we were in the post-buffer grace window waiting to finalize,
+        // cancel the finalize and keep appending to the same clip.
+        if (this.stopTimeout) {
+            clearTimeout(this.stopTimeout);
+            this.stopTimeout = null;
+            this.recording = true;
+            return;
+        }
+
+        // Fresh clip
         this.recording = true;
         this.finalized = false;
         this.startedAt = new Date();
         this.sequence += 1;
+        this.userPcmBytes = 0;
+        this.hostPcmBytes = 0;
         // seed frames with pre-roll snapshots
         this.userFrames = [Buffer.from(this.userBuffer.snapshot())];
         this.hostFrames = [Buffer.from(this.hostBuffer.snapshot())];
@@ -66,13 +82,12 @@ export class ClipController {
             return;
         }
         // keep recording for post-roll before finalizing
-        const postMs = Math.max(this.userPostSeconds, this.hostPostSeconds) * 1000;
         if (this.stopTimeout) clearTimeout(this.stopTimeout);
         this.stopTimeout = setTimeout(() => {
             this.recording = false;
             this.endedAt = new Date();
             this.write();
-        }, postMs);
+        }, this.graceMs);
     }
 
     write() {
