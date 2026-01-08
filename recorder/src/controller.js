@@ -6,6 +6,7 @@ import dgram from "dgram";
 const streams = new Map();
 // userId → { userStream, hostStream, controller, userPort, hostPort }
 const reservedPorts = new Set();
+const pendingStarts = new Set(); // startClip requests that arrived before stream setup
 
 async function getFreeUdpPort() {
     return new Promise((resolve, reject) => {
@@ -113,6 +114,13 @@ export async function startUserRecording({
 
     streams.set(userId, { userStream, hostStream, controller, userPort, hostPort });
 
+    // If a START_CLIP arrived before streams were ready, honor it now.
+    if (pendingStarts.has(userId)) {
+        pendingStarts.delete(userId);
+        controller.start();
+        console.log("[recorder] START_CLIP (queued) now started", { userId });
+    }
+
     // Notify backend that streams are up (optimistic). If bind fails later,
     // fail() will send ok:false.
     sendToBackend({
@@ -129,7 +137,8 @@ export async function startUserRecording({
 export function startClip(userId) {
     const entry = streams.get(userId);
     if (!entry) {
-        console.warn("[recorder] START_CLIP ignored, no stream for", userId);
+        pendingStarts.add(userId);
+        console.warn("[recorder] START_CLIP queued, no stream yet for", userId);
         return;
     }
     console.log("[recorder] START_CLIP", { userId });
@@ -154,7 +163,10 @@ export function stopClip(userId) {
 
 export function stopUserRecording(userId) {
     const entry = streams.get(userId);
-    if (!entry) return;
+    if (!entry) {
+        pendingStarts.delete(userId);
+        return;
+    }
 
     console.log("[recorder] STOP_USER", {
         userId,
