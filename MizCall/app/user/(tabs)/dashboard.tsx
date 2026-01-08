@@ -76,8 +76,8 @@ export default function UserDashboard() {
   useEffect(() => {
     const checkSocket = () => {
       const socket = socketManager.getSocket();
-      if (socket && socket.connected) {
-        console.log("[UserDashboard] ✅ Socket is ready:", socket.id);
+      if (socket) {
+        console.log("[UserDashboard] ✅ Socket is available:", socket.id, "connected:", socket.connected);
         setSocketReady(true);
         return true;
       }
@@ -88,7 +88,7 @@ export default function UserDashboard() {
     if (checkSocket()) return;
 
     // If not ready, check every 100ms for up to 5 seconds
-    console.log("[UserDashboard] Socket not ready, will check periodically...");
+    console.log("[UserDashboard] Socket not available yet, will check periodically...");
     const interval = setInterval(() => {
       if (checkSocket()) {
         clearInterval(interval);
@@ -99,6 +99,8 @@ export default function UserDashboard() {
       clearInterval(interval);
       if (!socketReady) {
         console.error("[UserDashboard] Socket not available after 5 seconds");
+        // Still try to set it up anyway in case socket becomes available later
+        setSocketReady(true);
       }
     }, 5000);
 
@@ -106,22 +108,23 @@ export default function UserDashboard() {
       clearInterval(interval);
       clearTimeout(timeout);
     };
-  }, []);
+  }, [socketReady]);
 
   // Listen for real-time call events (PRIMARY source of call updates)
   useEffect(() => {
     if (!socketReady) {
-      console.log("[UserDashboard] Waiting for socket to be ready...");
+      console.log("[UserDashboard] Waiting for socket to be available...");
       return;
     }
 
     const socket = socketManager.getSocket();
     if (!socket) {
-      console.error("[UserDashboard] Socket should be ready but getSocket() returned null");
+      console.error("[UserDashboard] socketReady is true but getSocket() returned null - will retry on next render");
+      setSocketReady(false); // Reset to trigger retry
       return;
     }
 
-    console.log("[UserDashboard] 📡 Setting up event listeners on socket:", socket.id);
+    console.log("[UserDashboard] 📡 Setting up event listeners on socket:", socket.id, "connected:", socket.connected);
 
     // Debug: Log ALL socket events to see what we're receiving
     const debugHandler = (eventName: string, ...args: any[]) => {
