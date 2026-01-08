@@ -68,8 +68,6 @@ export async function startUserRecording({
         });
     };
 
-    console.log("[recorder] START_USER", { hostId, userId, meetingId, userPort, hostPort });
-
     let failed = false;
     let userPort = null;
     let hostPort = null;
