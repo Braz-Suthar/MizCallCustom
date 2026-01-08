@@ -47,9 +47,21 @@ import {
   FiMoreVertical,
   FiVolumeX,
   FiVolume2,
+  FiSun,
+  FiMoon,
+  FiWifi,
+  FiWifiOff,
 } from "react-icons/fi";
+import iconHome from "../assets/ui_icons/home.svg";
+import iconUsers from "../assets/ui_icons/users.svg";
+import iconCalls from "../assets/ui_icons/calls.svg";
+import iconRecordings from "../assets/ui_icons/recordings.svg";
+import iconSettings from "../assets/ui_icons/settings.svg";
 
 const API_BASE = "https://custom.mizcall.com";
+const logoWhite = new URL("./assets/Icons_and_logos_4x/white_logo.png", import.meta.url).href;
+const logoBlack = new URL("./assets/Icons_and_logos_4x/black_logo.png", import.meta.url).href;
+const logo360 = new URL("./assets/Icons_and_logos_4x/360.png", import.meta.url).href;
 
 type Screen = "login" | "register";
 type Mode = "host" | "user";
@@ -134,7 +146,7 @@ const Login = ({
     <div className="auth-shell">
       <div className="auth-left single">
         <div className="logo-wrap">
-          <img src="/assets/Icons_and_logos_4x/white_logo.png" alt="MizCall" className="logo-img" />
+          <img src={logoWhite} alt="MizCall" className="logo-img" />
         </div>
         <div className="auth-card flat">
           <div className="stack gap-xxs center">
@@ -257,7 +269,7 @@ const Register = ({ goLogin, onBack }: { goLogin: () => void; onBack: () => void
       <div className="auth-shell">
         <div className="auth-left single">
           <div className="logo-wrap">
-            <img src="/assets/Icons_and_logos_4x/white_logo.png" alt="MizCall" className="logo-img" />
+            <img src={logoWhite} alt="MizCall" className="logo-img" />
           </div>
           <div className="auth-card flat verify-card">
             <div className="stack gap-xxs center">
@@ -323,7 +335,7 @@ const Register = ({ goLogin, onBack }: { goLogin: () => void; onBack: () => void
     <div className="auth-shell">
       <div className="auth-left single">
         <div className="logo-wrap">
-          <img src="/assets/Icons_and_logos_4x/white_logo.png" alt="MizCall" className="logo-img" />
+          <img src={logoWhite} alt="MizCall" className="logo-img" />
         </div>
         <div className="auth-card flat">
           <div className="stack gap-xxs center">
@@ -470,6 +482,7 @@ function App() {
   const [remoteAudioStream, setRemoteAudioStream] = useState<MediaStream | null>(null);
   const [callJoinState, setCallJoinState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [callError, setCallError] = useState<string | null>(null);
+  const [networkStatus, setNetworkStatus] = useState<"online" | "offline">("offline");
   const callSocketRef = useRef<Socket | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const sendTransportRef = useRef<any>(null);
@@ -489,19 +502,75 @@ function App() {
   const userWsRef = useRef<Socket | null>(null);
 
   useEffect(() => {
+    // Restore persisted theme and session
+    try {
+      const storedTheme = localStorage.getItem("mizcall.theme");
+      if (storedTheme === "light" || storedTheme === "dark" || storedTheme === "system") {
+        setTheme(storedTheme);
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      const raw = localStorage.getItem("mizcall.session");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.token && parsed?.role) {
+          setSession(parsed);
+          setScreen("login");
+        }
+      }
+    } catch {
+      localStorage.removeItem("mizcall.session");
+    }
+
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const listener = (e: MediaQueryListEvent) => setSystemPref(e.matches ? "dark" : "light");
     setSystemPref(mql.matches ? "dark" : "light");
     mql.addEventListener("change", listener);
-    return () => mql.removeEventListener("change", listener);
+    const onlineHandler = () => setNetworkStatus("online");
+    const offlineHandler = () => setNetworkStatus("offline");
+    window.addEventListener("online", onlineHandler);
+    window.addEventListener("offline", offlineHandler);
+    return () => {
+      mql.removeEventListener("change", listener);
+      window.removeEventListener("online", onlineHandler);
+      window.removeEventListener("offline", offlineHandler);
+    };
   }, []);
 
   const effectiveTheme = theme === "system" ? systemPref : theme;
 
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  };
+
   useEffect(() => {
     document.body.classList.remove("theme-light", "theme-dark");
     document.body.classList.add(effectiveTheme === "dark" ? "theme-dark" : "theme-light");
-  }, [effectiveTheme]);
+    try {
+      localStorage.setItem("mizcall.theme", theme);
+    } catch {
+      // ignore
+    }
+  }, [effectiveTheme, theme]);
+
+  useEffect(() => {
+    // Log session changes for debugging
+    console.log("[desktop] session state:", session);
+  }, [session]);
+
+  useEffect(() => {
+    try {
+      if (session) {
+        localStorage.setItem("mizcall.session", JSON.stringify(session));
+      } else {
+        localStorage.removeItem("mizcall.session");
+      }
+    } catch {
+      // ignore
+    }
+  }, [session]);
 
   const doLogin = async (payload: { identifier: string; password: string }) => {
     setLoading(true);
@@ -526,14 +595,15 @@ function App() {
       } else {
         const data = await window.mizcall?.loginUser?.(payload.identifier, payload.password);
         if (!data) throw new Error("Bridge unavailable");
+        const userData = data as any;
         setSession({
           role: "user",
-          token: data.token,
-          userId: payload.identifier,
-          hostId: data.hostId,
-          name: data.name ?? payload.identifier,
-          avatarUrl: data.avatarUrl,
-          password: payload.password,
+          token: userData.token,
+          userId: userData.userId ?? payload.identifier,
+          hostId: userData.hostId,
+          name: userData.name ?? payload.identifier,
+          avatarUrl: userData.avatarUrl,
+          password: userData.password ?? payload.password,
         });
         setScreen("login");
       }
@@ -549,6 +619,11 @@ function App() {
     setError(null);
     setScreen("login");
     setTab("dashboard");
+    try {
+      localStorage.removeItem("mizcall.session");
+    } catch {
+      // ignore
+    }
   };
 
   const copyToClipboard = async (text: string) => {
@@ -1011,11 +1086,13 @@ function App() {
       
       console.log("[desktop] Host producer created successfully");
     } catch (err) {
+      const name = (err as any)?.name ?? "Error";
+      const message = (err as any)?.message ?? String(err);
       console.error("[desktop] Host produce error:", err);
-      console.error("[desktop] Error name:", err.name);
-      console.error("[desktop] Error message:", err.message);
+      console.error("[desktop] Error name:", name);
+      console.error("[desktop] Error message:", message);
       
-      if (err.name === "NotAllowedError") {
+      if (name === "NotAllowedError") {
         setCallError("Microphone permission denied. Opening Settings...");
         
         // Show toast with helpful message
@@ -1033,18 +1110,18 @@ function App() {
           console.log("[desktop] Bridge available, opening System Settings...");
           console.log("[desktop] 💡 TIP: In development mode, look for 'Electron' or 'Electron Helper' in the microphone list");
           setTimeout(() => {
-            window.mizcall.openSystemSettings("microphone");
+            window.mizcall?.openSystemSettings?.("microphone");
           }, 1000);
         } else {
           console.error("[desktop] Bridge not available! Cannot open System Settings");
           setCallError("Microphone permission denied. Please enable 'Electron' in System Settings > Privacy & Security > Microphone");
         }
-      } else if (err.name === "NotFoundError") {
+      } else if (name === "NotFoundError") {
         setCallError("No microphone found. Please connect a microphone.");
-      } else if (err.name === "NotReadableError") {
+      } else if (name === "NotReadableError") {
         setCallError("Microphone is busy or unavailable.");
       } else {
-        setCallError("Microphone not available: " + err.message);
+        setCallError("Microphone not available: " + message);
       }
     }
   };
@@ -1087,11 +1164,13 @@ function App() {
       
       console.log("[desktop] User PTT producer created successfully");
     } catch (err) {
+      const name = (err as any)?.name ?? "Error";
+      const message = (err as any)?.message ?? String(err);
       console.error("[desktop] PTT error:", err);
-      console.error("[desktop] Error name:", err.name);
-      console.error("[desktop] Error message:", err.message);
+      console.error("[desktop] Error name:", name);
+      console.error("[desktop] Error message:", message);
       
-      if (err.name === "NotAllowedError") {
+      if (name === "NotAllowedError") {
         showToast("Microphone permission denied. Look for 'Electron' in System Settings.", "error");
         
         // Check if bridge is available
@@ -1106,18 +1185,18 @@ function App() {
         if (window.mizcall?.openSystemSettings) {
           console.log("[desktop] Bridge available, opening System Settings...");
           setTimeout(() => {
-            window.mizcall.openSystemSettings("microphone");
+            window.mizcall?.openSystemSettings?.("microphone");
           }, 1000);
         } else {
           console.error("[desktop] Bridge not available! Cannot open System Settings");
           showToast("Please enable 'Electron' in System Settings > Privacy & Security > Microphone", "error");
         }
-      } else if (err.name === "NotFoundError") {
+      } else if (name === "NotFoundError") {
         showToast("No microphone found. Please connect a microphone.", "error");
-      } else if (err.name === "NotReadableError") {
+      } else if (name === "NotReadableError") {
         showToast("Microphone is busy or unavailable.", "error");
       } else {
-        showToast("Cannot access microphone: " + err.message, "error");
+        showToast("Cannot access microphone: " + message, "error");
       }
     }
   };
@@ -1510,6 +1589,7 @@ function App() {
 
     ws.on("connect", () => {
       console.log("[desktop:user-sio] open");
+      setNetworkStatus("online");
       ws.emit("auth", { token: session.token });
     });
     ws.on("message", (msg) => {
@@ -1560,6 +1640,7 @@ function App() {
     });
     ws.on("disconnect", () => {
       console.log("[desktop:user-sio] close");
+      setNetworkStatus("offline");
       userWsRef.current = null;
     });
 
@@ -1853,30 +1934,34 @@ function App() {
             ) : null}
 
             <div className="stats-grid">
-              <div className="card stat-card">
-                <p className="muted strong">Total Users</p>
-                <h3 className="stat-number">120</h3>
-              </div>
-              <div className="card stat-card">
-                <p className="muted strong">Active Users</p>
-                <h3 className="stat-number">18</h3>
-              </div>
-              <div className="card stat-card">
+              {session.role === "host" ? (
+                <>
+                  <div className="card stat-card">
+                    <p className="muted strong">Total Users</p>
+                    <h3 className="stat-number">120</h3>
+                  </div>
+                  <div className="card stat-card">
+                    <p className="muted strong">Active Users</p>
+                    <h3 className="stat-number">18</h3>
+                  </div>
+                </>
+              ) : null}
+              <div className="card stat-card highlight-card">
                 <p className="muted strong">Total Calls</p>
                 <h3 className="stat-number">71</h3>
               </div>
-              <div className="card stat-card">
+              <div className="card stat-card highlight-card">
                 <p className="muted strong">Network Status</p>
                 <p className="muted small">Excellent · 99ms</p>
               </div>
-              <div className="card stat-card">
+              <div className="card stat-card highlight-card">
                 <p className="muted strong">Connection</p>
                 <p className="muted small">Connected</p>
               </div>
             </div>
 
             <div className="grid-2">
-              <div className="card stack gap-sm">
+              <div className="card list-card stack gap-sm">
                 <p className="muted strong">Recent Activity</p>
                 <div className="activity-list">
                   {["M642025", "M650583", "M0080694", "M591073", "M780347"].map((id, idx) => (
@@ -1890,7 +1975,7 @@ function App() {
                   ))}
                 </div>
               </div>
-              <div className="card stack gap-sm">
+              <div className="card list-card stack gap-sm">
                 <div className="row-inline between">
                   <p className="muted strong">Notifications</p>
                   {session.role === "host" ? (
@@ -2060,15 +2145,7 @@ function App() {
       }
 
       if (tab === "recordings") {
-        return (
-          <div className="card stack gap-md">
-            <div className="stack gap-xxs">
-              <p className="muted">Recordings</p>
-              <h2 className="title">Your recordings</h2>
-              <p className="muted">No recordings yet. This will list past sessions once implemented.</p>
-            </div>
-          </div>
-        );
+        return null;
       }
 
       return (
@@ -2122,7 +2199,7 @@ function App() {
                 <p className="muted strong">Call background</p>
                 <div className="image-grid">
                   {[
-                    "/assets/Icons_and_logos_4x/360.png",
+                    logo360,
                     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%232563eb'/></svg>",
                     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%230f172a'/></svg>",
                     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%23e5e7eb'/></svg>",
@@ -2154,32 +2231,36 @@ function App() {
                 </div>
               </div>
 
-              <div className="card stack gap-sm">
-                <p className="muted strong">Security</p>
-                <div className="row-inline">
-                  <Button label="Change Email" variant="secondary" onClick={() => setShowChangeEmail(true)} />
-                  <Button label="Change Password" variant="ghost" onClick={() => setShowChangePassword(true)} />
-                </div>
-                <p className="muted small">Both steps require OTP verification.</p>
-              </div>
+              {session.role === "host" ? (
+                <>
+                  <div className="card stack gap-sm">
+                    <p className="muted strong">Security</p>
+                    <div className="row-inline">
+                      <Button label="Change Email" variant="secondary" onClick={() => setShowChangeEmail(true)} />
+                      <Button label="Change Password" variant="ghost" onClick={() => setShowChangePassword(true)} />
+                    </div>
+                    <p className="muted small">Both steps require OTP verification.</p>
+                  </div>
 
-              <div className="card stack gap-sm">
-                <p className="muted strong">Plan</p>
-                <div className="info-row">
-                  <div>
-                    <span className="muted small">Current plan</span>
-                    <strong>Pro</strong>
+                  <div className="card stack gap-sm">
+                    <p className="muted strong">Plan</p>
+                    <div className="info-row">
+                      <div>
+                        <span className="muted small">Current plan</span>
+                        <strong>Pro</strong>
+                      </div>
+                      <div>
+                        <span className="muted small">Seats</span>
+                        <strong>10</strong>
+                      </div>
+                      <div>
+                        <span className="muted small">Billing</span>
+                        <strong>Monthly</strong>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="muted small">Seats</span>
-                    <strong>10</strong>
-                  </div>
-                  <div>
-                    <span className="muted small">Billing</span>
-                    <strong>Monthly</strong>
-                  </div>
-                </div>
-              </div>
+                </>
+              ) : null}
 
               <div className="card stack gap-sm">
                 <p className="muted strong">Support</p>
@@ -2209,10 +2290,10 @@ function App() {
           <div className="sidebar__top">
             <div className="sidebar__logo">
               <div className="logo-full">
-                <img src="/assets/Icons_and_logos_4x/black_logo.png" alt="MizCall logo light" className="logo-light" />
-                <img src="/assets/Icons_and_logos_4x/white_logo.png" alt="MizCall logo dark" className="logo-dark" />
+                <img src={logoBlack} alt="MizCall logo light" className="logo-light" />
+                <img src={logoWhite} alt="MizCall logo dark" className="logo-dark" />
               </div>
-              <img src="/assets/Icons_and_logos_4x/360.png" alt="MizCall logo" className="logo-collapsed" />
+              <img src={logo360} alt="MizCall logo" className="logo-collapsed" />
             </div>
             <button className="collapse-btn" onClick={() => setSidebarCollapsed((c) => !c)}>
               {sidebarCollapsed ? <FiChevronRight /> : <FiChevronLeft />}
@@ -2220,19 +2301,19 @@ function App() {
           </div>
           <nav className="sidebar__nav">
             {(() => {
-              const base: Array<{ key: NavTab; icon: ReactNode; label: string }> =
+              const base: Array<{ key: NavTab; icon: string; label: string }> =
                 session.role === "host"
                   ? [
-                      { key: "dashboard", icon: <FiHome />, label: "Dashboard" },
-                      { key: "users", icon: <FiUsers />, label: "Users" },
-                      { key: "calls", icon: <FiPhoneCall />, label: "Calls" },
-                      { key: "recordings", icon: <FiMic />, label: "Recordings" },
-                      { key: "settings", icon: <FiSettings />, label: "Settings" },
+                      { key: "dashboard", icon: iconHome, label: "Dashboard" },
+                      { key: "users", icon: iconUsers, label: "Users" },
+                      { key: "calls", icon: iconCalls, label: "Calls" },
+                      { key: "recordings", icon: iconRecordings, label: "Recordings" },
+                      { key: "settings", icon: iconSettings, label: "Settings" },
                     ]
                   : [
-                      { key: "dashboard", icon: <FiHome />, label: "Dashboard" },
-                      { key: "recordings", icon: <FiMic />, label: "Recordings" },
-                      { key: "settings", icon: <FiSettings />, label: "Settings" },
+                      { key: "dashboard", icon: iconHome, label: "Dashboard" },
+                      { key: "recordings", icon: iconRecordings, label: "Recordings" },
+                      { key: "settings", icon: iconSettings, label: "Settings" },
                     ];
               return base.map((item) => (
                 <button
@@ -2241,7 +2322,13 @@ function App() {
                   onClick={() => setTab(item.key)}
                   title={item.label}
                 >
-                  <span className="nav-icon">{item.icon}</span>
+                  <span className="nav-icon nav-icon-img-wrapper">
+                    <img
+                      src={item.icon}
+                      alt={item.label}
+                      className={`nav-icon-img-src ${effectiveTheme === "dark" ? "nav-icon-img-dark" : "nav-icon-img-light"}`}
+                    />
+                  </span>
                   <span className="nav-label">{item.label}</span>
                 </button>
               ));
@@ -2262,7 +2349,21 @@ function App() {
               <p className="muted">MizCall Desktop</p>
               <h2 className="title">{tab.charAt(0).toUpperCase() + tab.slice(1)}</h2>
             </div>
-            <Pill>api: custom.mizcall.com</Pill>
+            <div className="pane-actions">
+              <button
+                className="icon-btn"
+                onClick={toggleTheme}
+                title={`Switch to ${effectiveTheme === "dark" ? "light" : "dark"} mode`}
+              >
+                {effectiveTheme === "dark" ? <FiSun /> : <FiMoon />}
+              </button>
+              <div
+                className={`icon-btn ${networkStatus === "online" ? "status-ok" : "status-bad"}`}
+                title={networkStatus === "online" ? "Connected" : "Disconnected"}
+              >
+                {networkStatus === "online" ? <FiWifi /> : <FiWifiOff />}
+              </div>
+            </div>
           </div>
           <div className="content">{renderContent()}</div>
         </section>

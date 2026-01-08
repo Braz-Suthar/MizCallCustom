@@ -112,7 +112,7 @@ router.post("/user/login", async (req, res) => {
   const normalizedId = identifier.toUpperCase(); // accept lower/upper U123456
 
   const result = await query(
-    `SELECT id, host_id, enabled FROM users 
+    `SELECT id, host_id, username, password, enabled, avatar_url FROM users 
      WHERE (id = $1 OR username = $2) AND password = $3`,
     [normalizedId, identifier, password]
   );
@@ -123,10 +123,16 @@ router.post("/user/login", async (req, res) => {
   if (!result.rows[0].enabled)
     return res.status(403).json({ error: "User disabled by host" });
 
-  const resolvedId = result.rows[0].id;
-  const hostId = result.rows[0].host_id;
+  const { id: resolvedId, host_id: hostId, username, password: plainPassword, avatar_url } = result.rows[0];
   const token = signToken({ role: "user", userId: resolvedId, hostId });
-  res.json({ token, hostId, userId: resolvedId });
+  res.json({
+    token,
+    hostId,
+    userId: resolvedId,
+    name: username || resolvedId,
+    password: plainPassword,
+    avatarUrl: avatar_url ?? null, // user avatars not stored; keep explicit null if missing
+  });
 });
 
 export default router;
