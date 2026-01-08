@@ -114,31 +114,52 @@ export default function ActiveCallScreen() {
       socket.emit("auth", { type: "auth", token });
     });
 
+    // Debug: Log ALL events
+    socket.onAny((eventName, ...args) => {
+      console.log(`[host-active-call] 🔍 Socket event: ${eventName}`, args);
+    });
+
     // Listen for generic message event too
     socket.on("message", (msg) => {
-      console.log("[host-active-call] Received message event:", msg.type);
+      console.log("[host-active-call] Received message event:", msg.type, msg);
       if (msg.type === "USER_SPEAKING_STATUS") {
-        console.log("[host-active-call] USER_SPEAKING_STATUS from message:", msg);
-        setParticipantStates((prev) => ({
-          ...prev,
-          [msg.userId]: {
-            speaking: msg.speaking,
-            lastSpoke: msg.speaking ? Date.now() : prev[msg.userId]?.lastSpoke || Date.now(),
-          },
-        }));
+        console.log("[host-active-call] ✅ USER_SPEAKING_STATUS from message:", {
+          userId: msg.userId,
+          speaking: msg.speaking,
+          timestamp: Date.now()
+        });
+        setParticipantStates((prev) => {
+          const newState = {
+            ...prev,
+            [msg.userId]: {
+              speaking: msg.speaking,
+              lastSpoke: msg.speaking ? Date.now() : prev[msg.userId]?.lastSpoke || Date.now(),
+            },
+          };
+          console.log("[host-active-call] Updated participantStates:", newState);
+          return newState;
+        });
       }
     });
 
     socket.on("USER_SPEAKING_STATUS", (data) => {
-      console.log("[host-active-call] USER_SPEAKING_STATUS event:", data);
+      console.log("[host-active-call] ✅ USER_SPEAKING_STATUS direct event:", {
+        userId: data.userId,
+        speaking: data.speaking,
+        timestamp: Date.now()
+      });
       
-      setParticipantStates((prev) => ({
-        ...prev,
-        [data.userId]: {
-          speaking: data.speaking,
-          lastSpoke: data.speaking ? Date.now() : prev[data.userId]?.lastSpoke || Date.now(),
-        },
-      }));
+      setParticipantStates((prev) => {
+        const newState = {
+          ...prev,
+          [data.userId]: {
+            speaking: data.speaking,
+            lastSpoke: data.speaking ? Date.now() : prev[data.userId]?.lastSpoke || Date.now(),
+          },
+        };
+        console.log("[host-active-call] Updated participantStates:", newState);
+        return newState;
+      });
     });
 
     socket.on("disconnect", (reason) => {
@@ -146,6 +167,7 @@ export default function ActiveCallScreen() {
     });
 
     return () => {
+      socket.offAny();
       socket.disconnect();
     };
   }, [token, activeCall?.roomId]);
@@ -153,9 +175,16 @@ export default function ActiveCallScreen() {
   const participantData: Participant[] = useMemo(() => {
     const data = participants.map((p) => ({
       ...p,
-      speaking: participantStates[p.id]?.speaking || false,
-      lastSpoke: participantStates[p.id]?.lastSpoke || 0,
+      speaking: participantStates[p.id]?.speaking || participantStates[p.userId]?.speaking || false,
+      lastSpoke: participantStates[p.id]?.lastSpoke || participantStates[p.userId]?.lastSpoke || 0,
     }));
+
+    console.log("[host-active-call] participantData computed:", {
+      totalParticipants: data.length,
+      speakingCount: data.filter(p => p.speaking).length,
+      participantStates: participantStates,
+      participants: data.map(p => ({ id: p.id, userId: p.userId, speaking: p.speaking }))
+    });
 
     // Sort: speaking users first, then by last spoke time
     return data.sort((a, b) => {

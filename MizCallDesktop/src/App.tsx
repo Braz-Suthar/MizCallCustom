@@ -910,7 +910,30 @@ function App() {
   const startHostProducer = async () => {
     if (producerRef.current || !sendTransportRef.current || session?.role !== "host") return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      console.log("[desktop] Requesting microphone access for host producer...");
+      
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("getUserMedia is not supported in this browser");
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }, 
+        video: false 
+      });
+      
+      console.log("[desktop] Microphone access granted, got stream:", stream.id);
+      console.log("[desktop] Audio tracks:", stream.getAudioTracks().map(t => ({
+        id: t.id,
+        label: t.label,
+        enabled: t.enabled,
+        readyState: t.readyState
+      })));
+      
       localStreamRef.current = stream;
       const track = stream.getAudioTracks()[0];
       const producer = await sendTransportRef.current.produce({ track });
@@ -918,9 +941,44 @@ function App() {
       track.enabled = !callMuted;
       producer.on("trackended", () => setCallMuted(true));
       setCallJoinState("connected");
+      
+      console.log("[desktop] Host producer created successfully");
     } catch (err) {
-      console.error("host produce error", err);
-      setCallError("Microphone not available");
+      console.error("[desktop] Host produce error:", err);
+      console.error("[desktop] Error name:", err.name);
+      console.error("[desktop] Error message:", err.message);
+      
+      if (err.name === "NotAllowedError") {
+        setCallError("Microphone permission denied. Opening Settings...");
+        
+        // Show toast with helpful message
+        showToast("Microphone permission required. Look for 'Electron' in System Settings.", "error");
+        
+        // Check if bridge is available
+        console.log("[desktop] Checking mizcall bridge:", {
+          hasMizcall: !!window.mizcall,
+          hasOpenSystemSettings: !!window.mizcall?.openSystemSettings,
+          isDevelopment: window.mizcall?.env !== "production"
+        });
+        
+        // Auto-open System Settings on macOS
+        if (window.mizcall?.openSystemSettings) {
+          console.log("[desktop] Bridge available, opening System Settings...");
+          console.log("[desktop] 💡 TIP: In development mode, look for 'Electron' or 'Electron Helper' in the microphone list");
+          setTimeout(() => {
+            window.mizcall.openSystemSettings("microphone");
+          }, 1000);
+        } else {
+          console.error("[desktop] Bridge not available! Cannot open System Settings");
+          setCallError("Microphone permission denied. Please enable 'Electron' in System Settings > Privacy & Security > Microphone");
+        }
+      } else if (err.name === "NotFoundError") {
+        setCallError("No microphone found. Please connect a microphone.");
+      } else if (err.name === "NotReadableError") {
+        setCallError("Microphone is busy or unavailable.");
+      } else {
+        setCallError("Microphone not available: " + err.message);
+      }
     }
   };
 
@@ -935,16 +993,65 @@ function App() {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      console.log("[desktop] Requesting microphone access for PTT...");
+      
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("getUserMedia is not supported");
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }, 
+        video: false 
+      });
+      
+      console.log("[desktop] Microphone access granted for PTT, got stream:", stream.id);
+      
       localStreamRef.current = stream;
       const track = stream.getAudioTracks()[0];
       const producer = await sendTransportRef.current.produce({ track });
       producerRef.current = producer;
       setPttActive(true);
       callSocketRef.current?.emit?.("USER_SPEAKING_START");
+      
+      console.log("[desktop] User PTT producer created successfully");
     } catch (err) {
-      console.error("ptt error", err);
-      showToast("Cannot access microphone", "error");
+      console.error("[desktop] PTT error:", err);
+      console.error("[desktop] Error name:", err.name);
+      console.error("[desktop] Error message:", err.message);
+      
+      if (err.name === "NotAllowedError") {
+        showToast("Microphone permission denied. Look for 'Electron' in System Settings.", "error");
+        
+        // Check if bridge is available
+        console.log("[desktop] Checking mizcall bridge:", {
+          hasMizcall: !!window.mizcall,
+          hasOpenSystemSettings: !!window.mizcall?.openSystemSettings
+        });
+        
+        console.log("[desktop] 💡 TIP: In development mode, look for 'Electron' or 'Electron Helper' in the microphone permissions list");
+        
+        // Auto-open System Settings
+        if (window.mizcall?.openSystemSettings) {
+          console.log("[desktop] Bridge available, opening System Settings...");
+          setTimeout(() => {
+            window.mizcall.openSystemSettings("microphone");
+          }, 1000);
+        } else {
+          console.error("[desktop] Bridge not available! Cannot open System Settings");
+          showToast("Please enable 'Electron' in System Settings > Privacy & Security > Microphone", "error");
+        }
+      } else if (err.name === "NotFoundError") {
+        showToast("No microphone found. Please connect a microphone.", "error");
+      } else if (err.name === "NotReadableError") {
+        showToast("Microphone is busy or unavailable.", "error");
+      } else {
+        showToast("Cannot access microphone: " + err.message, "error");
+      }
     }
   };
 

@@ -4,6 +4,23 @@
   "private": true,
   "type": "module",
   "main": "electron/main.js",
+  "author": "MizCall",
+  "description": "MizCall Desktop - Professional voice calling application",
+  "build": {
+    "appId": "com.mizcall.desktop",
+    "productName": "MizCall Desktop",
+    "mac": {
+      "category": "public.app-category.social-networking",
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "MizCall needs access to your microphone for voice calls.",
+        "NSCameraUsageDescription": "MizCall needs access to your camera for video calls."
+      }
+    }
+  },
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "start": "electron .",

@@ -16,6 +16,7 @@ declare global {
       }>;
       openActiveCallWindow?: (payload: any) => void;
       onActiveCallContext?: (cb: (data: any) => void) => () => void;
+      openSystemSettings?: (type: "microphone" | "camera") => void;
     };
   }
 }

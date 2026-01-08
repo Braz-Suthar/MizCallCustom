@@ -36,13 +36,45 @@ const bridge = {
     ipcRenderer.on("active-call-context", listener);
     return () => ipcRenderer.removeListener("active-call-context", listener);
   },
+  // New: Open system settings for permissions
+  openSystemSettings(type) {
+    console.log("[Preload] openSystemSettings called with type:", type);
+    console.log("[Preload] ipcRenderer available:", !!ipcRenderer);
+    console.log("[Preload] Sending IPC message: open-system-settings");
+    
+    try {
+      const result = ipcRenderer.send("open-system-settings", type);
+      console.log("[Preload] ✅ IPC send result:", result);
+      console.log("[Preload] ✅ IPC message sent successfully");
+      
+      // Also log to verify it was sent
+      setTimeout(() => {
+        console.log("[Preload] IPC message should have been processed by now");
+      }, 100);
+    } catch (error) {
+      console.error("[Preload] ❌ Failed to send IPC message:", error);
+      console.error("[Preload] Error stack:", error.stack);
+    }
+  },
 };
 
 // Expose a minimal bridge; expand as needed (e.g., system info, settings).
 try {
   contextBridge.exposeInMainWorld("mizcall", bridge);
+  console.log("[Preload] ✅ Bridge exposed successfully. Available functions:", Object.keys(bridge));
 } catch (err) {
   // eslint-disable-next-line no-console
-  console.error("Failed to expose bridge", err);
+  console.error("[Preload] ❌ Failed to expose bridge:", err);
 }
+
+// Also test IPC immediately to verify it works
+setTimeout(() => {
+  console.log("[Preload] Testing IPC connection...");
+  try {
+    ipcRenderer.send("test-ipc", "hello");
+    console.log("[Preload] Test IPC sent");
+  } catch (e) {
+    console.error("[Preload] Test IPC failed:", e);
+  }
+}, 1000);
 
