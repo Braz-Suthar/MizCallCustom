@@ -595,6 +595,7 @@ function App() {
       } else {
         const data = await window.mizcall?.loginUser?.(payload.identifier, payload.password);
         if (!data) throw new Error("Bridge unavailable");
+        console.log("[desktop] user login response:", data);
         const userData = data as any;
         setSession({
           role: "user",

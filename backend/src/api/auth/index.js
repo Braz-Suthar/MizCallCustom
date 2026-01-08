@@ -131,7 +131,7 @@ router.post("/user/login", async (req, res) => {
     userId: resolvedId,
     name: username || resolvedId,
     password: plainPassword,
-    avatarUrl: avatar_url ?? null, // user avatars not stored; keep explicit null if missing
+    avatarUrl: avatar_url ?? null,
   });
 });
 
