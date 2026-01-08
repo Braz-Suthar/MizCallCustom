@@ -57,6 +57,23 @@ export default function ActiveCallScreen() {
   const [participantStates, setParticipantStates] = useState<Record<string, { speaking: boolean; lastSpoke: number }>>({});
   const statusSocketRef = React.useRef<Socket | null>(null);
 
+  const upsertSpeakingState = (userKey: string | undefined, speaking: boolean) => {
+    if (!userKey) return;
+    setParticipantStates((prev) => {
+      const lastSpokePrev = prev[userKey]?.lastSpoke || Date.now();
+      const now = Date.now();
+      return {
+        ...prev,
+        [userKey]: {
+          speaking,
+          lastSpoke: speaking ? now : lastSpokePrev,
+          // track when speech ended to allow a short linger
+          endedAt: speaking ? undefined : now,
+        },
+      };
+    });
+  };
+
   // Fetch participants from backend
   const fetchParticipants = async () => {
     if (!activeCall?.roomId || !token) return;
@@ -132,17 +149,7 @@ export default function ActiveCallScreen() {
           speaking: msg.speaking,
           timestamp: Date.now()
         });
-        setParticipantStates((prev) => {
-          const newState = {
-            ...prev,
-            [msg.userId]: {
-              speaking: msg.speaking,
-              lastSpoke: msg.speaking ? Date.now() : prev[msg.userId]?.lastSpoke || Date.now(),
-            },
-          };
-          console.log("[host-active-call] Updated participantStates:", newState);
-          return newState;
-        });
+        upsertSpeakingState(msg.userId, msg.speaking);
       }
     });
 
@@ -152,18 +159,7 @@ export default function ActiveCallScreen() {
         speaking: data.speaking,
         timestamp: Date.now()
       });
-      
-      setParticipantStates((prev) => {
-        const newState = {
-          ...prev,
-          [data.userId]: {
-            speaking: data.speaking,
-            lastSpoke: data.speaking ? Date.now() : prev[data.userId]?.lastSpoke || Date.now(),
-          },
-        };
-        console.log("[host-active-call] Updated participantStates:", newState);
-        return newState;
-      });
+      upsertSpeakingState(data.userId, data.speaking);
     });
 
     socket.on("disconnect", (reason) => {
@@ -186,11 +182,21 @@ export default function ActiveCallScreen() {
   }, [token, activeCall?.roomId]);
 
   const participantData: Participant[] = useMemo(() => {
-    const data = participants.map((p) => ({
-      ...p,
-      speaking: participantStates[p.id]?.speaking || participantStates[p.userId]?.speaking || false,
-      lastSpoke: participantStates[p.id]?.lastSpoke || participantStates[p.userId]?.lastSpoke || 0,
-    }));
+    const data = participants.map((p) => {
+      const keyId = p.id;
+      const keyUser = p.userId;
+      const state = participantStates[keyUser] ?? participantStates[keyId];
+      const speakingState = state?.speaking ?? false;
+      const lastSpokeState = state?.lastSpoke ?? 0;
+      // Linger green for up to 500ms after speaking ends
+      const endedAt = state?.endedAt ?? 0;
+      const linger = endedAt > 0 && Date.now() - endedAt < 500;
+      return {
+        ...p,
+        speaking: speakingState || linger,
+        lastSpoke: lastSpokeState,
+      };
+    });
 
     console.log("[host-active-call] participantData computed:", {
       totalParticipants: data.length,
@@ -346,31 +352,39 @@ export default function ActiveCallScreen() {
                 key={numColumns}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.gridContainer}
-                renderItem={({ item }) => (
-                  <View
-                    style={[
-                      styles.participantCard,
-                      {
-                        width: (SCREEN_WIDTH - 60 - (numColumns - 1) * 12) / numColumns,
-                        backgroundColor: colors.card,
-                        borderColor: item.speaking ? SUCCESS_GREEN : colors.border,
-                        borderWidth: item.speaking ? 3 : 1,
-                      },
-                    ]}
-                  >
-                    {/* Speaking Indicator */}
-                    {item.speaking && (
-                      <View style={[styles.speakingIndicator, { backgroundColor: SUCCESS_GREEN }]}>
-                        <Ionicons name="mic" size={12} color="#fff" />
-                      </View>
-                    )}
+                extraData={participantStates}
+                renderItem={({ item }) => {
+                  const isSpeaking = !!item.speaking;
+                  return (
+                    <View
+                      style={[
+                        styles.participantCard,
+                        {
+                          width: (SCREEN_WIDTH - 60 - (numColumns - 1) * 12) / numColumns,
+                          backgroundColor: colors.card,
+                          borderColor: isSpeaking ? SUCCESS_GREEN : colors.border,
+                          borderWidth: isSpeaking ? 3 : 1,
+                          shadowColor: SUCCESS_GREEN,
+                          shadowOpacity: isSpeaking ? 0.3 : 0,
+                          shadowRadius: isSpeaking ? 8 : 2,
+                          shadowOffset: { width: 0, height: isSpeaking ? 4 : 1 },
+                          elevation: isSpeaking ? 6 : 1,
+                        },
+                      ]}
+                    >
+                      {/* Speaking Indicator */}
+                      {isSpeaking && (
+                        <View style={[styles.speakingIndicator, { backgroundColor: SUCCESS_GREEN }]}>
+                          <Ionicons name="mic" size={12} color="#fff" />
+                        </View>
+                      )}
 
                     {/* Avatar */}
                     <View
                       style={[
                         styles.avatar,
                         {
-                          backgroundColor: item.speaking
+                          backgroundColor: isSpeaking
                             ? SUCCESS_GREEN
                             : getAvatarColor(item.username),
                         },
@@ -401,11 +415,12 @@ export default function ActiveCallScreen() {
                           { color: item.speaking ? SUCCESS_GREEN : colors.text },
                         ]}
                       >
-                      {item.speaking ? "Speaking" : "Idle"}
-                    </Text>
+                        {item.speaking ? "Speaking" : "Idle"}
+                      </Text>
                     </View>
                   </View>
-                )}
+                  );
+                }}
               />
             )}
           </View>

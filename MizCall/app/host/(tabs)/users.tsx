@@ -430,9 +430,17 @@ export default function HostUsers() {
 
             {selectedUser && (
               <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                <View style={[styles.profilePicLarge, { backgroundColor: getProfileColor(selectedUser.username) }]}>
-                  <Text style={styles.profileInitialsLarge}>{getInitials(selectedUser.username)}</Text>
-                </View>
+                {selectedUser.avatar_url ? (
+                  <SvgIcon
+                    source={{ uri: resolveAvatarUrl(selectedUser.avatar_url) }}
+                    style={styles.profilePicLarge}
+                    contentFit="cover"
+                  />
+                ) : (
+                  <View style={[styles.profilePicLarge, { backgroundColor: getProfileColor(selectedUser.username) }]}>
+                    <Text style={styles.profileInitialsLarge}>{getInitials(selectedUser.username)}</Text>
+                  </View>
+                )}
 
                 <View style={styles.detailRow}>
                   <Text style={[styles.detailLabel, { color: colors.text }]}>Username</Text>
