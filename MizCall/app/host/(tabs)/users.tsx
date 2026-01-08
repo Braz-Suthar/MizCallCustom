@@ -78,9 +78,11 @@ export default function HostUsers() {
         "/host/users",
         token,
       );
+      console.log("[expo][users] fetched users:", res.users);
       setUsers(res.users);
     } catch (e) {
       // silently ignore for now; could show toast
+      console.log("[expo][users] fetch error:", e);
     } finally {
       setLoading(false);
     }
@@ -130,16 +132,22 @@ export default function HostUsers() {
     return colors[index];
   };
 
+  const resolveAvatarUrl = (url?: string | null) => {
+    if (!url) return undefined;
+    if (url.startsWith("http")) return url;
+    return `https://custom.mizcall.com${url}`;
+  };
+
   const handleView = async (user: any) => {
     // Fetch user details with password
     try {
     const userData = await apiFetch<{ user: any }>(`/host/users/${user.id}`, token!);
-      setSelectedUser({
-        ...user,
-        password: userData.user?.password ?? "",
-        deviceInfo: userData.user?.device_info ?? "",
+    setSelectedUser({
+      ...user,
+      password: userData.user?.password ?? "",
+      deviceInfo: userData.user?.device_info ?? "",
       avatar_url: userData.user?.avatar_url ?? user.avatar_url ?? null,
-      });
+    });
       setViewModalVisible(true);
     } catch (e) {
       setSelectedUser({ ...user, password: "", deviceInfo: "" });
@@ -324,7 +332,7 @@ export default function HostUsers() {
                 {/* Profile Picture */}
                 {item.avatar_url ? (
                   <SvgIcon
-                    source={{ uri: item.avatar_url }}
+                    source={{ uri: resolveAvatarUrl(item.avatar_url) }}
                     style={styles.profilePicImage}
                     contentFit="cover"
                   />
@@ -728,6 +736,7 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     overflow: "hidden",
+    backgroundColor: "#111827",
   },
   profileInitials: {
     color: "#fff",
