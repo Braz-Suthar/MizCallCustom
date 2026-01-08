@@ -2,8 +2,23 @@ import { Router } from "express";
 import { query } from "../../services/db.js";
 import { requireAuth, requireUser } from "../../middleware/auth.js";
 import { getRoom } from "../../signaling/socket-io.js";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 const router = Router();
+
+// Shared avatar upload directory (same as hosts)
+const uploadDir = path.join(process.cwd(), "uploads", "avatars");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "") || ".jpg";
+    cb(null, `${req.userId || "user"}_${Date.now()}${ext}`);
+  },
+});
+const upload = multer({ storage });
 
 /**
  * GET /user/active-call
@@ -81,6 +96,18 @@ router.get("/active-call", requireAuth, requireUser, async (req, res) => {
     console.error("[GET /user/active-call] Error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
+});
+
+// Upload user avatar
+router.post("/avatar", requireAuth, requireUser, upload.single("avatar"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "avatar file is required" });
+  }
+
+  const avatarPath = `/uploads/avatars/${req.file.filename}`;
+  await query(`UPDATE users SET avatar_url = $1 WHERE id = $2`, [avatarPath, req.userId]);
+
+  res.json({ avatarUrl: avatarPath });
 });
 
 export default router;

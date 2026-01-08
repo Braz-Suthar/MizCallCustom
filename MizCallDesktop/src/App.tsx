@@ -631,7 +631,26 @@ function App() {
     try {
       await navigator.clipboard.writeText(text);
       showToast("Copied", "success");
+      return;
     } catch {
+      // fallback for contexts where navigator.clipboard is unavailable
+      try {
+        const el = document.createElement("textarea");
+        el.value = text;
+        el.style.position = "fixed";
+        el.style.opacity = "0";
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(el);
+        if (ok) {
+          showToast("Copied", "success");
+          return;
+        }
+      } catch {
+        // ignore and fall through
+      }
       showToast("Copy failed", "error");
     }
   };
@@ -2180,19 +2199,21 @@ function App() {
                       <button className="linklike" onClick={() => copyToClipboard(userId)}>Copy</button>
                     </div>
                   </div>
-                  <div>
-                    <span className="muted small">Password</span>
-                    <div className="row-inline">
-                      <strong>•••••••</strong>
-                      <button
-                        className="linklike"
-                        onClick={() => session.password && copyToClipboard(session.password)}
-                        disabled={!session.password}
-                      >
-                        Copy
-                      </button>
+                  {session.role === "user" ? (
+                    <div>
+                      <span className="muted small">Password</span>
+                      <div className="row-inline">
+                        <strong>{session.password || "Not available"}</strong>
+                        <button
+                          className="linklike"
+                          onClick={() => session.password && copyToClipboard(session.password)}
+                          disabled={!session.password}
+                        >
+                          Copy
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                 </div>
               </div>
 
