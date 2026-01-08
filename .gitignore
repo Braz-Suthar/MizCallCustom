@@ -120,3 +120,11 @@ tmp/
 temp/
 .cache/
 *.pid
+
+########################################
+# Electron / Desktop build outputs
+########################################
+MizCallDesktop/out/
+MizCallDesktop/make/
+MizCallDesktop/dist/
+MizCallDesktop/.vite/
