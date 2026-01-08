@@ -109,11 +109,20 @@ export function useJoinCall() {
       setState("error");
       return;
     }
-    if (!activeCall?.routerRtpCapabilities) {
-      setError("Waiting for call info");
+    if (!activeCall?.routerRtpCapabilities || Object.keys(activeCall.routerRtpCapabilities).length === 0) {
+      console.error("[useJoinCall] Cannot join: missing or empty router capabilities");
+      console.log("[useJoinCall] activeCall:", activeCall);
+      setError("Waiting for call info - please wait for host to start");
       setState("idle");
       return;
     }
+
+    console.log("[useJoinCall] Joining call with valid router capabilities:", {
+      roomId,
+      hasRouterCaps: !!activeCall.routerRtpCapabilities,
+      capsKeys: Object.keys(activeCall.routerRtpCapabilities),
+      hostProducerId: activeCall.hostProducerId
+    });
 
     setState("connecting");
     setError(null);
@@ -187,9 +196,24 @@ export function useJoinCall() {
       console.log("[useJoinCall] message:", msg.type);
       try {
         if (msg.type === "SEND_TRANSPORT_CREATED") {
+          console.log("[useJoinCall] SEND_TRANSPORT_CREATED - Loading device");
+          
+          // Validate router capabilities before loading device
+          const routerCaps = activeCall?.routerRtpCapabilities;
+          if (!routerCaps || Object.keys(routerCaps).length === 0) {
+            console.error("[useJoinCall] Cannot load device: missing or empty router capabilities");
+            setError("Missing router capabilities - please wait for call data");
+            setState("error");
+            return;
+          }
+          
+          console.log("[useJoinCall] Router capabilities available, loading device");
           const device = new Device({ handlerName: "ReactNative106" as any });
-          await device.load({ routerRtpCapabilities: (activeCall?.routerRtpCapabilities || {}) as RtpCapabilities });
+          await device.load({ routerRtpCapabilities: routerCaps as RtpCapabilities });
           deviceRef.current = device;
+          
+          console.log("[useJoinCall] Device loaded successfully");
+          
           const transport = device.createSendTransport(msg.params);
           sendTransportRef.current = transport;
           transport.on("connect", ({ dtlsParameters }, callback, errback) => {
@@ -221,9 +245,21 @@ export function useJoinCall() {
 
         if (msg.type === "RECV_TRANSPORT_CREATED") {
           console.log("[useJoinCall] RECV_TRANSPORT_CREATED received");
+          
+          // Validate router capabilities
+          const routerCaps = activeCall?.routerRtpCapabilities;
+          if (!routerCaps || Object.keys(routerCaps).length === 0) {
+            console.error("[useJoinCall] Cannot create recv transport: missing router capabilities");
+            setError("Missing router capabilities");
+            setState("error");
+            return;
+          }
+          
           const device = deviceRef.current || new Device({ handlerName: "ReactNative106" as any });
           if (!device.loaded) {
-            await device.load({ routerRtpCapabilities: (activeCall?.routerRtpCapabilities || {}) as RtpCapabilities });
+            console.log("[useJoinCall] Loading device for recv transport");
+            await device.load({ routerRtpCapabilities: routerCaps as RtpCapabilities });
+            console.log("[useJoinCall] Device loaded successfully");
           }
           deviceRef.current = device;
 
@@ -520,7 +556,7 @@ export function useJoinCall() {
       socket.off("call-stopped");
       socket.offAny();
     };
-  }, [token, role, activeCall?.routerRtpCapabilities, dispatch, roomId]);
+  }, [token, role, activeCall?.routerRtpCapabilities, dispatch, roomId, activeCall]);
 
   const startSpeaking = useCallback(async () => {
     if (!pttReady || !sendTransportRef.current || speaking) return;

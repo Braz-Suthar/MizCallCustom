@@ -35,12 +35,20 @@ export default function UserDashboard() {
       
       if (response.call) {
         console.log("[UserDashboard] Active call found:", response.call);
-        dispatch(setActiveCall({
-          roomId: response.call.room_id || response.call.id,
-          routerRtpCapabilities: response.call.router_rtp_capabilities || {},
-          hostProducerId: response.call.host_producer_id || null,
-          startedAt: response.call.started_at,
-        }));
+        
+        // Only set active call if we have the required fields
+        if (response.call.router_rtp_capabilities && response.call.host_producer_id) {
+          console.log("[UserDashboard] Setting active call with complete data");
+          dispatch(setActiveCall({
+            roomId: response.call.room_id || response.call.id,
+            routerRtpCapabilities: response.call.router_rtp_capabilities,
+            hostProducerId: response.call.host_producer_id,
+            startedAt: response.call.started_at,
+          }));
+        } else {
+          console.warn("[UserDashboard] Active call missing router caps or host producer - will wait for socket event");
+          // Don't set active call yet - wait for the socket event with complete data
+        }
       } else {
         console.log("[UserDashboard] No active call found");
       }
@@ -69,12 +77,19 @@ export default function UserDashboard() {
 
     const handleCallStarted = (data: any) => {
       console.log("[UserDashboard] call-started event received:", data);
-      dispatch(setActiveCall({
-        roomId: data.roomId,
-        routerRtpCapabilities: data.routerRtpCapabilities || {},
-        hostProducerId: data.hostProducerId || null,
-        startedAt: new Date().toISOString(),
-      }));
+      
+      // Ensure we have the required fields from socket event
+      if (data.routerRtpCapabilities) {
+        console.log("[UserDashboard] Setting active call from socket event with complete data");
+        dispatch(setActiveCall({
+          roomId: data.roomId,
+          routerRtpCapabilities: data.routerRtpCapabilities,
+          hostProducerId: data.hostProducerId || null,
+          startedAt: new Date().toISOString(),
+        }));
+      } else {
+        console.warn("[UserDashboard] call-started event missing router caps");
+      }
     };
 
     const handleCallStopped = () => {
