@@ -10,7 +10,7 @@ import { AppButton } from "../../../components/ui/AppButton";
 import { EditProfileModal } from "../../../components/ui/EditProfileModal";
 import { ChangePasswordModal } from "../../../components/ui/ChangePasswordModal";
 import { setThemeMode, ThemeMode } from "../../../state/themeSlice";
-import { signOut } from "../../../state/authActions";
+import { authApiFetch, signOut } from "../../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { apiFetch, API_BASE } from "../../../state/api";
 import { setAvatarUrl, setCredentials } from "../../../state/authSlice";
@@ -50,6 +50,7 @@ export default function HostSettings() {
   const [emailUpdatesEnabled, setEmailUpdatesEnabled] = useState(true);
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(!!auth.twoFactorEnabled);
 
   // Mock membership data - replace with actual API call
   const membership = {
@@ -80,6 +81,11 @@ export default function HostSettings() {
   useEffect(() => {
     loadPreferences();
   }, []);
+
+  useEffect(() => {
+    setTwoFactorEnabled(!!auth.twoFactorEnabled);
+    setAllowMultipleSessions(auth.allowMultipleSessions ?? true);
+  }, [auth.twoFactorEnabled]);
 
   // Debug log for host data
   useEffect(() => {
@@ -162,10 +168,10 @@ export default function HostSettings() {
     if (!auth.token) throw new Error("Not authenticated");
     
     // Call API to update profile
-    const res = await apiFetch<{ name: string; email: string }>("/host/profile", auth.token, {
+    const res = await dispatch<any>(authApiFetch<{ name: string; email: string }>("/host/profile", {
       method: "PATCH",
       body: JSON.stringify({ name, email }),
-    });
+    }));
     
     const updated = {
       ...auth,
@@ -194,26 +200,75 @@ export default function HostSettings() {
   const handleToggleMultipleSessions = async () => {
     const next = !allowMultipleSessions;
     setAllowMultipleSessions(next);
-    savePreference("allowMultipleSessions", next);
-    Toast.show({
-      type: "info",
-      text1: next ? "Multiple sessions allowed" : "Single session enforced",
-      text2: next
-        ? "Users can stay signed in on multiple devices."
-        : "Users will be limited to one active session at a time.",
-      position: "top",
-      visibilityTime: 2000,
-    });
+    try {
+      await dispatch<any>(authApiFetch("/host/security", {
+        method: "PATCH",
+        body: JSON.stringify({ allowMultipleSessions: next }),
+      }));
+      const updated = {
+        ...auth,
+        allowMultipleSessions: next,
+        token: auth.token,
+        refreshToken: auth.refreshToken,
+        role: auth.role ?? "host",
+      };
+      dispatch(setCredentials(updated as any));
+      await saveSession(updated as any);
+      savePreference("allowMultipleSessions", next);
+      Toast.show({
+        type: "info",
+        text1: next ? "Multiple sessions allowed" : "Single session enforced",
+        text2: next
+          ? "Users can stay signed in on multiple devices."
+          : "Users will be limited to one active session at a time.",
+        position: "top",
+        visibilityTime: 2000,
+      });
+    } catch (e) {
+      setAllowMultipleSessions(!next);
+      Alert.alert("Error", "Failed to update concurrent sessions setting.");
+    }
+  };
+
+  const handleToggleTwoFactor = async () => {
+    if (!auth.role) return;
+    const next = !twoFactorEnabled;
+    setTwoFactorEnabled(next);
+    try {
+      await dispatch<any>(authApiFetch("/host/security", {
+        method: "PATCH",
+        body: JSON.stringify({ twoFactorEnabled: next }),
+      }));
+      const updated = {
+        ...auth,
+        twoFactorEnabled: next,
+        token: auth.token,
+        refreshToken: auth.refreshToken,
+        role: auth.role ?? "host",
+      };
+      dispatch(setCredentials(updated as any));
+      await saveSession(updated as any);
+      Toast.show({
+        type: "success",
+        text1: "Security updated",
+        text2: next ? "OTP required at login." : "OTP disabled for login.",
+        position: "top",
+        visibilityTime: 2000,
+      });
+    } catch (e) {
+      setTwoFactorEnabled(!next);
+      Alert.alert("Error", "Failed to update two-factor login setting.");
+    }
   };
 
   const handleChangePassword = async (currentPassword: string, newPassword: string) => {
     if (!auth.token) throw new Error("Not authenticated");
     
     // Call API to change password
-    await apiFetch("/host/change-password", auth.token, {
+    await dispatch<any>(authApiFetch("/host/change-password", {
       method: "POST",
       body: JSON.stringify({ currentPassword, newPassword }),
-    });
+    }));
     
     Toast.show({
       type: "success",
@@ -372,6 +427,44 @@ export default function HostSettings() {
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.text} style={{ opacity: 0.5 }} />
         </Pressable>
+
+        <View style={[styles.notificationRow, styles.securityRow]}>
+          <View style={styles.notificationText}>
+            <Text style={[styles.notificationTitle, { color: colors.text }]}>Two-factor login</Text>
+            <Text style={[styles.notificationSubtitle, { color: colors.text }]}>
+              Send an OTP to your email when signing in.
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="switch"
+            accessibilityState={{ checked: twoFactorEnabled }}
+            onPress={handleToggleTwoFactor}
+            style={[
+              styles.toggleTrack,
+              {
+                backgroundColor: twoFactorEnabled
+                  ? PRIMARY_BLUE + "55"
+                  : isDarkBg
+                  ? "rgba(255,255,255,0.16)"
+                  : "rgba(0,0,0,0.06)",
+                borderColor: twoFactorEnabled
+                  ? colors.border ?? "transparent"
+                  : colors.border ?? (isDarkBg ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.12)"),
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.toggleThumb,
+                {
+                  backgroundColor: twoFactorEnabled ? PRIMARY_BLUE : colors.card ?? "#f9fafb",
+                  transform: [{ translateX: twoFactorEnabled ? 20 : 0 }],
+                  shadowColor: "#000",
+                },
+              ]}
+            />
+          </Pressable>
+        </View>
       </View>
 
       {/* Appearance Section */}
@@ -725,7 +818,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 28,
-    paddingBottom: 12,
+    paddingBottom: 4,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -960,6 +1053,19 @@ const styles = StyleSheet.create({
   notificationSubtitle: {
     fontSize: 13,
     opacity: 0.7,
+  },
+  securityRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  toggleButton: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    borderWidth: 1,
+    justifyContent: "center",
   },
   toggleTrack: {
     width: 50,

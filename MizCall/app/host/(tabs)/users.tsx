@@ -9,8 +9,8 @@ import Toast from "react-native-toast-message";
 import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
 import { DeleteConfirmationModal } from "../../../components/ui/DeleteConfirmationModal";
-import { apiFetch } from "../../../state/api";
-import { useAppSelector } from "../../../state/store";
+import { authApiFetch } from "../../../state/authActions";
+import { useAppDispatch, useAppSelector } from "../../../state/store";
 
 const ICONS = {
   search: require("../../../assets/ui_icons/Search.svg"),
@@ -41,6 +41,7 @@ export default function HostUsers() {
   const secondaryButtonBg = isDarkBg ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.04)";
   const secondaryButtonBorder = colors.border ?? (isDarkBg ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)");
   const router = useRouter();
+  const dispatch = useAppDispatch();
   const { token, role } = useAppSelector((s) => s.auth);
   const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string; avatar_url?: string | null }>>([]);
   const [loading, setLoading] = useState(false);
@@ -74,10 +75,7 @@ export default function HostUsers() {
     if (!token || role !== "host") return;
     setLoading(true);
     try {
-      const res = await apiFetch<{ users: { id: string; username: string; enabled: boolean; avatar_url?: string | null }[] }>(
-        "/host/users",
-        token,
-      );
+      const res = await dispatch<any>(authApiFetch<{ users: { id: string; username: string; enabled: boolean; avatar_url?: string | null }[] }>("/host/users"));
       console.log("[expo][users] fetched users:", res.users);
       setUsers(res.users);
     } catch (e) {
@@ -141,7 +139,7 @@ export default function HostUsers() {
   const handleView = async (user: any) => {
     // Fetch user details with password
     try {
-    const userData = await apiFetch<{ user: any }>(`/host/users/${user.id}`, token!);
+    const userData = await dispatch<any>(authApiFetch<{ user: any }>(`/host/users/${user.id}`));
     setSelectedUser({
       ...user,
       password: userData.user?.password ?? "",
@@ -211,9 +209,7 @@ export default function HostUsers() {
 
     setDeleting(true);
     try {
-      await apiFetch(`/host/users/${selectedUser.id}`, token!, {
-        method: "DELETE",
-      });
+      await dispatch<any>(authApiFetch(`/host/users/${selectedUser.id}`, { method: "DELETE" }));
       // Refresh the list
       load();
       setDeleteModalVisible(false);
@@ -245,10 +241,10 @@ export default function HostUsers() {
         updateData.password = editPassword.trim();
       }
 
-      await apiFetch(`/host/users/${selectedUser.id}`, token, {
+      await dispatch<any>(authApiFetch(`/host/users/${selectedUser.id}`, {
         method: "PATCH",
         body: JSON.stringify(updateData),
-      });
+      }));
       
       // Update local state
       setUsers(users.map(u => 

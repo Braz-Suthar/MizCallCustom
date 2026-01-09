@@ -44,12 +44,38 @@ router.patch("/profile", requireAuth, requireHost, async (req, res) => {
 
 /* HOST SECURITY SETTINGS */
 router.patch("/security", requireAuth, requireHost, async (req, res) => {
-  const { twoFactorEnabled } = req.body;
-  if (twoFactorEnabled === undefined) {
-    return res.status(400).json({ error: "twoFactorEnabled is required" });
+  const { twoFactorEnabled, allowMultipleSessions } = req.body;
+  if (twoFactorEnabled === undefined && allowMultipleSessions === undefined) {
+    return res.status(400).json({ error: "twoFactorEnabled or allowMultipleSessions is required" });
   }
-  await query("UPDATE hosts SET two_factor_enabled = $1 WHERE id = $2", [!!twoFactorEnabled, req.hostId]);
-  res.json({ twoFactorEnabled: !!twoFactorEnabled });
+
+  const updates = [];
+  const values = [];
+  let idx = 1;
+
+  if (twoFactorEnabled !== undefined) {
+    updates.push(`two_factor_enabled = $${idx++}`);
+    values.push(!!twoFactorEnabled);
+  }
+  if (allowMultipleSessions !== undefined) {
+    updates.push(`enforce_single_session = $${idx++}`);
+    values.push(!allowMultipleSessions);
+    if (allowMultipleSessions) {
+      updates.push(`active_session_refresh_token = NULL`);
+      updates.push(`active_session_expires_at = NULL`);
+    }
+  }
+
+  if (!updates.length) {
+    return res.status(400).json({ error: "no updates" });
+  }
+
+  values.push(req.hostId);
+  await query(`UPDATE hosts SET ${updates.join(", ")} WHERE id = $${idx}`, values);
+  res.json({
+    twoFactorEnabled: twoFactorEnabled !== undefined ? !!twoFactorEnabled : undefined,
+    allowMultipleSessions: allowMultipleSessions !== undefined ? !!allowMultipleSessions : undefined,
+  });
 });
 
 /* DASHBOARD STATS */

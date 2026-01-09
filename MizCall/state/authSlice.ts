@@ -12,6 +12,9 @@ type AuthState = {
   callBackground: string | null;
   role: UserRole;
   token: string | null;
+  refreshToken: string | null;
+  twoFactorEnabled: boolean;
+  allowMultipleSessions: boolean;
   status: "idle" | "loading" | "authenticated";
   hydrated: boolean;
 };
@@ -26,6 +29,9 @@ const initialState: AuthState = {
   callBackground: null,
   role: null,
   token: null,
+  refreshToken: null,
+  twoFactorEnabled: false,
+  allowMultipleSessions: true,
   status: "idle",
   hydrated: false,
 };
@@ -39,6 +45,9 @@ export type CredentialsPayload = {
   avatarUrl?: string;
   callBackground?: string;
   token: string;
+  refreshToken?: string | null;
+  twoFactorEnabled?: boolean;
+  allowMultipleSessions?: boolean;
   role: Exclude<UserRole, null>;
 };
 
@@ -56,6 +65,9 @@ const authSlice = createSlice({
       state.callBackground = action.payload.callBackground ?? null;
       state.role = action.payload.role;
       state.token = action.payload.token;
+      state.refreshToken = action.payload.refreshToken ?? null;
+      state.twoFactorEnabled = !!action.payload.twoFactorEnabled;
+      state.allowMultipleSessions = action.payload.allowMultipleSessions ?? true;
       state.status = "authenticated";
     },
     logout: () => initialState,

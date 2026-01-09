@@ -1,7 +1,7 @@
 import { AppDispatch } from "./store";
 import { CredentialsPayload, setCredentials, setHydrated, setStatus, logout } from "./authSlice";
 import { clearSession, loadSession, saveSession } from "./sessionStorage";
-import { apiFetch } from "./api";
+import { apiFetch, apiFetchWithRefresh } from "./api";
 import { socketManager } from "../services/socketManager";
 
 export const hydrateSession = () => async (dispatch: AppDispatch) => {
@@ -19,7 +19,7 @@ export const loginHost =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; hostId?: string; name?: string; email?: string; avatarUrl?: string }>(
+      const res = await apiFetch<{ token?: string; refreshToken?: string; hostId?: string; name?: string; email?: string; avatarUrl?: string; requireOtp?: boolean; twoFactorEnabled?: boolean }>(
         "/auth/host/login",
         "",
         {
@@ -28,6 +28,10 @@ export const loginHost =
           body: JSON.stringify({ hostId: email.trim(), password }),
         },
       );
+      if (res.requireOtp) {
+        dispatch(setStatus("idle"));
+        return { requireOtp: true, hostId: res.hostId, email: res.email ?? email, password };
+      }
       const session: CredentialsPayload = {
         email: res.email ?? email,
         hostId: res.hostId,
@@ -36,9 +40,13 @@ export const loginHost =
         avatarUrl: res.avatarUrl,
         role: "host",
         token: res.token,
+        refreshToken: res.refreshToken ?? null,
+        twoFactorEnabled: res.twoFactorEnabled ?? false,
+        allowMultipleSessions: res.allowMultipleSessions ?? true,
       };
       dispatch(setCredentials(session));
       await saveSession(session);
+      return { ok: true };
     } catch (e) {
       dispatch(setStatus("idle"));
       throw e;
@@ -66,9 +74,13 @@ export const loginUser =
         avatarUrl: res.avatarUrl,
         role: "user",
         token: res.token,
+        refreshToken: res.refreshToken ?? null,
+        twoFactorEnabled: false,
+        allowMultipleSessions: true,
       };
       dispatch(setCredentials(session));
       await saveSession(session);
+      return { ok: true };
     } catch (e) {
       dispatch(setStatus("idle"));
       throw e;
@@ -95,6 +107,9 @@ export const registerUser =
         avatarUrl: res.avatarUrl ?? null,
         role: "host",
         token: res.token,
+        refreshToken: res.refreshToken ?? null,
+        twoFactorEnabled: res.twoFactorEnabled ?? false,
+        allowMultipleSessions: res.allowMultipleSessions ?? true,
       };
       dispatch(setCredentials(session));
       await saveSession(session);
@@ -113,3 +128,101 @@ export const signOut = () => async (dispatch: AppDispatch) => {
   dispatch(setHydrated(true));
 };
 
+const updateTokens =
+  (dispatch: AppDispatch, getState: () => any) =>
+  async (token: string, refreshToken?: string | null, extra?: any) => {
+    const current = getState().auth as any;
+    if (!current?.role) return;
+    const updated: CredentialsPayload = {
+      userId: current.userId ?? undefined,
+      hostId: current.hostId ?? undefined,
+      email: current.email ?? undefined,
+      displayName: current.displayName ?? undefined,
+      password: current.password ?? undefined,
+      avatarUrl: current.avatarUrl ?? undefined,
+      callBackground: current.callBackground ?? undefined,
+      role: current.role,
+      token,
+      refreshToken: refreshToken ?? current.refreshToken ?? null,
+      twoFactorEnabled: extra?.twoFactorEnabled ?? current.twoFactorEnabled ?? false,
+      allowMultipleSessions: extra?.allowMultipleSessions ?? current.allowMultipleSessions ?? true,
+    };
+    dispatch(setCredentials(updated));
+    await saveSession(updated);
+  };
+
+export const authApiFetch =
+  <T,>(path: string, options?: RequestInit) =>
+  async (_: AppDispatch, getState: () => any) => {
+    const { token, refreshToken } = getState().auth as any;
+    return apiFetchWithRefresh<T>(path, token, refreshToken, updateTokens(_, getState), options);
+  };
+
+export const verifyHostOtp =
+  (hostId: string, otp: string, password: string) => async (dispatch: AppDispatch) => {
+    dispatch(setStatus("loading"));
+    try {
+      const res = await apiFetch<{ token: string; refreshToken?: string; hostId: string; name?: string; email?: string; avatarUrl?: string; twoFactorEnabled?: boolean; allowMultipleSessions?: boolean }>(
+        "/auth/host/login/otp",
+        "",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hostId, otp }),
+        },
+      );
+      const session: CredentialsPayload = {
+        email: res.email ?? hostId,
+        hostId: res.hostId,
+        displayName: res.name ?? hostId,
+        password,
+        avatarUrl: res.avatarUrl,
+        role: "host",
+        token: res.token,
+        refreshToken: res.refreshToken ?? null,
+        twoFactorEnabled: res.twoFactorEnabled ?? true,
+        allowMultipleSessions: res.allowMultipleSessions ?? true,
+      };
+      dispatch(setCredentials(session));
+      await saveSession(session);
+      return { ok: true };
+    } catch (e) {
+      dispatch(setStatus("idle"));
+      throw e;
+    }
+  };
+
+export const requestHostPasswordOtp =
+  (identifier: string) => async (dispatch: AppDispatch) => {
+    dispatch(setStatus("loading"));
+    try {
+      const body = identifier.includes("@") ? { email: identifier.trim() } : { hostId: identifier.trim() };
+      const res = await apiFetch<{ ok: boolean; hostId: string; email?: string }>("/auth/host/password/otp", "", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      dispatch(setStatus("idle"));
+      return res;
+    } catch (e) {
+      dispatch(setStatus("idle"));
+      throw e;
+    }
+  };
+
+export const resetHostPassword =
+  (payload: { hostId: string; otp: string; newPassword: string }) => async (dispatch: AppDispatch) => {
+    dispatch(setStatus("loading"));
+    try {
+      const res = await apiFetch<{ ok: boolean }>("/auth/host/password/reset", "", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      dispatch(setStatus("idle"));
+      return res;
+    } catch (e) {
+      dispatch(setStatus("idle"));
+      throw e;
+    }
+  };

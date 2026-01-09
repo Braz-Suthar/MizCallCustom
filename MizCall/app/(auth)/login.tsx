@@ -6,7 +6,7 @@ import { useTheme } from "@react-navigation/native";
 import { AppButton } from "../../components/ui/AppButton";
 import { AppTextInput } from "../../components/ui/AppTextInput";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
-import { loginHost, loginUser } from "../../state/authActions";
+import { loginHost, loginUser, verifyHostOtp } from "../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../state/store";
 
 type Mode = "host" | "user";
@@ -17,6 +17,9 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [otpPending, setOtpPending] = useState<{ hostId: string; email: string; password: string } | null>(null);
+  const [otpError, setOtpError] = useState<string | null>(null);
   const { colors } = useTheme();
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((s) => s.auth);
@@ -25,7 +28,13 @@ export default function Login() {
   const onSubmit = async () => {
     try {
       if (mode === "host") {
-        await dispatch(loginHost(email.trim(), password));
+        const res: any = await dispatch(loginHost(email.trim(), password));
+        if (res?.requireOtp) {
+          setOtpPending({ hostId: res.hostId, email: res.email, password });
+          setOtp("");
+          setOtpError(null);
+          return;
+        }
         router.replace("/host/dashboard");
       } else {
         await dispatch(loginUser(userId.trim(), password));
@@ -36,7 +45,53 @@ export default function Login() {
     }
   };
 
+  const onVerifyOtp = async () => {
+    if (!otpPending) return;
+    if (!otp.trim()) {
+      setOtpError("Enter the code");
+      return;
+    }
+    setOtpError(null);
+    try {
+      await dispatch(verifyHostOtp(otpPending.hostId, otp.trim(), otpPending.password));
+      setOtpPending(null);
+      setOtp("");
+      router.replace("/host/dashboard");
+    } catch (e: any) {
+      setOtpError(e?.message || "Verification failed");
+    }
+  };
+
   const disable = status === "loading" || (!password.trim()) || (mode === "host" ? !email.trim() : !userId.trim());
+
+  if (otpPending) {
+    return (
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>
+        <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background }]} keyboardShouldPersistTaps="handled">
+          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.title, { color: colors.text }]}>Enter login code</Text>
+            <Text style={[styles.subtitle, { color: colors.text }]}>We sent a 6-digit code to {otpPending.email}</Text>
+            <AppTextInput
+              label="OTP"
+              value={otp}
+              onChangeText={setOtp}
+              keyboardType="number-pad"
+              placeholder="123456"
+              style={{
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                shadowOpacity: 0,
+                elevation: 0,
+              }}
+            />
+            {otpError ? <Text style={[styles.error, { color: colors.notification }]}>{otpError}</Text> : null}
+            <AppButton label="Verify" onPress={onVerifyOtp} disabled={!otp.trim() || status === "loading"} loading={status === "loading"} />
+            <AppButton label="Back" variant="ghost" onPress={() => { setOtpPending(null); setOtp(""); }} />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.select({ ios: "padding", android: undefined })}>
@@ -145,6 +200,10 @@ const styles = StyleSheet.create({
   },
   forgot: {
     textAlign: "center",
+    fontSize: 13,
+    marginTop: 4,
+  },
+  error: {
     fontSize: 13,
     marginTop: 4,
   },

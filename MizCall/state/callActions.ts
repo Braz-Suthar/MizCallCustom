@@ -1,5 +1,6 @@
 import { AppDispatch, RootState } from "./store";
 import { apiFetch } from "./api";
+import { authApiFetch } from "./authActions";
 import { addParticipant, clearActiveCall, resetParticipants, setActiveCall, setCallError, setCallStatus } from "./callSlice";
 import { io, Socket } from "socket.io-client";
 
@@ -108,9 +109,9 @@ export const startCall =
     dispatch(setCallStatus("starting"));
     dispatch(setCallError(null));
     dispatch(resetParticipants());
-    const res = await apiFetch<{ roomId: string }>("/host/calls/start", token, {
+    const res = await dispatch<any>(authApiFetch<{ roomId: string }>("/host/calls/start", {
       method: "POST",
-    });
+    }));
 
     dispatch(setActiveCall({ roomId: res.roomId }));
     // notify signaling server to create mediasoup room and broadcast, keep socket open to receive user joins
@@ -130,9 +131,7 @@ export const endCall =
     try {
       // Call backend API to end the call
       if (token && role === "host" && callId) {
-        await apiFetch(`/host/calls/${callId}/end`, token, {
-          method: "PATCH",
-        });
+        await dispatch<any>(authApiFetch(`/host/calls/${callId}/end`, { method: "PATCH" }));
       }
       
       // Disconnect socket

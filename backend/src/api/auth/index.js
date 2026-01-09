@@ -5,6 +5,7 @@ import { generateHostId } from "../../services/id.js";
 import nodemailer from "nodemailer";
 import { setOtp, verifyOtp } from "../../services/otpStore.js";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 const router = Router();
 
@@ -92,14 +93,26 @@ router.post("/host/login", async (req, res) => {
   const normalizedEmail = identifier.includes("@") ? identifier.toLowerCase() : null;
 
   const result = await query(
-    "SELECT id, name, display_name, password, avatar_url, two_factor_enabled FROM hosts WHERE id = $1 OR lower(name) = $2",
+    `SELECT id, name, display_name, password, avatar_url, two_factor_enabled,
+            enforce_single_session, active_session_refresh_token, active_session_expires_at
+       FROM hosts WHERE id = $1 OR lower(name) = $2`,
     [identifier, normalizedEmail]
   );
 
   if (result.rowCount === 0)
     return res.status(401).json({ error: "Invalid host" });
 
-  const { id, name, display_name, password: hashed, avatar_url, two_factor_enabled } = result.rows[0];
+  const {
+    id,
+    name,
+    display_name,
+    password: hashed,
+    avatar_url,
+    two_factor_enabled,
+    enforce_single_session,
+    active_session_refresh_token,
+    active_session_expires_at,
+  } = result.rows[0];
   if (!hashed) {
     return res.status(401).json({ error: "Password not set for this host" });
   }
@@ -107,6 +120,10 @@ router.post("/host/login", async (req, res) => {
   const match = await bcrypt.compare(password, hashed);
   if (!match) {
     return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  if (enforce_single_session && active_session_refresh_token && active_session_expires_at && new Date(active_session_expires_at) > new Date()) {
+    return res.status(409).json({ error: "Another session is active. Log out on the other device first.", code: "SESSION_ACTIVE" });
   }
 
   if (two_factor_enabled) {
@@ -126,7 +143,32 @@ router.post("/host/login", async (req, res) => {
 
   const token = signToken({ role: "host", hostId: id });
   const refreshToken = signRefreshToken({ role: "host", hostId: id });
-  res.json({ token, refreshToken, hostId: id, name: display_name || name, email: name, avatarUrl: avatar_url, twoFactorEnabled: !!two_factor_enabled });
+
+  // store active session if single-session enforced
+  if (enforce_single_session) {
+    const decoded = jwt.decode(refreshToken);
+    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : null;
+    await query(
+      "UPDATE hosts SET active_session_refresh_token = $1, active_session_expires_at = $2 WHERE id = $3",
+      [refreshToken, expiresAt, id]
+    );
+  } else {
+    await query(
+      "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
+      [id]
+    );
+  }
+
+  res.json({
+    token,
+    refreshToken,
+    hostId: id,
+    name: display_name || name,
+    email: name,
+    avatarUrl: avatar_url,
+    twoFactorEnabled: !!two_factor_enabled,
+    allowMultipleSessions: !enforce_single_session,
+  });
 });
 
 /* HOST REGISTRATION (name only) */
@@ -146,7 +188,7 @@ router.post("/host/register", async (req, res) => {
 
   const token = signToken({ role: "host", hostId });
   const refreshToken = signRefreshToken({ role: "host", hostId });
-  res.json({ hostId, token, refreshToken, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false });
+  res.json({ hostId, token, refreshToken, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false, allowMultipleSessions: true });
 });
 
 /* USER LOGIN (by id or username, plain text password) */
@@ -190,17 +232,38 @@ router.post("/host/login/otp", async (req, res) => {
   const normalizedId = hostId.trim();
 
   const result = await query(
-    "SELECT id, name, display_name, avatar_url, two_factor_enabled FROM hosts WHERE id = $1",
+    `SELECT id, name, display_name, avatar_url, two_factor_enabled,
+            enforce_single_session, active_session_refresh_token, active_session_expires_at
+       FROM hosts WHERE id = $1`,
     [normalizedId]
   );
   if (result.rowCount === 0) return res.status(401).json({ error: "Invalid host" });
 
-  const { id, name, display_name, avatar_url, two_factor_enabled } = result.rows[0];
+  const { id, name, display_name, avatar_url, two_factor_enabled, enforce_single_session, active_session_refresh_token, active_session_expires_at } = result.rows[0];
   const ok = verifyOtp(`host-login:${id}`, String(otp).trim());
   if (!ok) return res.status(400).json({ error: "Invalid or expired code" });
 
+  if (enforce_single_session && active_session_refresh_token && active_session_expires_at && new Date(active_session_expires_at) > new Date()) {
+    return res.status(409).json({ error: "Another session is active. Log out on the other device first.", code: "SESSION_ACTIVE" });
+  }
+
   const token = signToken({ role: "host", hostId: id });
   const refreshToken = signRefreshToken({ role: "host", hostId: id });
+
+  if (enforce_single_session) {
+    const decoded = jwt.decode(refreshToken);
+    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : null;
+    await query(
+      "UPDATE hosts SET active_session_refresh_token = $1, active_session_expires_at = $2 WHERE id = $3",
+      [refreshToken, expiresAt, id]
+    );
+  } else {
+    await query(
+      "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
+      [id]
+    );
+  }
+
   res.json({
     token,
     refreshToken,
@@ -209,6 +272,7 @@ router.post("/host/login/otp", async (req, res) => {
     email: name,
     avatarUrl: avatar_url,
     twoFactorEnabled: !!two_factor_enabled,
+    allowMultipleSessions: !enforce_single_session,
   });
 });
 
@@ -263,13 +327,47 @@ router.post("/refresh", async (req, res) => {
     const payload = verifyRefreshToken(refreshToken);
     if (payload.role === "host") {
       const result = await query(
-        "SELECT id, name, display_name, avatar_url, two_factor_enabled FROM hosts WHERE id = $1",
+        `SELECT id, name, display_name, avatar_url, two_factor_enabled,
+                enforce_single_session, active_session_refresh_token, active_session_expires_at
+           FROM hosts WHERE id = $1`,
         [payload.hostId]
       );
       if (result.rowCount === 0) return res.status(401).json({ error: "Host not found" });
-      const { id, name, display_name, avatar_url, two_factor_enabled } = result.rows[0];
+      const {
+        id,
+        name,
+        display_name,
+        avatar_url,
+        two_factor_enabled,
+        enforce_single_session,
+        active_session_refresh_token,
+        active_session_expires_at,
+      } = result.rows[0];
+
+      if (enforce_single_session) {
+        if (!active_session_refresh_token || active_session_refresh_token !== refreshToken) {
+          return res.status(401).json({ error: "Session expired. Please sign in again." });
+        }
+        if (active_session_expires_at && new Date(active_session_expires_at) < new Date()) {
+          return res.status(401).json({ error: "Session expired. Please sign in again." });
+        }
+      }
       const token = signToken({ role: "host", hostId: id });
       const nextRefresh = signRefreshToken({ role: "host", hostId: id });
+
+      if (enforce_single_session) {
+        const decoded = jwt.decode(nextRefresh);
+        const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : null;
+        await query(
+          "UPDATE hosts SET active_session_refresh_token = $1, active_session_expires_at = $2 WHERE id = $3",
+          [nextRefresh, expiresAt, id]
+        );
+      } else {
+        await query(
+          "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
+          [id]
+        );
+      }
       return res.json({
         token,
         refreshToken: nextRefresh,
@@ -278,6 +376,7 @@ router.post("/refresh", async (req, res) => {
         email: name,
         avatarUrl: avatar_url,
         twoFactorEnabled: !!two_factor_enabled,
+        allowMultipleSessions: !enforce_single_session,
       });
     }
 
