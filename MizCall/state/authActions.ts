@@ -4,8 +4,13 @@ import { clearSession, loadSession, saveSession } from "./sessionStorage";
 import { apiFetch, apiFetchWithRefresh } from "./api";
 import { socketManager } from "../services/socketManager";
 import { Platform } from "react-native";
+import * as Device from "expo-device";
 
-const deviceLabel = Platform.OS === "ios" ? "iOS" : Platform.OS === "android" ? "Android" : "Expo";
+const deviceLabel =
+  Device.deviceName ||
+  Device.modelName ||
+  `${Platform.OS}${Device.osVersion ? ` ${Device.osVersion}` : ""}` ||
+  "Unknown device";
 
 export const hydrateSession = () => async (dispatch: AppDispatch) => {
   dispatch(setStatus("loading"));

@@ -167,7 +167,7 @@ router.post("/host/login", async (req, res) => {
   const token = signToken({ role: "host", hostId: id }, accessJti);
   const refreshToken = signRefreshToken({ role: "host", hostId: id }, refreshJti);
   const userAgent = req.get("user-agent") || null;
-  const deviceLabel = deviceName || null;
+  const deviceLabel = deviceName || userAgent || "Unknown device";
   const sessionResult = await query(
     `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -224,7 +224,7 @@ router.post("/host/register", async (req, res) => {
   const token = signToken({ role: "host", hostId }, accessJti);
   const refreshToken = signRefreshToken({ role: "host", hostId }, refreshJti);
   const userAgent = req.get("user-agent") || null;
-  const deviceLabel = deviceName || null;
+  const deviceLabel = deviceName || userAgent || "Unknown device";
   const sessionResult = await query(
     `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -315,7 +315,7 @@ router.post("/host/login/otp", async (req, res) => {
   const token = signToken({ role: "host", hostId: id }, accessJti);
   const refreshToken = signRefreshToken({ role: "host", hostId: id }, refreshJti);
   const userAgent = req.get("user-agent") || null;
-  const deviceLabel = deviceName || null;
+  const deviceLabel = deviceName || userAgent || "Unknown device";
   const sessionResult = await query(
     `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
