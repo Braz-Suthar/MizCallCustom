@@ -123,7 +123,10 @@ router.post("/host/login", async (req, res) => {
   }
 
   if (enforce_single_session && active_session_refresh_token) {
-    return res.status(409).json({ error: "Another session is active. Log out on the other device first.", code: "SESSION_ACTIVE" });
+    return res.status(409).json({
+      error: "This host is already signed in on another device. Please sign out there to continue.",
+      code: "SESSION_ACTIVE",
+    });
   }
 
   if (two_factor_enabled) {
@@ -244,7 +247,10 @@ router.post("/host/login/otp", async (req, res) => {
   if (!ok) return res.status(400).json({ error: "Invalid or expired code" });
 
   if (enforce_single_session && active_session_refresh_token) {
-    return res.status(409).json({ error: "Another session is active. Log out on the other device first.", code: "SESSION_ACTIVE" });
+    return res.status(409).json({
+      error: "This host is already signed in on another device. Please sign out there to continue.",
+      code: "SESSION_ACTIVE",
+    });
   }
 
   const token = signToken({ role: "host", hostId: id });

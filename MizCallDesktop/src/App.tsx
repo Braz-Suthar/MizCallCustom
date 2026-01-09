@@ -449,6 +449,7 @@ function App() {
     avatarUrl?: string;
     password?: string;
     twoFactorEnabled?: boolean;
+    allowMultipleSessions?: boolean;
   } | null>(null);
   const [tab, setTab] = useState<NavTab>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -623,7 +624,8 @@ function App() {
 
   useEffect(() => {
     setTwoFactorEnabled(!!session?.twoFactorEnabled);
-  }, [session?.twoFactorEnabled]);
+    setAllowMultipleSessions(session?.allowMultipleSessions ?? true);
+  }, [session?.twoFactorEnabled, session?.allowMultipleSessions]);
 
   useEffect(() => {
     if (!hostOtpPending) {
@@ -679,6 +681,7 @@ function App() {
           avatarUrl: data.avatarUrl,
           password: payload.password,
           twoFactorEnabled: (data as any).twoFactorEnabled ?? false,
+          allowMultipleSessions: (data as any).allowMultipleSessions ?? true,
         });
         setScreen("login");
       } else {
@@ -696,11 +699,18 @@ function App() {
           avatarUrl: userData.avatarUrl,
           password: userData.password ?? payload.password,
           twoFactorEnabled: false,
+          allowMultipleSessions: true,
         });
         setScreen("login");
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Login failed");
+      const msg = e instanceof Error ? e.message : "Login failed";
+      const friendly =
+        msg.includes("already signed in") || msg.includes("SESSION_ACTIVE")
+          ? "You're already signed in on another device. Log out there or enable concurrent sessions."
+          : msg;
+      setError(friendly);
+      showToast(friendly, "error");
     } finally {
       setLoading(false);
     }
@@ -727,13 +737,20 @@ function App() {
         password: hostOtpPending.password,
         twoFactorEnabled: (data as any).twoFactorEnabled ?? true,
         email: (data as any).email ?? hostOtpPending.email,
+        allowMultipleSessions: (data as any).allowMultipleSessions ?? true,
       });
       setHostOtpPending(null);
       setLoginOtpCode("");
       setLoginOtpResendTimer(0);
       setScreen("login");
     } catch (e) {
-      setLoginOtpError(e instanceof Error ? e.message : "Verification failed");
+      const msg = e instanceof Error ? e.message : "Verification failed";
+      const friendly =
+        msg.includes("already signed in") || msg.includes("SESSION_ACTIVE")
+          ? "You're already signed in on another device. Log out there or enable concurrent sessions."
+          : msg;
+      setLoginOtpError(friendly);
+      showToast(friendly, "error");
     } finally {
       setLoginOtpLoading(false);
     }
@@ -758,6 +775,7 @@ function App() {
           password: hostOtpPending.password,
           twoFactorEnabled: (data as any).twoFactorEnabled ?? false,
           email: (data as any).email ?? hostOtpPending.email,
+          allowMultipleSessions: (data as any).allowMultipleSessions ?? true,
         });
         setHostOtpPending(null);
         setLoginOtpCode("");
@@ -771,7 +789,13 @@ function App() {
       });
       setLoginOtpResendTimer(25);
     } catch (e) {
-      setLoginOtpError(e instanceof Error ? e.message : "Resend failed");
+      const msg = e instanceof Error ? e.message : "Resend failed";
+      const friendly =
+        msg.includes("already signed in") || msg.includes("SESSION_ACTIVE")
+          ? "You're already signed in on another device. Log out there or enable concurrent sessions."
+          : msg;
+      setLoginOtpError(friendly);
+      showToast(friendly, "error");
     } finally {
       setLoginOtpLoading(false);
     }
@@ -873,6 +897,7 @@ function App() {
             name: data.name ?? prev.name,
             avatarUrl: data.avatarUrl ?? prev.avatarUrl,
             twoFactorEnabled: data.twoFactorEnabled ?? prev.twoFactorEnabled,
+            allowMultipleSessions: data.allowMultipleSessions ?? prev.allowMultipleSessions ?? true,
           }
         : prev
     );
@@ -1828,6 +1853,28 @@ function App() {
       showToast("Security settings updated", "success");
     } catch (err) {
       setTwoFactorEnabled((prev) => !prev);
+      showToast(err instanceof Error ? err.message : "Update failed", "error");
+    }
+  };
+
+  const handleToggleMultipleSessions = async () => {
+    if (!session || session.role !== "host") return;
+    try {
+      const next = !allowMultipleSessions;
+      setAllowMultipleSessions(next);
+      const res = await authFetch(`${API_BASE}/host/security`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowMultipleSessions: next }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to update security settings");
+      }
+      setSession((prev) => (prev ? { ...prev, allowMultipleSessions: next } : prev));
+      showToast(next ? "Multiple sessions allowed" : "Single session enforced", "success");
+    } catch (err) {
+      setAllowMultipleSessions((prev) => !prev);
       showToast(err instanceof Error ? err.message : "Update failed", "error");
     }
   };
@@ -3023,7 +3070,7 @@ function App() {
                       <strong>Concurrent Sessions</strong>
                       <span className="muted small">Allow multiple logins per user.</span>
                     </div>
-                    <ToggleSwitch checked={allowMultipleSessions} onToggle={() => setAllowMultipleSessions((v) => !v)} />
+                    <ToggleSwitch checked={allowMultipleSessions} onToggle={handleToggleMultipleSessions} />
                   </div>
                 </div>
 
