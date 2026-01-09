@@ -2,7 +2,7 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
-import { verifyRefreshToken } from "../../services/auth.js";
+import { signRefreshToken, verifyRefreshToken } from "../../services/auth.js";
 import { generateUserId } from "../../services/id.js";
 import { broadcastCallEvent, ensureMediasoupRoom } from "../../signaling/socket-io.js";
 import multer from "multer";
@@ -65,23 +65,29 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
       updates.push(`active_session_refresh_token = NULL`);
       updates.push(`active_session_expires_at = NULL`);
     } else {
-      if (!refreshToken) {
-        return res.status(400).json({ error: "refreshToken required when disabling multiple sessions" });
-      }
+      let tokenToStore = refreshToken;
       let payload;
-      try {
-        payload = verifyRefreshToken(refreshToken);
-      } catch {
-        return res.status(401).json({ error: "Invalid refresh token" });
+      if (tokenToStore) {
+        try {
+          payload = verifyRefreshToken(tokenToStore);
+          if (payload.role !== "host" || payload.hostId !== req.hostId) {
+            tokenToStore = null;
+          }
+        } catch {
+          tokenToStore = null;
+        }
       }
-      if (payload.role !== "host" || payload.hostId !== req.hostId) {
-        return res.status(401).json({ error: "Refresh token does not belong to this host" });
+      // If client did not send or sent an invalid refresh token, mint a new one for this host/session
+      if (!tokenToStore) {
+        tokenToStore = signRefreshToken({ role: "host", hostId: req.hostId });
+        payload = verifyRefreshToken(tokenToStore);
       }
       const expiresAt = payload?.exp ? new Date(payload.exp * 1000) : null;
       updates.push(`active_session_refresh_token = $${idx++}`);
-      values.push(refreshToken);
+      values.push(tokenToStore);
       updates.push(`active_session_expires_at = $${idx++}`);
       values.push(expiresAt);
+      req.activeSessionRefreshToken = tokenToStore; // surface back in response
     }
   }
 
@@ -94,6 +100,7 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
   res.json({
     twoFactorEnabled: twoFactorEnabled !== undefined ? !!twoFactorEnabled : undefined,
     allowMultipleSessions: allowMultipleSessions !== undefined ? !!allowMultipleSessions : undefined,
+    refreshToken: req.activeSessionRefreshToken,
   });
 });
 

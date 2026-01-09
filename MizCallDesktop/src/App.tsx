@@ -1878,10 +1878,7 @@ function App() {
       const next = !allowMultipleSessions;
       setAllowMultipleSessions(next);
       const body: any = { allowMultipleSessions: next };
-      if (!next) {
-        if (!session.refreshToken) {
-          throw new Error("Missing refresh token; please sign in again.");
-        }
+      if (!next && session.refreshToken) {
         body.refreshToken = session.refreshToken;
       }
       const res = await authFetch(`${API_BASE}/host/security`, {
@@ -1893,7 +1890,16 @@ function App() {
         const msg = await res.text();
         throw new Error(msg || "Failed to update security settings");
       }
-      setSession((prev) => (prev ? { ...prev, allowMultipleSessions: next } : prev));
+      const payload = await res.json().catch(() => ({}));
+      setSession((prev) =>
+        prev
+          ? {
+              ...prev,
+              allowMultipleSessions: next,
+              refreshToken: payload.refreshToken ?? prev.refreshToken,
+            }
+          : prev
+      );
       showToast(next ? "Multiple sessions allowed" : "Single session enforced", "success");
     } catch (err) {
       setAllowMultipleSessions((prev) => !prev);

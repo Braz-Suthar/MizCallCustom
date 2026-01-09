@@ -84,8 +84,11 @@ export default function HostSettings() {
 
   useEffect(() => {
     setTwoFactorEnabled(!!auth.twoFactorEnabled);
-    setAllowMultipleSessions(auth.allowMultipleSessions ?? true);
-  }, [auth.twoFactorEnabled]);
+    const nextAllow = auth.allowMultipleSessions ?? true;
+    setAllowMultipleSessions(nextAllow);
+    // keep local preference aligned with server flag so toggles reflect default
+    savePreference("allowMultipleSessions", nextAllow);
+  }, [auth.twoFactorEnabled, auth.allowMultipleSessions]);
 
   // Debug log for host data
   useEffect(() => {
@@ -202,13 +205,10 @@ export default function HostSettings() {
     setAllowMultipleSessions(next);
     try {
       const body: any = { allowMultipleSessions: next };
-      if (!next) {
-        if (!auth.refreshToken) {
-          throw new Error("Missing refresh token; please sign in again.");
-        }
+      if (!next && auth.refreshToken) {
         body.refreshToken = auth.refreshToken;
       }
-      await dispatch<any>(authApiFetch("/host/security", {
+      const res = await dispatch<any>(authApiFetch("/host/security", {
         method: "PATCH",
         body: JSON.stringify(body),
       }));
@@ -216,7 +216,7 @@ export default function HostSettings() {
         ...auth,
         allowMultipleSessions: next,
         token: auth.token,
-        refreshToken: auth.refreshToken,
+        refreshToken: (res as any)?.refreshToken ?? auth.refreshToken,
         role: auth.role ?? "host",
       };
       dispatch(setCredentials(updated as any));
@@ -231,9 +231,10 @@ export default function HostSettings() {
         position: "top",
         visibilityTime: 2000,
       });
-    } catch (e) {
+    } catch (e: any) {
       setAllowMultipleSessions(!next);
-      Alert.alert("Error", "Failed to update concurrent sessions setting.");
+      const message = e?.message || e?.error || "Failed to update concurrent sessions setting.";
+      Alert.alert("Error", message);
     }
   };
 
