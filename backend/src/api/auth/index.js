@@ -122,11 +122,7 @@ router.post("/host/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
-  if (
-    enforce_single_session &&
-    active_session_refresh_token &&
-    (active_session_expires_at === null || new Date(active_session_expires_at) > new Date())
-  ) {
+  if (enforce_single_session && active_session_refresh_token) {
     return res.status(409).json({ error: "Another session is active. Log out on the other device first.", code: "SESSION_ACTIVE" });
   }
 
@@ -247,11 +243,7 @@ router.post("/host/login/otp", async (req, res) => {
   const ok = verifyOtp(`host-login:${id}`, String(otp).trim());
   if (!ok) return res.status(400).json({ error: "Invalid or expired code" });
 
-  if (
-    enforce_single_session &&
-    active_session_refresh_token &&
-    (active_session_expires_at === null || new Date(active_session_expires_at) > new Date())
-  ) {
+  if (enforce_single_session && active_session_refresh_token) {
     return res.status(409).json({ error: "Another session is active. Log out on the other device first.", code: "SESSION_ACTIVE" });
   }
 
