@@ -1,4 +1,4 @@
-import { AppDispatch } from "./store";
+import { AppDispatch, RootState } from "./store";
 import { CredentialsPayload, setCredentials, setHydrated, setStatus, logout } from "./authSlice";
 import { clearSession, loadSession, saveSession } from "./sessionStorage";
 import { apiFetch, apiFetchWithRefresh } from "./api";
@@ -119,7 +119,20 @@ export const registerUser =
     }
   };
 
-export const signOut = () => async (dispatch: AppDispatch) => {
+export const signOut = () => async (dispatch: AppDispatch, getState: () => RootState) => {
+  // Call backend to clear active session
+  const { token } = getState().auth;
+  if (token) {
+    try {
+      await apiFetch("/auth/logout", token, {
+        method: "POST",
+      });
+    } catch (e) {
+      // Ignore logout errors - still clear local state
+      console.warn("[expo] logout API call failed", e);
+    }
+  }
+  
   // Cleanup socket connection on logout
   socketManager.cleanup();
   

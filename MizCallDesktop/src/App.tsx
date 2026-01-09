@@ -863,7 +863,22 @@ function App() {
     }
   };
 
-  const doLogout = useCallback(() => {
+  const doLogout = useCallback(async () => {
+    // Call backend to clear active session
+    if (session?.token) {
+      try {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.token}`,
+            "Content-Type": "application/json",
+          },
+        });
+      } catch (e) {
+        // Ignore logout errors - still clear local state
+        console.warn("[desktop] logout API call failed", e);
+      }
+    }
     setSession(null);
     setError(null);
     setScreen("login");
@@ -873,7 +888,7 @@ function App() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [session?.token]);
 
   const refreshAccessToken = useCallback(async () => {
     if (!session?.refreshToken) {

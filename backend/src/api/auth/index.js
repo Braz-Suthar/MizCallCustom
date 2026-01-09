@@ -6,6 +6,7 @@ import nodemailer from "nodemailer";
 import { setOtp, verifyOtp } from "../../services/otpStore.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { requireAuth, requireHost } from "../../middleware/auth.js";
 
 const router = Router();
 
@@ -413,6 +414,24 @@ router.post("/refresh", async (req, res) => {
   } catch (err) {
     console.error("[auth/refresh] failed", err);
     return res.status(401).json({ error: "Invalid refresh token" });
+  }
+});
+
+/* LOGOUT - Clear active session for hosts */
+router.post("/logout", requireAuth, async (req, res) => {
+  try {
+    if (req.auth.role === "host") {
+      await query(
+        "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
+        [req.auth.hostId]
+      );
+      console.log(`[auth/logout] Cleared active session for host ${req.auth.hostId}`);
+    }
+    // For users, we don't track active sessions, so nothing to clear
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[auth/logout] failed", err);
+    res.status(500).json({ error: "Logout failed" });
   }
 });
 
