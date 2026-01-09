@@ -928,12 +928,29 @@ export default function HostSettings() {
               const nameText = item.deviceName || item.deviceLabel || "Unknown device";
               const modelText = item.modelName ? ` (${item.modelName})` : "";
               const platformText = item.platform || "";
-              const platformIcon =
-                platformText.toLowerCase() === "android"
-                  ? "logo-android"
-                  : platformText.toLowerCase() === "ios"
-                  ? "logo-apple"
-                  : "desktop-outline";
+              const ua = (item.userAgent || "").toLowerCase();
+              const haystack = `${platformText} ${nameText} ${modelText} ${ua}`.toLowerCase();
+              const isAndroid =
+                haystack.includes("android") ||
+                haystack.includes("sm-") ||
+                ua.includes("okhttp");
+              const isApple =
+                haystack.includes("ios") ||
+                haystack.includes("mac") ||
+                haystack.includes("iphone") ||
+                haystack.includes("ipad") ||
+                haystack.includes("apple");
+              const isWindows = haystack.includes("windows") || haystack.includes("win32");
+              const isLinux = haystack.includes("linux") || haystack.includes("ubuntu");
+              const platformIcon = isAndroid
+                ? require("../../../assets/ui_icons/android.png")
+                : isApple
+                ? require("../../../assets/ui_icons/apple.png")
+                : isWindows
+                ? require("../../../assets/ui_icons/menu.png")
+                : isLinux
+                ? require("../../../assets/ui_icons/linux.png")
+                : require("../../../assets/ui_icons/menu.png");
               const isCurrent = (item as any).isCurrent;
               return (
                 <View
@@ -947,7 +964,7 @@ export default function HostSettings() {
                   }}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Ionicons name={platformIcon as any} size={18} color={colors.text} />
+                    <Image source={platformIcon} style={{ width: 20, height: 20, resizeMode: "contain" }} />
                     <Text style={{ color: colors.text, fontWeight: "600" }}>
                       {nameText}
                       {modelText}
@@ -956,9 +973,10 @@ export default function HostSettings() {
                       <Text style={{ marginLeft: 6, color: PRIMARY_BLUE, fontWeight: "700" }}>(Current device)</Text>
                     ) : null}
                   </View>
-                  {item.userAgent ? (
-                    <Text style={{ color: colors.text, opacity: 0.7, marginTop: 4 }}>{item.userAgent}</Text>
-                  ) : null}
+                  <Text style={{ color: colors.text, opacity: 0.65, marginTop: 6 }}>
+                    Last active: {item.lastSeenAt ? new Date(item.lastSeenAt).toLocaleString() : "—"}
+                  </Text>
+                  {/* userAgent intentionally hidden from UI */}
                   <Pressable
                     onPress={() => revokeSession(item.id)}
                     style={{

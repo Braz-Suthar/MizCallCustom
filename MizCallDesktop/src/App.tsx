@@ -67,6 +67,10 @@ import {
   IoLockClosedOutline,
   IoLogOutOutline,
   IoInformationCircleOutline,
+  IoLogoAndroid,
+  IoLogoApple,
+  IoLogoWindows,
+  IoDesktopOutline,
 } from "react-icons/io5";
 import iconHome from "../assets/ui_icons/home.svg";
 import iconUsers from "../assets/ui_icons/users.svg";
@@ -79,6 +83,11 @@ const DEVICE_LABEL = "Desktop";
 const logoWhite = new URL("../assets/Icons_and_logos_4x/white_logo.png", import.meta.url).href;
 const logoBlack = new URL("../assets/Icons_and_logos_4x/black_logo.png", import.meta.url).href;
 const logo360 = new URL("../assets/Icons_and_logos_4x/360.png", import.meta.url).href;
+const platformIconAndroid = new URL("../assets/ui_icons/android.png", import.meta.url).href;
+const platformIconApple = new URL("../assets/ui_icons/apple.png", import.meta.url).href;
+const platformIconLinux = new URL("../assets/ui_icons/linux.png", import.meta.url).href;
+const platformIconUbuntu = new URL("../assets/ui_icons/ubuntu.png", import.meta.url).href;
+const platformIconMenu = new URL("../assets/ui_icons/menu.png", import.meta.url).href;
 
 type Screen = "login" | "register";
 type Mode = "host" | "user";
@@ -3476,17 +3485,26 @@ function App() {
                   const nameText = s.deviceName || s.deviceLabel || "Unknown device";
                   const modelText = s.modelName ? ` (${s.modelName})` : "";
                   const platformText = s.platform || "";
-                  const platformIcon =
-                    platformText.toLowerCase() === "android"
-                      ? "logo-android"
-                      : platformText.toLowerCase() === "ios"
-                      ? "logo-apple"
-                      : "monitor";
+                  const ua = (s.userAgent || "").toLowerCase();
+                  const haystack = `${platformText} ${nameText} ${modelText} ${ua}`.toLowerCase();
+                  const isAndroid = haystack.includes("android") || haystack.includes("sm-") || ua.includes("okhttp");
+                  const isApple = haystack.includes("ios") || haystack.includes("mac") || haystack.includes("iphone") || haystack.includes("ipad") || haystack.includes("apple");
+                  const isWindows = haystack.includes("windows") || haystack.includes("win32");
+                  const isLinux = haystack.includes("linux") || haystack.includes("ubuntu");
+                  const platformIcon = isAndroid
+                    ? platformIconAndroid
+                    : isApple
+                    ? platformIconApple
+                    : isWindows
+                    ? platformIconMenu
+                    : isLinux
+                    ? platformIconLinux
+                    : platformIconMenu;
                   const isCurrent = s.isCurrent;
                   return (
                     <div key={s.id} className="card stack gap-xxs">
                       <div className="row-inline gap-xxs align-center">
-                        <IoStar className="muted" />
+                        <img src={platformIcon} alt="" style={{ width: 18, height: 18, objectFit: "contain", opacity: 0.7 }} />
                         <strong>
                           <span className="muted small">{platformText ? `${platformText} • ` : ""}</span>
                           {nameText}
@@ -3494,7 +3512,9 @@ function App() {
                           {isCurrent ? <span style={{ marginLeft: 6, color: "#2563eb" }}>(Current device)</span> : null}
                         </strong>
                       </div>
-                      {s.userAgent ? <span className="muted small">{s.userAgent}</span> : null}
+                      <span className="muted small">
+                        Last active: {s.lastSeenAt ? formatDateShort(s.lastSeenAt) : "—"}
+                      </span>
                       <div className="row-inline between">
                         <span className="muted small">
                           Last seen: {s.lastSeenAt ? formatDateShort(s.lastSeenAt) : "—"}

@@ -162,6 +162,17 @@ router.post("/host/login", async (req, res) => {
     return res.json({ requireOtp: true, hostId: id, email: name, message: "OTP sent to email" });
   }
 
+  // If single-session enforced, block if any active session exists
+  if (enforce_single_session) {
+    const existing = await query("SELECT id FROM host_sessions WHERE host_id = $1 LIMIT 1", [id]);
+    if (existing.rowCount > 0) {
+      return res.status(409).json({
+        error: "This host is already signed in on another device. Please sign out there to continue.",
+        code: "SESSION_ACTIVE",
+      });
+    }
+  }
+
   const accessJti = generateJti();
   const refreshJti = generateJti();
   const token = signToken({ role: "host", hostId: id }, accessJti);
@@ -305,6 +316,17 @@ router.post("/host/login/otp", async (req, res) => {
         [id]
       );
     } else {
+      return res.status(409).json({
+        error: "This host is already signed in on another device. Please sign out there to continue.",
+        code: "SESSION_ACTIVE",
+      });
+    }
+  }
+
+  // If single-session enforced, block if any active session exists
+  if (enforce_single_session) {
+    const existing = await query("SELECT id FROM host_sessions WHERE host_id = $1 LIMIT 1", [id]);
+    if (existing.rowCount > 0) {
       return res.status(409).json({
         error: "This host is already signed in on another device. Please sign out there to continue.",
         code: "SESSION_ACTIVE",

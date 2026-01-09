@@ -58,13 +58,17 @@ export const loginHost =
     dispatch(setStatus("loading"));
     try {
       const deviceName = await getDeviceLabel();
+      const deviceModel = Device.modelName || null;
+      const platform = Platform.OS || null;
+      const osName = Device.osName || null;
+      const osVersion = Device.osVersion || null;
       const res = await apiFetch<{ token?: string; refreshToken?: string; hostId?: string; name?: string; email?: string; avatarUrl?: string; requireOtp?: boolean; twoFactorEnabled?: boolean; accessJti?: string; sessionId?: string; allowMultipleSessions?: boolean }>(
         "/auth/host/login",
         "",
         {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Device-Name": deviceName },
-          body: JSON.stringify({ hostId: email.trim(), password, deviceName }),
+          body: JSON.stringify({ hostId: email.trim(), password, deviceName, deviceModel, platform, osName, osVersion }),
         },
       );
       if (res.requireOtp) {
@@ -133,13 +137,17 @@ export const registerUser =
     dispatch(setStatus("loading"));
     try {
       const deviceName = await getDeviceLabel();
+      const deviceModel = Device.modelName || null;
+      const platform = Platform.OS || null;
+      const osName = Device.osName || null;
+      const osVersion = Device.osVersion || null;
       const res = await apiFetch<{ token: string; hostId: string; avatarUrl?: string; name?: string; email?: string; refreshToken?: string; sessionId?: string; accessJti?: string; allowMultipleSessions?: boolean }>(
         "/auth/host/register",
         "",
         {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-Device-Name": deviceName },
-          body: JSON.stringify({ name: email.trim(), password, deviceName }),
+          body: JSON.stringify({ name: email.trim(), password, deviceName, deviceModel, platform, osName, osVersion }),
         },
       );
       const session: CredentialsPayload = {
@@ -221,13 +229,18 @@ export const verifyHostOtp =
   (hostId: string, otp: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
+      const deviceName = await getDeviceLabel();
+      const deviceModel = Device.modelName || null;
+      const platform = Platform.OS || null;
+      const osName = Device.osName || null;
+      const osVersion = Device.osVersion || null;
       const res = await apiFetch<{ token: string; refreshToken?: string; hostId: string; name?: string; email?: string; avatarUrl?: string; twoFactorEnabled?: boolean; allowMultipleSessions?: boolean; sessionId?: string; accessJti?: string }>(
         "/auth/host/login/otp",
         "",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json", "X-Device-Name": await getDeviceLabel() },
-          body: JSON.stringify({ hostId, otp, deviceName: await getDeviceLabel() }),
+          headers: { "Content-Type": "application/json", "X-Device-Name": deviceName },
+          body: JSON.stringify({ hostId, otp, deviceName, deviceModel, platform, osName, osVersion }),
         },
       );
       const session: CredentialsPayload = {

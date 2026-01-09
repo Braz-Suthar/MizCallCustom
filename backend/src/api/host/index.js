@@ -88,6 +88,13 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
       updates.push(`active_session_expires_at = $${idx++}`);
       values.push(expiresAt);
       req.activeSessionRefreshToken = tokenToStore; // surface back in response
+      // Enforce single session: keep current session, drop others
+      const keepSessionId = req.sessionId || null;
+      if (keepSessionId) {
+        await query("DELETE FROM host_sessions WHERE host_id = $1 AND id <> $2", [req.hostId, keepSessionId]);
+      } else {
+        await query("DELETE FROM host_sessions WHERE host_id = $1", [req.hostId]);
+      }
     }
   }
 
