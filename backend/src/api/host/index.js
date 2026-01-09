@@ -106,6 +106,13 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
 
 /* HOST SESSION LIST */
 router.get("/sessions", requireAuth, requireHost, async (req, res) => {
+  // Backfill labels for any legacy/unknown entries using stored user agent
+  await query(
+    `UPDATE host_sessions
+        SET device_label = COALESCE(user_agent, 'Unknown device')
+      WHERE host_id = $1 AND (device_label IS NULL OR device_label = 'Unknown device')`,
+    [req.hostId]
+  );
   const result = await query(
     `SELECT id,
             COALESCE(device_label, user_agent, 'Unknown device') AS deviceLabel,

@@ -27,6 +27,18 @@ const getDeviceLabel = async () => {
     }
   }
   cachedDeviceLabel = pieces.find(Boolean) || "Unknown device";
+  try {
+    console.log("[auth/device] resolved device label:", {
+      cachedDeviceLabel,
+      deviceName: Device.deviceName,
+      modelName: Device.modelName,
+      osName: Device.osName,
+      osVersion: Device.osVersion,
+      platform: Platform.OS,
+    });
+  } catch {
+    // ignore console errors
+  }
   return cachedDeviceLabel;
 };
 
