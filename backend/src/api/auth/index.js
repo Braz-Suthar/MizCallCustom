@@ -167,7 +167,8 @@ router.post("/host/login", async (req, res) => {
   const token = signToken({ role: "host", hostId: id }, accessJti);
   const refreshToken = signRefreshToken({ role: "host", hostId: id }, refreshJti);
   const userAgent = req.get("user-agent") || null;
-  const deviceLabel = (deviceName || "").trim() || (userAgent || "").trim() || "Unknown device";
+  const headerDevice = req.get("x-device-name") || null;
+  const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
   const sessionResult = await query(
     `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -224,7 +225,8 @@ router.post("/host/register", async (req, res) => {
   const token = signToken({ role: "host", hostId }, accessJti);
   const refreshToken = signRefreshToken({ role: "host", hostId }, refreshJti);
   const userAgent = req.get("user-agent") || null;
-  const deviceLabel = (deviceName || "").trim() || (userAgent || "").trim() || "Unknown device";
+  const headerDevice = req.get("x-device-name") || null;
+  const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
   const sessionResult = await query(
     `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -315,7 +317,8 @@ router.post("/host/login/otp", async (req, res) => {
   const token = signToken({ role: "host", hostId: id }, accessJti);
   const refreshToken = signRefreshToken({ role: "host", hostId: id }, refreshJti);
   const userAgent = req.get("user-agent") || null;
-  const deviceLabel = (deviceName || "").trim() || (userAgent || "").trim() || "Unknown device";
+  const headerDevice = req.get("x-device-name") || null;
+  const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
   const sessionResult = await query(
     `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
@@ -432,16 +435,21 @@ router.post("/refresh", async (req, res) => {
       const nextRefresh = signRefreshToken({ role: "host", hostId: id }, refreshJti);
 
       const refreshUserAgent = req.get("user-agent") || null;
+      const refreshHeaderDevice = req.get("x-device-name") || null;
+      const refreshDeviceLabel =
+        (req.body?.deviceName || refreshHeaderDevice || "").trim() ||
+        (refreshUserAgent || "").trim() ||
+        null;
       await query(
         `UPDATE host_sessions
          SET refresh_token = $1,
              access_jti = $2,
              last_seen_at = now(),
              revoked_at = NULL,
-             device_label = COALESCE(device_label, $4, 'Unknown device'),
-             user_agent = COALESCE(user_agent, $4)
+             device_label = COALESCE($4, device_label, user_agent, 'Unknown device'),
+             user_agent = COALESCE(user_agent, $5)
          WHERE id = $3`,
-        [nextRefresh, accessJti, sessionResult.rows[0].id, refreshUserAgent]
+        [nextRefresh, accessJti, sessionResult.rows[0].id, refreshDeviceLabel, refreshUserAgent]
       );
 
       if (enforce_single_session) {

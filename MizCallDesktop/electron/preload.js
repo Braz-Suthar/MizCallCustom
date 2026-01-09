@@ -9,7 +9,7 @@ const bridge = {
   async loginHost(email, password) {
     const res = await fetch(`${API_BASE}/auth/host/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Device-Name": bridge.deviceLabel },
       body: JSON.stringify({ hostId: email?.trim?.(), password, deviceName: bridge.deviceLabel }),
     });
     if (!res.ok) {
@@ -21,7 +21,7 @@ const bridge = {
   async verifyHostOtp(hostId, otp) {
     const res = await fetch(`${API_BASE}/auth/host/login/otp`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "X-Device-Name": bridge.deviceLabel },
       body: JSON.stringify({ hostId, otp, deviceName: bridge.deviceLabel }),
     });
     if (!res.ok) {

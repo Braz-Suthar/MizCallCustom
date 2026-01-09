@@ -63,7 +63,7 @@ export const loginHost =
         "",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Device-Name": deviceName },
           body: JSON.stringify({ hostId: email.trim(), password, deviceName }),
         },
       );
@@ -138,7 +138,7 @@ export const registerUser =
         "",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Device-Name": deviceName },
           body: JSON.stringify({ name: email.trim(), password, deviceName }),
         },
       );
@@ -226,7 +226,7 @@ export const verifyHostOtp =
         "",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Device-Name": await getDeviceLabel() },
           body: JSON.stringify({ hostId, otp, deviceName: await getDeviceLabel() }),
         },
       );
