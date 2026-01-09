@@ -5,11 +5,12 @@ const API_BASE = "https://custom.mizcall.com";
 
 const bridge = {
   env: process.env.NODE_ENV,
+  deviceLabel: os.hostname?.() || os.type?.() || "Desktop",
   async loginHost(email, password) {
     const res = await fetch(`${API_BASE}/auth/host/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hostId: email?.trim?.(), password, deviceName: os.hostname?.() || "Desktop" }),
+      body: JSON.stringify({ hostId: email?.trim?.(), password, deviceName: bridge.deviceLabel }),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -21,7 +22,7 @@ const bridge = {
     const res = await fetch(`${API_BASE}/auth/host/login/otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ hostId, otp, deviceName: os.hostname?.() || "Desktop" }),
+      body: JSON.stringify({ hostId, otp, deviceName: bridge.deviceLabel }),
     });
     if (!res.ok) {
       const text = await res.text();

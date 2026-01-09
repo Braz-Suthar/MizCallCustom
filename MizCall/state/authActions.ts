@@ -6,11 +6,29 @@ import { socketManager } from "../services/socketManager";
 import { Platform } from "react-native";
 import * as Device from "expo-device";
 
-const deviceLabel =
-  Device.deviceName ||
-  Device.modelName ||
-  `${Platform.OS}${Device.osVersion ? ` ${Device.osVersion}` : ""}` ||
-  "Unknown device";
+let cachedDeviceLabel: string | null = null;
+const getDeviceLabel = async () => {
+  if (cachedDeviceLabel) return cachedDeviceLabel;
+  const pieces: Array<string | undefined> = [];
+  if (Device.deviceName) pieces.push(Device.deviceName);
+  if (Device.modelName && Device.modelName !== Device.deviceName) pieces.push(Device.modelName);
+  if (!pieces.length && Device.osName) {
+    pieces.push(`${Device.osName}${Device.osVersion ? ` ${Device.osVersion}` : ""}`);
+  }
+  if (!pieces.length && Platform.OS) {
+    pieces.push(`${Platform.OS}${Device.osVersion ? ` ${Device.osVersion}` : ""}`);
+  }
+  if (!pieces.length && Device.getDeviceNameAsync) {
+    try {
+      const asyncName = await Device.getDeviceNameAsync();
+      if (asyncName) pieces.push(asyncName);
+    } catch {
+      // ignore
+    }
+  }
+  cachedDeviceLabel = pieces.find(Boolean) || "Unknown device";
+  return cachedDeviceLabel;
+};
 
 export const hydrateSession = () => async (dispatch: AppDispatch) => {
   dispatch(setStatus("loading"));
@@ -27,13 +45,14 @@ export const loginHost =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
+      const deviceName = await getDeviceLabel();
       const res = await apiFetch<{ token?: string; refreshToken?: string; hostId?: string; name?: string; email?: string; avatarUrl?: string; requireOtp?: boolean; twoFactorEnabled?: boolean; accessJti?: string; sessionId?: string; allowMultipleSessions?: boolean }>(
         "/auth/host/login",
         "",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hostId: email.trim(), password, deviceName: deviceLabel }),
+          body: JSON.stringify({ hostId: email.trim(), password, deviceName }),
         },
       );
       if (res.requireOtp) {
@@ -101,13 +120,14 @@ export const registerUser =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
+      const deviceName = await getDeviceLabel();
       const res = await apiFetch<{ token: string; hostId: string; avatarUrl?: string; name?: string; email?: string; refreshToken?: string; sessionId?: string; accessJti?: string; allowMultipleSessions?: boolean }>(
         "/auth/host/register",
         "",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: email.trim(), password, deviceName: deviceLabel }),
+          body: JSON.stringify({ name: email.trim(), password, deviceName }),
         },
       );
       const session: CredentialsPayload = {
@@ -195,7 +215,7 @@ export const verifyHostOtp =
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hostId, otp, deviceName: deviceLabel }),
+          body: JSON.stringify({ hostId, otp, deviceName: await getDeviceLabel() }),
         },
       );
       const session: CredentialsPayload = {
