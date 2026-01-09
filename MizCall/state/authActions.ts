@@ -42,7 +42,7 @@ export const loginHost =
         token: res.token,
         refreshToken: res.refreshToken ?? null,
         twoFactorEnabled: res.twoFactorEnabled ?? false,
-        allowMultipleSessions: res.allowMultipleSessions ?? true,
+        allowMultipleSessions: res.allowMultipleSessions ?? false,
       };
       dispatch(setCredentials(session));
       await saveSession(session);
@@ -76,7 +76,7 @@ export const loginUser =
         token: res.token,
         refreshToken: res.refreshToken ?? null,
         twoFactorEnabled: false,
-        allowMultipleSessions: true,
+        allowMultipleSessions: false,
       };
       dispatch(setCredentials(session));
       await saveSession(session);
@@ -109,7 +109,7 @@ export const registerUser =
         token: res.token,
         refreshToken: res.refreshToken ?? null,
         twoFactorEnabled: res.twoFactorEnabled ?? false,
-        allowMultipleSessions: res.allowMultipleSessions ?? true,
+        allowMultipleSessions: res.allowMultipleSessions ?? false,
       };
       dispatch(setCredentials(session));
       await saveSession(session);
@@ -158,7 +158,7 @@ const updateTokens =
       token,
       refreshToken: refreshToken ?? current.refreshToken ?? null,
       twoFactorEnabled: extra?.twoFactorEnabled ?? current.twoFactorEnabled ?? false,
-      allowMultipleSessions: extra?.allowMultipleSessions ?? current.allowMultipleSessions ?? true,
+      allowMultipleSessions: extra?.allowMultipleSessions ?? current.allowMultipleSessions ?? false,
     };
     dispatch(setCredentials(updated));
     await saveSession(updated);
@@ -194,7 +194,7 @@ export const verifyHostOtp =
         token: res.token,
         refreshToken: res.refreshToken ?? null,
         twoFactorEnabled: res.twoFactorEnabled ?? true,
-        allowMultipleSessions: res.allowMultipleSessions ?? true,
+        allowMultipleSessions: res.allowMultipleSessions ?? false,
       };
       dispatch(setCredentials(session));
       await saveSession(session);

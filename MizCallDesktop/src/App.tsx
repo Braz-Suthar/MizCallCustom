@@ -483,7 +483,7 @@ function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [deviceLockEnabled, setDeviceLockEnabled] = useState(false);
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
-  const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
+  const [allowMultipleSessions, setAllowMultipleSessions] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [notifText, setNotifText] = useState("");
@@ -624,7 +624,7 @@ function App() {
 
   useEffect(() => {
     setTwoFactorEnabled(!!session?.twoFactorEnabled);
-    setAllowMultipleSessions(session?.allowMultipleSessions ?? true);
+    setAllowMultipleSessions(session?.allowMultipleSessions ?? false);
   }, [session?.twoFactorEnabled, session?.allowMultipleSessions]);
 
   useEffect(() => {
@@ -681,7 +681,7 @@ function App() {
           avatarUrl: data.avatarUrl,
           password: payload.password,
           twoFactorEnabled: (data as any).twoFactorEnabled ?? false,
-          allowMultipleSessions: (data as any).allowMultipleSessions ?? true,
+          allowMultipleSessions: (data as any).allowMultipleSessions ?? false,
         });
         setScreen("login");
       } else {
@@ -699,7 +699,7 @@ function App() {
           avatarUrl: userData.avatarUrl,
           password: userData.password ?? payload.password,
           twoFactorEnabled: false,
-          allowMultipleSessions: true,
+          allowMultipleSessions: false,
         });
         setScreen("login");
       }
@@ -737,7 +737,7 @@ function App() {
         password: hostOtpPending.password,
         twoFactorEnabled: (data as any).twoFactorEnabled ?? true,
         email: (data as any).email ?? hostOtpPending.email,
-        allowMultipleSessions: (data as any).allowMultipleSessions ?? true,
+        allowMultipleSessions: (data as any).allowMultipleSessions ?? false,
       });
       setHostOtpPending(null);
       setLoginOtpCode("");
@@ -775,7 +775,7 @@ function App() {
           password: hostOtpPending.password,
           twoFactorEnabled: (data as any).twoFactorEnabled ?? false,
           email: (data as any).email ?? hostOtpPending.email,
-          allowMultipleSessions: (data as any).allowMultipleSessions ?? true,
+          allowMultipleSessions: (data as any).allowMultipleSessions ?? false,
         });
         setHostOtpPending(null);
         setLoginOtpCode("");
@@ -912,7 +912,7 @@ function App() {
             name: data.name ?? prev.name,
             avatarUrl: data.avatarUrl ?? prev.avatarUrl,
             twoFactorEnabled: data.twoFactorEnabled ?? prev.twoFactorEnabled,
-            allowMultipleSessions: data.allowMultipleSessions ?? prev.allowMultipleSessions ?? true,
+            allowMultipleSessions: data.allowMultipleSessions ?? prev.allowMultipleSessions ?? false,
           }
         : prev
     );
@@ -1877,10 +1877,17 @@ function App() {
     try {
       const next = !allowMultipleSessions;
       setAllowMultipleSessions(next);
+      const body: any = { allowMultipleSessions: next };
+      if (!next) {
+        if (!session.refreshToken) {
+          throw new Error("Missing refresh token; please sign in again.");
+        }
+        body.refreshToken = session.refreshToken;
+      }
       const res = await authFetch(`${API_BASE}/host/security`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allowMultipleSessions: next }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const msg = await res.text();

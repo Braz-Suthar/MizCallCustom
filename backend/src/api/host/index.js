@@ -2,6 +2,7 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
+import { verifyRefreshToken } from "../../services/auth.js";
 import { generateUserId } from "../../services/id.js";
 import { broadcastCallEvent, ensureMediasoupRoom } from "../../signaling/socket-io.js";
 import multer from "multer";
@@ -44,7 +45,7 @@ router.patch("/profile", requireAuth, requireHost, async (req, res) => {
 
 /* HOST SECURITY SETTINGS */
 router.patch("/security", requireAuth, requireHost, async (req, res) => {
-  const { twoFactorEnabled, allowMultipleSessions } = req.body;
+  const { twoFactorEnabled, allowMultipleSessions, refreshToken } = req.body;
   if (twoFactorEnabled === undefined && allowMultipleSessions === undefined) {
     return res.status(400).json({ error: "twoFactorEnabled or allowMultipleSessions is required" });
   }
@@ -63,6 +64,24 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
     if (allowMultipleSessions) {
       updates.push(`active_session_refresh_token = NULL`);
       updates.push(`active_session_expires_at = NULL`);
+    } else {
+      if (!refreshToken) {
+        return res.status(400).json({ error: "refreshToken required when disabling multiple sessions" });
+      }
+      let payload;
+      try {
+        payload = verifyRefreshToken(refreshToken);
+      } catch {
+        return res.status(401).json({ error: "Invalid refresh token" });
+      }
+      if (payload.role !== "host" || payload.hostId !== req.hostId) {
+        return res.status(401).json({ error: "Refresh token does not belong to this host" });
+      }
+      const expiresAt = payload?.exp ? new Date(payload.exp * 1000) : null;
+      updates.push(`active_session_refresh_token = $${idx++}`);
+      values.push(refreshToken);
+      updates.push(`active_session_expires_at = $${idx++}`);
+      values.push(expiresAt);
     }
   }
 

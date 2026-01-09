@@ -49,7 +49,7 @@ export default function HostSettings() {
   const [deviceLockEnabled, setDeviceLockEnabled] = useState(false);
   const [emailUpdatesEnabled, setEmailUpdatesEnabled] = useState(true);
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
-  const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
+  const [allowMultipleSessions, setAllowMultipleSessions] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(!!auth.twoFactorEnabled);
 
   // Mock membership data - replace with actual API call
@@ -84,7 +84,7 @@ export default function HostSettings() {
 
   useEffect(() => {
     setTwoFactorEnabled(!!auth.twoFactorEnabled);
-    setAllowMultipleSessions(auth.allowMultipleSessions ?? true);
+    setAllowMultipleSessions(auth.allowMultipleSessions ?? false);
   }, [auth.twoFactorEnabled]);
 
   // Debug log for host data
@@ -201,9 +201,16 @@ export default function HostSettings() {
     const next = !allowMultipleSessions;
     setAllowMultipleSessions(next);
     try {
+      const body: any = { allowMultipleSessions: next };
+      if (!next) {
+        if (!auth.refreshToken) {
+          throw new Error("Missing refresh token; please sign in again.");
+        }
+        body.refreshToken = auth.refreshToken;
+      }
       await dispatch<any>(authApiFetch("/host/security", {
         method: "PATCH",
-        body: JSON.stringify({ allowMultipleSessions: next }),
+        body: JSON.stringify(body),
       }));
       const updated = {
         ...auth,
