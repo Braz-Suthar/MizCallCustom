@@ -51,7 +51,22 @@ import {
   FiMoon,
   FiWifi,
   FiWifiOff,
+  FiCalendar,
+  FiSmartphone,
+  FiPlay,
+  FiPause,
+  FiTrash,
 } from "react-icons/fi";
+import {
+  IoStar,
+  IoPersonCircleOutline,
+  IoColorPaletteOutline,
+  IoShieldCheckmarkOutline,
+  IoNotificationsOutline,
+  IoLockClosedOutline,
+  IoLogOutOutline,
+  IoInformationCircleOutline,
+} from "react-icons/io5";
 import iconHome from "../assets/ui_icons/home.svg";
 import iconUsers from "../assets/ui_icons/users.svg";
 import iconCalls from "../assets/ui_icons/calls.svg";
@@ -59,9 +74,9 @@ import iconRecordings from "../assets/ui_icons/recordings.svg";
 import iconSettings from "../assets/ui_icons/settings.svg";
 
 const API_BASE = "https://custom.mizcall.com";
-const logoWhite = new URL("./assets/Icons_and_logos_4x/white_logo.png", import.meta.url).href;
-const logoBlack = new URL("./assets/Icons_and_logos_4x/black_logo.png", import.meta.url).href;
-const logo360 = new URL("./assets/Icons_and_logos_4x/360.png", import.meta.url).href;
+const logoWhite = new URL("../assets/Icons_and_logos_4x/white_logo.png", import.meta.url).href;
+const logoBlack = new URL("../assets/Icons_and_logos_4x/black_logo.png", import.meta.url).href;
+const logo360 = new URL("../assets/Icons_and_logos_4x/360.png", import.meta.url).href;
 
 type Screen = "login" | "register";
 type Mode = "host" | "user";
@@ -77,19 +92,26 @@ const Button = ({
   variant = "primary",
   loading,
   disabled,
+  icon,
 }: {
   label: string;
   onClick?: () => void;
   variant?: "primary" | "ghost" | "secondary" | "danger";
   loading?: boolean;
   disabled?: boolean;
+  icon?: ReactNode;
 }) => (
   <button
     className={`btn btn-${variant}`}
     onClick={onClick}
     disabled={disabled || loading}
   >
-    {loading ? "…" : label}
+    {loading ? "…" : (
+      <span className="btn-content">
+        {icon ? <span className="btn-icon">{icon}</span> : null}
+        <span>{label}</span>
+      </span>
+    )}
   </button>
 );
 
@@ -117,6 +139,13 @@ const Input = ({
       placeholder={placeholder}
       autoFocus={autoFocus}
     />
+  </label>
+);
+
+const ToggleSwitch = ({ checked, onToggle }: { checked: boolean; onToggle: () => void }) => (
+  <label className="switch">
+    <input type="checkbox" checked={checked} onChange={onToggle} />
+    <span className="slider" />
   </label>
 );
 
@@ -413,6 +442,7 @@ function App() {
     hostId?: string;
     userId?: string;
     name?: string;
+    email?: string;
     avatarUrl?: string;
     password?: string;
   } | null>(null);
@@ -431,6 +461,10 @@ function App() {
     { id: "n3", message: "Network status: Excellent", time: "Today · 1:15 PM" },
     { id: "n4", message: "Host H844495 started a call", time: "Today · 1:20 PM" },
   ]);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [deviceLockEnabled, setDeviceLockEnabled] = useState(false);
+  const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
+  const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [notifText, setNotifText] = useState("");
   const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string | null }>>([]);
@@ -450,21 +484,29 @@ function App() {
   const [callsLoading, setCallsLoading] = useState(false);
   const [callsError, setCallsError] = useState<string | null>(null);
   const [startCallLoading, setStartCallLoading] = useState(false);
-  const [showChangeEmail, setShowChangeEmail] = useState(false);
-  const [newEmail, setNewEmail] = useState("");
-  const [emailOtp, setEmailOtp] = useState("");
-  const [emailOtpInput, setEmailOtpInput] = useState("");
-  const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [newPasswordValue, setNewPasswordValue] = useState("");
-  const [confirmPasswordValue, setConfirmPasswordValue] = useState("");
-  const [pwOtp, setPwOtp] = useState("");
-  const [pwOtpDigits, setPwOtpDigits] = useState(["", "", "", "", "", ""]);
-  const pwOtpRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const [pwOtpSent, setPwOtpSent] = useState(false);
-  const [emailOtpDigits, setEmailOtpDigits] = useState(["", "", "", "", "", ""]);
-  const emailOtpRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const [emailCurrentPassword, setEmailCurrentPassword] = useState("");
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [editProfileName, setEditProfileName] = useState("");
+  const [editProfileEmail, setEditProfileEmail] = useState("");
+  const [editProfileError, setEditProfileError] = useState<string | null>(null);
+  const [editProfileLoading, setEditProfileLoading] = useState(false);
+  const [recordings, setRecordings] = useState<
+    Array<{
+      userName: string;
+      dates: { date: string; recordings: Array<{ id: string; time: string }> }[];
+    }>
+  >([]);
+  const [recordingsLoading, setRecordingsLoading] = useState(false);
+  const [recordingsError, setRecordingsError] = useState<string | null>(null);
+  const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [activeCall, setActiveCall] = useState<{ id: string; started_at: string; routerRtpCapabilities?: any } | null>(null);
   const [activeParticipants, setActiveParticipants] = useState<
     Array<{
@@ -1466,6 +1508,17 @@ function App() {
     return d.toLocaleString();
   };
 
+  const formatDateShort = (iso: string | null) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
   const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 
   const toggleMuteParticipant = (id: string) => {
@@ -1486,80 +1539,56 @@ function App() {
     showToast(`Disabled ${id}`, "success");
   };
 
-  const sendEmailOtp = () => {
-    if (!emailCurrentPassword.trim()) {
-      showToast("Enter current password", "error");
+  const handleChangePasswordSubmit = async () => {
+    setPwError(null);
+    if (!pwCurrent.trim()) {
+      setPwError("Current password is required");
       return;
     }
-    if (session?.password && emailCurrentPassword !== session.password) {
-      showToast("Current password incorrect", "error");
+    if (!pwNew.trim()) {
+      setPwError("New password is required");
       return;
     }
-    if (!newEmail.trim() || !newEmail.includes("@")) {
-      showToast("Enter a valid email", "error");
+    if (pwNew.length < 6) {
+      setPwError("New password must be at least 6 characters");
       return;
     }
-    const code = generateOtp();
-    setEmailOtp(code);
-    setEmailOtpSent(true);
-    setEmailOtpDigits(["", "", "", "", "", ""]);
-    showToast("OTP sent to email (demo)", "success");
-  };
-
-  const verifyEmailOtp = () => {
-    if (!emailOtpSent) {
-      showToast("Send OTP first", "error");
+    if (pwNew !== pwConfirm) {
+      setPwError("Passwords do not match");
       return;
     }
-    const inputCode = emailOtpDigits.join("");
-    if (inputCode.trim() !== emailOtp) {
-      showToast("Invalid OTP", "error");
+    if (!session?.token || session.role !== "host") {
+      setPwError("Not authenticated");
       return;
     }
-    setSession((prev) => (prev ? { ...prev, name: newEmail } : prev));
-    showToast("Email updated (client only)", "success");
-    setShowChangeEmail(false);
-    setNewEmail("");
-    setEmailOtp("");
-    setEmailOtpDigits(["", "", "", "", "", ""]);
-    setEmailOtpSent(false);
-    setEmailCurrentPassword("");
-  };
-
-  const sendPwOtp = () => {
-    if (!newPasswordValue.trim() || newPasswordValue.length < 4) {
-      showToast("Enter a new password (min 4 chars)", "error");
-      return;
+    try {
+      setPwLoading(true);
+      const res = await fetch(`${API_BASE}/host/change-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to change password");
+      }
+      setSession((prev) => (prev ? { ...prev, password: pwNew } : prev));
+      showToast("Password changed", "success");
+      setShowChangePassword(false);
+      setPwCurrent("");
+      setPwNew("");
+      setPwConfirm("");
+      setPwError(null);
+    } catch (err: any) {
+      const msg = err?.message || "Failed to change password";
+      setPwError(msg);
+      showToast(msg, "error");
+    } finally {
+      setPwLoading(false);
     }
-    if (newPasswordValue !== confirmPasswordValue) {
-      showToast("Passwords do not match", "error");
-      return;
-    }
-    const code = generateOtp();
-    setPwOtp(code);
-    setPwOtpSent(true);
-    setPwOtpDigits(["", "", "", "", "", ""]);
-    showToast("OTP sent (demo)", "success");
-  };
-
-  const verifyPwOtp = () => {
-    if (!pwOtpSent) {
-      showToast("Send OTP first", "error");
-      return;
-    }
-    const inputCode = pwOtpDigits.join("");
-    if (inputCode.trim() !== pwOtp) {
-      showToast("Invalid OTP", "error");
-      return;
-    }
-    setSession((prev) => (prev ? { ...prev, password: newPasswordValue } : prev));
-    showToast("Password updated (client only)", "success");
-    setShowChangePassword(false);
-    setNewPasswordValue("");
-    setConfirmPasswordValue("");
-    setPwOtp("");
-    setPwOtpDigits(["", "", "", "", "", ""]);
-    setPwOtpSent(false);
   };
 
   useEffect(() => {
@@ -1684,6 +1713,12 @@ function App() {
   }, [session?.token, session?.role, activeCall?.id, tab]);
 
   useEffect(() => {
+    if (tab === "recordings" && session?.role === "host") {
+      fetchRecordings();
+    }
+  }, [tab, session?.role, session?.token]);
+
+  useEffect(() => {
     if (!remoteAudioStream) return;
     if (!remoteAudioElRef.current) {
       remoteAudioElRef.current = new Audio();
@@ -1762,7 +1797,7 @@ function App() {
           : null;
       if (avatarUrl) {
         setSession((prev) => (prev ? { ...prev, avatarUrl } : prev));
-        showToast("Profile picture updated", "success");
+      showToast("Profile picture updated", "success");
       } else {
         showToast("Upload succeeded but no URL returned", "info");
       }
@@ -1773,6 +1808,96 @@ function App() {
       e.target.value = "";
     }
     e.target.value = "";
+  };
+
+  const fetchRecordings = async () => {
+    if (!session?.token || session.role !== "host") return;
+    setRecordingsLoading(true);
+    setRecordingsError(null);
+    try {
+      const res = await fetch(`${API_BASE}/host/recordings`, {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to load recordings");
+      }
+      const json = (await res.json()) as Record<string, Record<string, Array<{ id: string; time: string }>>>;
+      const grouped: Array<{
+        userName: string;
+        dates: { date: string; recordings: Array<{ id: string; time: string }> }[];
+      }> = Object.entries(json || {}).map(([userName, dates]) => ({
+        userName,
+        dates: Object.entries(dates || {})
+          .sort((a, b) => (a[0] > b[0] ? -1 : 1))
+          .map(([date, clips]) => ({
+            date,
+            recordings: (clips || []).slice().sort((a, b) => (a.time > b.time ? -1 : 1)),
+          })),
+      }));
+      setRecordings(grouped);
+    } catch (err: any) {
+      setRecordingsError(err?.message || "Failed to load recordings");
+    } finally {
+      setRecordingsLoading(false);
+    }
+  };
+
+  const playRecording = async (recId: string) => {
+    if (!session?.token || session.role !== "host") return;
+    try {
+      if (!audioRef.current) {
+        audioRef.current = new Audio();
+      }
+      const src = `${API_BASE}/recordings/${recId}/stream?token=${encodeURIComponent(session.token)}`;
+      audioRef.current.src = src;
+      await audioRef.current.play();
+      setPlayingRecordingId(recId);
+      audioRef.current.onended = () => setPlayingRecordingId((current) => (current === recId ? null : current));
+    } catch (err) {
+      console.error("[desktop] play recording error", err);
+      showToast("Playback failed", "error");
+      setPlayingRecordingId(null);
+    }
+  };
+
+  const stopRecording = async () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setPlayingRecordingId(null);
+  };
+
+  const deleteRecording = async (recId: string) => {
+    if (!session?.token || session.role !== "host") return;
+    try {
+      const res = await fetch(`${API_BASE}/host/recordings/${recId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Delete failed");
+      }
+      setRecordings((prev) =>
+        prev
+          .map((u) => ({
+            ...u,
+            dates: u.dates
+              .map((d) => ({
+                ...d,
+                recordings: d.recordings.filter((r) => r.id !== recId),
+              }))
+              .filter((d) => d.recordings.length > 0),
+          }))
+          .filter((u) => u.dates.length > 0),
+      );
+      if (playingRecordingId === recId) stopRecording();
+      showToast("Recording deleted", "success");
+    } catch (err: any) {
+      showToast(err?.message || "Delete failed", "error");
+    }
   };
 
   const handleBgClick = () => {
@@ -1795,6 +1920,56 @@ function App() {
     };
     reader.readAsDataURL(file);
     e.target.value = "";
+  };
+
+  const openEditProfileModal = () => {
+    setEditProfileName(session?.name || "");
+    setEditProfileEmail(session?.email || session?.name || "");
+    setEditProfileError(null);
+    setShowEditProfile(true);
+  };
+
+  const handleSaveProfile = async () => {
+    setEditProfileError(null);
+    if (!session?.token || session.role !== "host") {
+      setEditProfileError("Not authenticated");
+      return;
+    }
+    if (!editProfileName.trim()) {
+      setEditProfileError("Name is required");
+      return;
+    }
+    if (!editProfileEmail.trim() || !editProfileEmail.includes("@")) {
+      setEditProfileError("Valid email is required");
+      return;
+    }
+    try {
+      setEditProfileLoading(true);
+      const res = await fetch(`${API_BASE}/host/profile`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({ name: editProfileEmail.trim(), email: editProfileEmail.trim(), displayName: editProfileName.trim() }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to update profile");
+      }
+      const data = await res.json();
+      const updatedName = data.name || editProfileName.trim();
+      const updatedEmail = data.email || editProfileEmail.trim();
+      setSession((prev) => (prev ? { ...prev, name: updatedName, email: updatedEmail } : prev));
+      showToast("Profile updated", "success");
+      setShowEditProfile(false);
+    } catch (err: any) {
+      const msg = err?.message || "Failed to update profile";
+      setEditProfileError(msg);
+      showToast(msg, "error");
+    } finally {
+      setEditProfileLoading(false);
+    }
   };
 
   const renderAppShell = () => {
@@ -1991,14 +2166,14 @@ function App() {
             <div className="stats-grid">
               {session.role === "host" ? (
                 <>
-                  <div className="card stat-card">
-                    <p className="muted strong">Total Users</p>
-                    <h3 className="stat-number">120</h3>
-                  </div>
-                  <div className="card stat-card">
-                    <p className="muted strong">Active Users</p>
-                    <h3 className="stat-number">18</h3>
-                  </div>
+              <div className="card stat-card">
+                <p className="muted strong">Total Users</p>
+                <h3 className="stat-number">120</h3>
+              </div>
+              <div className="card stat-card">
+                <p className="muted strong">Active Users</p>
+                <h3 className="stat-number">18</h3>
+              </div>
                 </>
               ) : null}
               <div className="card stat-card highlight-card">
@@ -2200,10 +2375,306 @@ function App() {
       }
 
       if (tab === "recordings") {
-        return null;
+        if (session.role !== "host") {
+        return (
+            <div className="card stack gap-sm">
+              <p className="muted strong">Recordings</p>
+              <p className="muted">Only hosts can access recordings.</p>
+            </div>
+          );
+        }
+
+        const empty = !recordingsLoading && recordings.length === 0;
+
+        return (
+          <div className="stack gap-sm card">
+            <div className="stack gap-sm recordings-card">
+              <div className="row-inline between">
+            <div className="stack gap-xxs">
+                  <p className="muted strong">Recordings</p>
+                  <span className="muted small">Access and play saved clips organized by date.</span>
+                </div>
+                <div className="row-inline gap-sm">
+                  <Button label="Refresh" variant="secondary" onClick={fetchRecordings} loading={recordingsLoading} />
+                </div>
+              </div>
+
+              {recordingsError ? <p className="error">{recordingsError}</p> : null}
+              {recordingsLoading ? <p className="muted">Loading recordings…</p> : null}
+
+              {empty ? (
+                <div className="card subtle stack gap-xxs borderless">
+                  <p className="muted strong">No recordings found</p>
+                  <p className="muted small">Recordings will appear here after calls are captured.</p>
+                </div>
+              ) : (
+                <div className="stack gap-xs">
+                  {recordings.map((user) => (
+                    <div key={user.userName} className="card subtle stack gap-xxs borderless">
+                      <button
+                        className="row-inline between folder-row"
+                        onClick={() => {
+                          setExpandedUsers((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(user.userName)) next.delete(user.userName);
+                            else next.add(user.userName);
+                            return next;
+                          });
+                        }}
+                      >
+                        <div className="row-inline gap-sm align-center">
+                          <span className="folder-icon">{expandedUsers.has(user.userName) ? "📂" : "📁"}</span>
+                          <strong>{user.userName}</strong>
+                        </div>
+                        <FiChevronRight
+                          className={expandedUsers.has(user.userName) ? "chevron chevron-open" : "chevron"}
+                        />
+                      </button>
+
+                      {expandedUsers.has(user.userName)
+                        ? user.dates.map((date) => (
+                            <div key={`${user.userName}-${date.date}`} className="card subtle nested borderless">
+                              <button
+                                className="row-inline between folder-row"
+                                onClick={() => {
+                                  const key = `${user.userName}-${date.date}`;
+                                  setExpandedDates((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(key)) next.delete(key);
+                                    else next.add(key);
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <div className="row-inline gap-sm align-center">
+                                  <span className="folder-icon">{expandedDates.has(`${user.userName}-${date.date}`) ? "📂" : "📁"}</span>
+                                  <strong>{date.date}</strong>
+                                </div>
+                                <FiChevronRight
+                                  className={
+                                    expandedDates.has(`${user.userName}-${date.date}`) ? "chevron chevron-open" : "chevron"
+                                  }
+                                />
+                              </button>
+
+                              {expandedDates.has(`${user.userName}-${date.date}`) ? (
+                                <div className="table recordings-table borderless">
+                                  <div className="table-row table-head">
+                                    <div>Clip ID</div>
+                                    <div>Time</div>
+                                    <div>Actions</div>
+                                  </div>
+                                  {date.recordings.map((r) => (
+                                    <div key={r.id} className="table-row borderless">
+                                      <div className="muted small">{r.id}</div>
+                                      <div>{r.time}</div>
+                                      <div className="row-inline gap-xxs">
+                                        {playingRecordingId === r.id ? (
+                                          <Button label="Pause" variant="ghost" onClick={stopRecording} icon={<FiPause />} />
+                                        ) : (
+                                          <Button label="Play" variant="secondary" onClick={() => playRecording(r.id)} icon={<FiPlay />} />
+                                        )}
+                                        <Button label="Delete" variant="danger" onClick={() => deleteRecording(r.id)} icon={<FiTrash />} />
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))
+                        : null}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        );
       }
 
-      return (
+      if (tab === "settings") {
+        const membership = {
+          type: "Premium",
+          startDate: "2024-01-15",
+          endDate: "2025-01-15",
+        };
+
+        const hostSettings = (
+        <div className="stack gap-sm">
+          <div className="settings-grid two-col">
+            <div className="stack gap-sm">
+              <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <IoStar />
+                    <p className="muted strong">Membership</p>
+                  </div>
+                  <div className="row-inline between">
+                    <div className="row-inline gap-sm">
+                      <span className="pill">{membership.type}</span>
+                    </div>
+                    <span className="muted small row-inline gap-xxs">
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: 10,
+                          height: 10,
+                          borderRadius: "50%",
+                          backgroundColor: "#22c55e",
+                        }}
+                      />
+                      <span>Active</span>
+                    </span>
+                  </div>
+                  <div className="row-inline between muted small">
+                    <span className="row-inline gap-xxs">
+                      <FiCalendar />
+                      <span>Start: {formatDateShort(membership.startDate)}</span>
+                    </span>
+                    <span className="row-inline gap-xxs">
+                      <FiCalendar />
+                      <span>End: {formatDateShort(membership.endDate)}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <IoPersonCircleOutline />
+                    <p className="muted strong">Profile</p>
+                  </div>
+                  <div className="profile-row">
+                    <div className="avatar-lg">
+                      {session.avatarUrl ? <img src={session.avatarUrl} alt="avatar" /> : initials}
+                    </div>
+            <div className="stack gap-xxs">
+                      <strong>{name}</strong>
+                      <span className="muted small">{session.hostId}</span>
+                    </div>
+                    <Button label="Edit profile" variant="secondary" onClick={openEditProfileModal} />
+                  </div>
+                  <div className="info-row">
+                    <div>
+                      <span className="muted small">Host ID</span>
+                      <div className="row-inline">
+                        <strong>{session.hostId}</strong>
+                        <button className="linklike" onClick={() => copyToClipboard(session.hostId || "")}>Copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <IoColorPaletteOutline />
+                    <p className="muted strong">Appearance</p>
+                  </div>
+                  <div className="row-inline theme-buttons">
+                    <Button
+                      label="Light"
+                      variant={theme === "light" ? "secondary" : "ghost"}
+                      onClick={() => setTheme("light")}
+                      icon={<FiSun />}
+                    />
+                    <Button
+                      label="System"
+                      variant={theme === "system" ? "secondary" : "ghost"}
+                      onClick={() => setTheme("system")}
+                      icon={<FiSmartphone />}
+                    />
+                    <Button
+                      label="Dark"
+                      variant={theme === "dark" ? "secondary" : "ghost"}
+                      onClick={() => setTheme("dark")}
+                      icon={<FiMoon />}
+                    />
+                  </div>
+                </div>
+
+                <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <IoLogOutOutline />
+                    <p className="muted strong">Account</p>
+                  </div>
+                  <Button label="Log out" variant="danger" onClick={doLogout} />
+                </div>
+              </div>
+
+              <div className="stack gap-sm">
+                <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <IoShieldCheckmarkOutline />
+                    <p className="muted strong">Security</p>
+                  </div>
+                  <div className="row-inline">
+                    <Button label="Change Password" variant="secondary" onClick={() => setShowChangePassword(true)} />
+                  </div>
+                  <p className="muted small">Secure your account with a new password.</p>
+                </div>
+
+                <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <IoNotificationsOutline />
+                    <p className="muted strong">Updates</p>
+                  </div>
+                  <div className="row-inline between">
+                    <div className="stack gap-xxs">
+                      <strong>App Notifications</strong>
+                      <span className="muted small">Enable notifications for calls and updates.</span>
+                    </div>
+                    <ToggleSwitch checked={notificationsEnabled} onToggle={() => setNotificationsEnabled((v) => !v)} />
+                  </div>
+                </div>
+
+                <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <IoLockClosedOutline />
+                    <p className="muted strong">Privacy</p>
+                  </div>
+                  <div className="row-inline between">
+                    <div className="stack gap-xxs">
+                      <strong>Device Lock</strong>
+                      <span className="muted small">Require device auth when opening the app.</span>
+                    </div>
+                    <ToggleSwitch checked={deviceLockEnabled} onToggle={() => setDeviceLockEnabled((v) => !v)} />
+                  </div>
+                  <div className="row-inline between">
+                    <div className="stack gap-xxs">
+                      <strong>One User, One Device</strong>
+                      <span className="muted small">Lock users to their first device.</span>
+                    </div>
+                    <ToggleSwitch checked={oneDeviceOnly} onToggle={() => setOneDeviceOnly((v) => !v)} />
+                  </div>
+                  <div className="row-inline between">
+                    <div className="stack gap-xxs">
+                      <strong>Concurrent Sessions</strong>
+                      <span className="muted small">Allow multiple logins per user.</span>
+                    </div>
+                    <ToggleSwitch checked={allowMultipleSessions} onToggle={() => setAllowMultipleSessions((v) => !v)} />
+                  </div>
+                </div>
+
+                <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <IoInformationCircleOutline />
+                    <p className="muted strong">App Information</p>
+                  </div>
+                  <div className="info-row">
+                    <div>
+                      <span className="muted small">Version</span>
+                      <strong>1.0.0</strong>
+                    </div>
+                    <div>
+                      <span className="muted small">Role</span>
+                      <strong>Host</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+        const userSettings = (
         <div className="stack gap-sm">
           <div className="settings-grid two-col">
             <div className="stack gap-sm">
@@ -2234,21 +2705,21 @@ function App() {
                       <button className="linklike" onClick={() => copyToClipboard(userId)}>Copy</button>
                     </div>
                   </div>
-                  {session.role === "user" ? (
-                    <div>
-                      <span className="muted small">Password</span>
-                      <div className="row-inline">
-                        <strong>{session.password || "Not available"}</strong>
-                        <button
-                          className="linklike"
-                          onClick={() => session.password && copyToClipboard(session.password)}
-                          disabled={!session.password}
-                        >
-                          Copy
-                        </button>
-                      </div>
+                    {session.role === "user" ? (
+                  <div>
+                    <span className="muted small">Password</span>
+                    <div className="row-inline">
+                          <strong>{session.password || "Not available"}</strong>
+                      <button
+                        className="linklike"
+                        onClick={() => session.password && copyToClipboard(session.password)}
+                        disabled={!session.password}
+                      >
+                        Copy
+                      </button>
                     </div>
-                  ) : null}
+                  </div>
+                    ) : null}
                 </div>
               </div>
 
@@ -2256,7 +2727,7 @@ function App() {
                 <p className="muted strong">Call background</p>
                 <div className="image-grid">
                   {[
-                    logo360,
+                      logo360,
                     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%232563eb'/></svg>",
                     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%230f172a'/></svg>",
                     "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%23e5e7eb'/></svg>",
@@ -2288,37 +2759,6 @@ function App() {
                 </div>
               </div>
 
-              {session.role === "host" ? (
-                <>
-                  <div className="card stack gap-sm">
-                    <p className="muted strong">Security</p>
-                    <div className="row-inline">
-                      <Button label="Change Email" variant="secondary" onClick={() => setShowChangeEmail(true)} />
-                      <Button label="Change Password" variant="ghost" onClick={() => setShowChangePassword(true)} />
-                    </div>
-                    <p className="muted small">Both steps require OTP verification.</p>
-                  </div>
-
-                  <div className="card stack gap-sm">
-                    <p className="muted strong">Plan</p>
-                    <div className="info-row">
-                      <div>
-                        <span className="muted small">Current plan</span>
-                        <strong>Pro</strong>
-                      </div>
-                      <div>
-                        <span className="muted small">Seats</span>
-                        <strong>10</strong>
-                      </div>
-                      <div>
-                        <span className="muted small">Billing</span>
-                        <strong>Monthly</strong>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              ) : null}
-
               <div className="card stack gap-sm">
                 <p className="muted strong">Support</p>
                 <p className="muted small">Need help? Contact us and we’ll get back to you.</p>
@@ -2331,6 +2771,9 @@ function App() {
           </div>
         </div>
       );
+
+        return session.role === "host" ? hostSettings : userSettings;
+      }
     };
 
     if (tab === "call-active") {
@@ -2585,60 +3028,6 @@ function App() {
         </div>
       ) : null}
 
-      {/* Change Email Modal */}
-      {showChangeEmail ? (
-        <div className="modal-backdrop" onClick={() => setShowChangeEmail(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <p className="muted strong">Change Email</p>
-            </div>
-            <div className="modal-body stack gap-sm">
-              <Input label="Current Password" type="password" value={emailCurrentPassword} onChange={setEmailCurrentPassword} placeholder="Enter current password" />
-              <Input label="New Email" value={newEmail} onChange={setNewEmail} placeholder="you@example.com" />
-              {!emailOtpSent ? (
-                <Button label="Send OTP" variant="secondary" onClick={sendEmailOtp} />
-              ) : (
-                <div className="stack gap-xxs">
-                  <div className="otp-row">
-                    {emailOtpDigits.map((d, i) => (
-                      <input
-                        key={i}
-                        ref={(el) => {
-                          emailOtpRefs.current[i] = el;
-                        }}
-                        className="otp-input"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={d}
-                        onChange={(e) => handleOtpDigitChange(i, e.target.value, setEmailOtpDigits, emailOtpRefs)}
-                        onKeyDown={(e) => handleOtpKeyDown(e, i, emailOtpDigits, setEmailOtpDigits, emailOtpRefs)}
-                      />
-                    ))}
-                  </div>
-                  <button className="linklike small" onClick={sendEmailOtp}>Resend OTP</button>
-                </div>
-              )}
-              <p className="muted small">An OTP is required to confirm your email change.</p>
-            </div>
-            <div className="modal-actions">
-              <Button
-                label="Cancel"
-                variant="ghost"
-                onClick={() => {
-                  setShowChangeEmail(false);
-                  setNewEmail("");
-                  setEmailOtp("");
-                  setEmailOtpDigits(["", "", "", "", "", ""]);
-                  setEmailOtpSent(false);
-                  setEmailCurrentPassword("");
-                }}
-              />
-              <Button label="Verify & Save" onClick={verifyEmailOtp} />
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {/* Change Password Modal */}
       {showChangePassword ? (
         <div className="modal-backdrop" onClick={() => setShowChangePassword(false)}>
@@ -2647,32 +3036,11 @@ function App() {
               <p className="muted strong">Change Password</p>
             </div>
             <div className="modal-body stack gap-sm">
-              <Input label="New Password" type="password" value={newPasswordValue} onChange={setNewPasswordValue} placeholder="Enter new password" />
-              <Input label="Confirm Password" type="password" value={confirmPasswordValue} onChange={setConfirmPasswordValue} placeholder="Confirm new password" />
-              {!pwOtpSent ? (
-                <Button label="Send OTP" variant="secondary" onClick={sendPwOtp} />
-              ) : (
-                <div className="stack gap-xxs">
-                  <div className="otp-row">
-                    {pwOtpDigits.map((d, i) => (
-                      <input
-                        key={i}
-                        ref={(el) => {
-                          pwOtpRefs.current[i] = el;
-                        }}
-                        className="otp-input"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={d}
-                        onChange={(e) => handleOtpDigitChange(i, e.target.value, setPwOtpDigits, pwOtpRefs)}
-                        onKeyDown={(e) => handleOtpKeyDown(e, i, pwOtpDigits, setPwOtpDigits, pwOtpRefs)}
-                      />
-                    ))}
-                  </div>
-                  <button className="linklike small" onClick={sendPwOtp}>Resend OTP</button>
-                </div>
-              )}
-              <p className="muted small">We require OTP verification to update your password.</p>
+              {pwError ? <p className="error">{pwError}</p> : null}
+              <Input label="Current Password" type="password" value={pwCurrent} onChange={setPwCurrent} placeholder="Enter current password" />
+              <Input label="New Password" type="password" value={pwNew} onChange={setPwNew} placeholder="Enter new password" />
+              <Input label="Confirm Password" type="password" value={pwConfirm} onChange={setPwConfirm} placeholder="Confirm new password" />
+              <p className="muted small">Password must be at least 6 characters.</p>
             </div>
             <div className="modal-actions">
               <Button
@@ -2680,14 +3048,59 @@ function App() {
                 variant="ghost"
                 onClick={() => {
                   setShowChangePassword(false);
-                  setNewPasswordValue("");
-                  setConfirmPasswordValue("");
-                  setPwOtp("");
-                  setPwOtpDigits(["", "", "", "", "", ""]);
-                  setPwOtpSent(false);
+                  setPwCurrent("");
+                  setPwNew("");
+                  setPwConfirm("");
+                  setPwError(null);
                 }}
               />
-              <Button label="Verify & Save" onClick={verifyPwOtp} />
+              <Button label={pwLoading ? "Updating..." : "Save"} onClick={handleChangePasswordSubmit} disabled={pwLoading} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Edit Profile Modal */}
+      {showEditProfile ? (
+        <div className="modal-backdrop" onClick={() => setShowEditProfile(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <p className="muted strong">Edit Profile</p>
+            </div>
+            <div className="modal-body stack gap-sm">
+              {editProfileError ? <p className="error">{editProfileError}</p> : null}
+              {(() => {
+                const base = editProfileName || session?.name || "H";
+                const modalInitials = base.slice(0, 2).toUpperCase();
+                return (
+              <div className="profile-row">
+                <div className="avatar-lg">
+                  {session?.avatarUrl ? <img src={session.avatarUrl} alt="avatar" /> : modalInitials}
+                </div>
+                <Button label="Change photo" variant="ghost" onClick={handleAvatarClick} />
+              </div>
+                );
+              })()}
+                      <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={handleAvatarFile}
+              />
+              <Input label="Full Name" value={editProfileName} onChange={setEditProfileName} placeholder="Enter full name" />
+              <Input label="Email" value={editProfileEmail} onChange={setEditProfileEmail} placeholder="host@example.com" />
+            </div>
+            <div className="modal-actions">
+              <Button
+                label="Cancel"
+                variant="ghost"
+                onClick={() => {
+                  setShowEditProfile(false);
+                  setEditProfileError(null);
+                }}
+              />
+              <Button label={editProfileLoading ? "Saving..." : "Save"} onClick={handleSaveProfile} disabled={editProfileLoading} />
             </div>
           </div>
         </div>
