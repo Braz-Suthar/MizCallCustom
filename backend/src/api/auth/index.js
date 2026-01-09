@@ -122,7 +122,11 @@ router.post("/host/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
-  if (enforce_single_session && active_session_refresh_token && active_session_expires_at && new Date(active_session_expires_at) > new Date()) {
+  if (
+    enforce_single_session &&
+    active_session_refresh_token &&
+    (active_session_expires_at === null || new Date(active_session_expires_at) > new Date())
+  ) {
     return res.status(409).json({ error: "Another session is active. Log out on the other device first.", code: "SESSION_ACTIVE" });
   }
 
@@ -147,7 +151,7 @@ router.post("/host/login", async (req, res) => {
   // store active session if single-session enforced
   if (enforce_single_session) {
     const decoded = jwt.decode(refreshToken);
-    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : null;
+    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await query(
       "UPDATE hosts SET active_session_refresh_token = $1, active_session_expires_at = $2 WHERE id = $3",
       [refreshToken, expiresAt, id]
@@ -243,7 +247,11 @@ router.post("/host/login/otp", async (req, res) => {
   const ok = verifyOtp(`host-login:${id}`, String(otp).trim());
   if (!ok) return res.status(400).json({ error: "Invalid or expired code" });
 
-  if (enforce_single_session && active_session_refresh_token && active_session_expires_at && new Date(active_session_expires_at) > new Date()) {
+  if (
+    enforce_single_session &&
+    active_session_refresh_token &&
+    (active_session_expires_at === null || new Date(active_session_expires_at) > new Date())
+  ) {
     return res.status(409).json({ error: "Another session is active. Log out on the other device first.", code: "SESSION_ACTIVE" });
   }
 
@@ -252,7 +260,7 @@ router.post("/host/login/otp", async (req, res) => {
 
   if (enforce_single_session) {
     const decoded = jwt.decode(refreshToken);
-    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : null;
+    const expiresAt = decoded?.exp ? new Date(decoded.exp * 1000) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await query(
       "UPDATE hosts SET active_session_refresh_token = $1, active_session_expires_at = $2 WHERE id = $3",
       [refreshToken, expiresAt, id]
