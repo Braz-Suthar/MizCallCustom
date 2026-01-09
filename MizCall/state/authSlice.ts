@@ -31,7 +31,7 @@ const initialState: AuthState = {
   token: null,
   refreshToken: null,
   twoFactorEnabled: false,
-  allowMultipleSessions: false,
+  allowMultipleSessions: true,
   status: "idle",
   hydrated: false,
 };
@@ -67,7 +67,7 @@ const authSlice = createSlice({
       state.token = action.payload.token;
       state.refreshToken = action.payload.refreshToken ?? null;
       state.twoFactorEnabled = !!action.payload.twoFactorEnabled;
-      state.allowMultipleSessions = action.payload.allowMultipleSessions ?? false;
+      state.allowMultipleSessions = action.payload.allowMultipleSessions ?? true;
       state.status = "authenticated";
     },
     logout: () => initialState,

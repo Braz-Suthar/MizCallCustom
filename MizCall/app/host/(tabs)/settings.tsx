@@ -49,7 +49,7 @@ export default function HostSettings() {
   const [deviceLockEnabled, setDeviceLockEnabled] = useState(false);
   const [emailUpdatesEnabled, setEmailUpdatesEnabled] = useState(true);
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
-  const [allowMultipleSessions, setAllowMultipleSessions] = useState(false);
+  const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(!!auth.twoFactorEnabled);
 
   // Mock membership data - replace with actual API call
@@ -84,7 +84,7 @@ export default function HostSettings() {
 
   useEffect(() => {
     setTwoFactorEnabled(!!auth.twoFactorEnabled);
-    setAllowMultipleSessions(auth.allowMultipleSessions ?? false);
+    setAllowMultipleSessions(auth.allowMultipleSessions ?? true);
   }, [auth.twoFactorEnabled]);
 
   // Debug log for host data

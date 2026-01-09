@@ -124,17 +124,27 @@ router.post("/host/login", async (req, res) => {
   }
 
   if (enforce_single_session && active_session_refresh_token) {
+    let stale = false;
+    try {
+      const decoded = verifyRefreshToken(active_session_refresh_token);
+      if (decoded.role !== "host" || decoded.hostId !== id) {
+        stale = true;
+      }
+    } catch {
+      stale = true;
+    }
     const isExpired = active_session_expires_at && new Date(active_session_expires_at) <= new Date();
-    if (!isExpired) {
+    if (isExpired || stale) {
+      await query(
+        "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
+        [id]
+      );
+    } else {
       return res.status(409).json({
         error: "This host is already signed in on another device. Please sign out there to continue.",
         code: "SESSION_ACTIVE",
       });
     }
-    await query(
-      "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
-      [id]
-    );
   }
 
   if (two_factor_enabled) {
@@ -199,7 +209,7 @@ router.post("/host/register", async (req, res) => {
 
   const token = signToken({ role: "host", hostId });
   const refreshToken = signRefreshToken({ role: "host", hostId });
-  res.json({ hostId, token, refreshToken, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false, allowMultipleSessions: false });
+  res.json({ hostId, token, refreshToken, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false, allowMultipleSessions: true });
 });
 
 /* USER LOGIN (by id or username, plain text password) */
@@ -255,17 +265,27 @@ router.post("/host/login/otp", async (req, res) => {
   if (!ok) return res.status(400).json({ error: "Invalid or expired code" });
 
   if (enforce_single_session && active_session_refresh_token) {
+    let stale = false;
+    try {
+      const decoded = verifyRefreshToken(active_session_refresh_token);
+      if (decoded.role !== "host" || decoded.hostId !== id) {
+        stale = true;
+      }
+    } catch {
+      stale = true;
+    }
     const isExpired = active_session_expires_at && new Date(active_session_expires_at) <= new Date();
-    if (!isExpired) {
+    if (isExpired || stale) {
+      await query(
+        "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
+        [id]
+      );
+    } else {
       return res.status(409).json({
         error: "This host is already signed in on another device. Please sign out there to continue.",
         code: "SESSION_ACTIVE",
       });
     }
-    await query(
-      "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
-      [id]
-    );
   }
 
   const token = signToken({ role: "host", hostId: id });
@@ -366,14 +386,23 @@ router.post("/refresh", async (req, res) => {
       } = result.rows[0];
 
       if (enforce_single_session) {
+        let stale = false;
+        try {
+          const decoded = verifyRefreshToken(active_session_refresh_token);
+          if (decoded.role !== "host" || decoded.hostId !== id) {
+            stale = true;
+          }
+        } catch {
+          stale = true;
+        }
         if (active_session_expires_at && new Date(active_session_expires_at) < new Date()) {
+          stale = true;
+        }
+        if (stale || !active_session_refresh_token || active_session_refresh_token !== refreshToken) {
           await query(
             "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
             [id]
           );
-          return res.status(401).json({ error: "Session expired. Please sign in again." });
-        }
-        if (!active_session_refresh_token || active_session_refresh_token !== refreshToken) {
           return res.status(401).json({ error: "Session expired. Please sign in again." });
         }
       }
