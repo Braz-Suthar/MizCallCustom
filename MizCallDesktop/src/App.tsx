@@ -44,6 +44,7 @@ import {
   FiUsers,
   FiPhoneCall,
   FiPlus,
+  FiX,
   FiMoreVertical,
   FiVolumeX,
   FiVolume2,
@@ -74,6 +75,7 @@ import iconRecordings from "../assets/ui_icons/recordings.svg";
 import iconSettings from "../assets/ui_icons/settings.svg";
 
 const API_BASE = "https://custom.mizcall.com";
+const DEVICE_LABEL = "Desktop";
 const logoWhite = new URL("../assets/Icons_and_logos_4x/white_logo.png", import.meta.url).href;
 const logoBlack = new URL("../assets/Icons_and_logos_4x/black_logo.png", import.meta.url).href;
 const logo360 = new URL("../assets/Icons_and_logos_4x/360.png", import.meta.url).href;
@@ -442,6 +444,8 @@ function App() {
     role: Mode;
     token: string;
     refreshToken?: string;
+    sessionId?: string | null;
+    accessJti?: string | null;
     hostId?: string;
     userId?: string;
     name?: string;
@@ -485,6 +489,9 @@ function App() {
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [sessionsVisible, setSessionsVisible] = useState(false);
+  const [sessions, setSessions] = useState<Array<{ id: string; deviceLabel?: string | null; userAgent?: string | null; createdAt?: string; lastSeenAt?: string }>>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [notifText, setNotifText] = useState("");
   const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string | null }>>([]);
@@ -676,6 +683,8 @@ function App() {
           role: "host",
           token: data.token,
           refreshToken: data.refreshToken,
+          sessionId: (data as any).sessionId ?? null,
+          accessJti: (data as any).accessJti ?? null,
           hostId: data.hostId,
           name: data.name ?? payload.identifier,
           avatarUrl: data.avatarUrl,
@@ -731,6 +740,8 @@ function App() {
         role: "host",
         token: (data as any).token,
         refreshToken: (data as any).refreshToken,
+        sessionId: (data as any).sessionId ?? null,
+        accessJti: (data as any).accessJti ?? null,
         hostId: (data as any).hostId,
         name: (data as any).name ?? hostOtpPending.hostId,
         avatarUrl: (data as any).avatarUrl,
@@ -909,6 +920,8 @@ function App() {
             ...prev,
             token: data.token,
             refreshToken: data.refreshToken ?? prev.refreshToken,
+            sessionId: data.sessionId ?? prev.sessionId,
+            accessJti: data.accessJti ?? prev.accessJti,
             name: data.name ?? prev.name,
             avatarUrl: data.avatarUrl ?? prev.avatarUrl,
             twoFactorEnabled: data.twoFactorEnabled ?? prev.twoFactorEnabled,
@@ -1906,6 +1919,54 @@ function App() {
       showToast(err instanceof Error ? err.message : "Update failed", "error");
     }
   };
+
+  const loadSessions = useCallback(async () => {
+    if (!session || session.role !== "host") return;
+    setSessionsLoading(true);
+    try {
+      const res = await authFetch(`${API_BASE}/host/sessions`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to load devices");
+      }
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to load devices", "error");
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [authFetch, session]);
+
+  const revokeSession = useCallback(
+    async (sessionId: string) => {
+      if (!session || session.role !== "host") return;
+      try {
+        const res = await authFetch(`${API_BASE}/host/sessions/revoke`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
+        });
+        if (!res.ok) {
+          const msg = await res.text();
+          throw new Error(msg || "Failed to log out device");
+        }
+        setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+        showToast("Device logged out", "success");
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Failed to log out device", "error");
+      }
+    },
+    [authFetch, session]
+  );
+
+  const openSessions = useCallback(async () => {
+    setSessionsVisible(true);
+    await loadSessions();
+  }, [loadSessions]);
 
   useEffect(() => {
     if (tab === "users" && session?.role === "host") {
@@ -3100,6 +3161,13 @@ function App() {
                     </div>
                     <ToggleSwitch checked={allowMultipleSessions} onToggle={handleToggleMultipleSessions} />
                   </div>
+                <div className="row-inline between">
+                  <div className="stack gap-xxs">
+                    <strong>Logged-in Devices</strong>
+                    <span className="muted small">View and log out active devices.</span>
+                  </div>
+                  <button className="linklike" onClick={openSessions}>View devices</button>
+                </div>
                 </div>
 
                 <div className="card stack gap-sm">
@@ -3360,6 +3428,43 @@ function App() {
                   showToast("Notification added", "success");
                 }}
               />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {sessionsVisible ? (
+        <div className="modal-backdrop" onClick={() => setSessionsVisible(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+            <div className="modal-header between">
+              <p className="muted strong">Logged-in devices</p>
+              <button className="icon-btn" onClick={() => setSessionsVisible(false)}>
+                <FiX />
+              </button>
+            </div>
+            <div className="modal-body stack gap-sm" style={{ maxHeight: 400, overflowY: "auto" }}>
+              {sessionsLoading ? (
+                <p className="muted">Loading...</p>
+              ) : sessions.length === 0 ? (
+                <p className="muted">No active devices.</p>
+              ) : (
+                sessions.map((s) => (
+                  <div key={s.id} className="card stack gap-xxs">
+                    <strong>{s.deviceLabel || "Unknown device"}</strong>
+                    {s.userAgent ? <span className="muted small">{s.userAgent}</span> : null}
+                    <div className="row-inline between">
+                      <span className="muted small">
+                        Last seen: {s.lastSeenAt ? formatDateShort(s.lastSeenAt) : "—"}
+                      </span>
+                      <Button label="Log out device" variant="danger" onClick={() => revokeSession(s.id)} />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="modal-actions">
+              <Button label="Refresh" variant="secondary" onClick={loadSessions} loading={sessionsLoading} />
+              <Button label="Close" variant="ghost" onClick={() => setSessionsVisible(false)} />
             </div>
           </div>
         </div>

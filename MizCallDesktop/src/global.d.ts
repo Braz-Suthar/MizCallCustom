@@ -5,6 +5,8 @@ declare global {
       loginHost?: (email: string, password: string) => Promise<{
         token: string;
         refreshToken: string;
+        sessionId?: string;
+        accessJti?: string;
         hostId?: string;
         name?: string;
         avatarUrl?: string;
@@ -24,6 +26,8 @@ declare global {
       verifyHostOtp?: (hostId: string, otp: string) => Promise<{
         token: string;
         refreshToken: string;
+        sessionId?: string;
+        accessJti?: string;
         hostId: string;
         name?: string;
         avatarUrl?: string;

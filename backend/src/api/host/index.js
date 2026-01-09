@@ -104,6 +104,24 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
   });
 });
 
+/* HOST SESSION LIST */
+router.get("/sessions", requireAuth, requireHost, async (req, res) => {
+  const result = await query(
+    `SELECT id, device_label AS deviceLabel, user_agent AS userAgent, created_at AS createdAt, last_seen_at AS lastSeenAt
+       FROM host_sessions WHERE host_id = $1 ORDER BY last_seen_at DESC NULLS LAST, created_at DESC`,
+    [req.hostId]
+  );
+  res.json({ sessions: result.rows });
+});
+
+/* HOST SESSION REVOKE */
+router.post("/sessions/revoke", requireAuth, requireHost, async (req, res) => {
+  const { sessionId } = req.body;
+  if (!sessionId) return res.status(400).json({ error: "sessionId required" });
+  await query("DELETE FROM host_sessions WHERE id = $1 AND host_id = $2", [sessionId, req.hostId]);
+  res.json({ ok: true, sessionId });
+});
+
 /* DASHBOARD STATS */
 router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
   try {

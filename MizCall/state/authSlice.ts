@@ -13,6 +13,8 @@ type AuthState = {
   role: UserRole;
   token: string | null;
   refreshToken: string | null;
+  sessionId: string | null;
+  accessJti: string | null;
   twoFactorEnabled: boolean;
   allowMultipleSessions: boolean;
   status: "idle" | "loading" | "authenticated";
@@ -30,6 +32,8 @@ const initialState: AuthState = {
   role: null,
   token: null,
   refreshToken: null,
+  sessionId: null,
+  accessJti: null,
   twoFactorEnabled: false,
   allowMultipleSessions: true,
   status: "idle",
@@ -46,6 +50,8 @@ export type CredentialsPayload = {
   callBackground?: string;
   token: string;
   refreshToken?: string | null;
+  sessionId?: string | null;
+  accessJti?: string | null;
   twoFactorEnabled?: boolean;
   allowMultipleSessions?: boolean;
   role: Exclude<UserRole, null>;
@@ -66,6 +72,8 @@ const authSlice = createSlice({
       state.role = action.payload.role;
       state.token = action.payload.token;
       state.refreshToken = action.payload.refreshToken ?? null;
+      state.sessionId = action.payload.sessionId ?? null;
+      state.accessJti = action.payload.accessJti ?? null;
       state.twoFactorEnabled = !!action.payload.twoFactorEnabled;
       state.allowMultipleSessions = action.payload.allowMultipleSessions ?? true;
       state.status = "authenticated";

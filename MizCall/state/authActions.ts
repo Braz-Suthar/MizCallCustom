@@ -3,6 +3,9 @@ import { CredentialsPayload, setCredentials, setHydrated, setStatus, logout } fr
 import { clearSession, loadSession, saveSession } from "./sessionStorage";
 import { apiFetch, apiFetchWithRefresh } from "./api";
 import { socketManager } from "../services/socketManager";
+import { Platform } from "react-native";
+
+const deviceLabel = Platform.OS === "ios" ? "iOS" : Platform.OS === "android" ? "Android" : "Expo";
 
 export const hydrateSession = () => async (dispatch: AppDispatch) => {
   dispatch(setStatus("loading"));
@@ -19,13 +22,13 @@ export const loginHost =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token?: string; refreshToken?: string; hostId?: string; name?: string; email?: string; avatarUrl?: string; requireOtp?: boolean; twoFactorEnabled?: boolean }>(
+      const res = await apiFetch<{ token?: string; refreshToken?: string; hostId?: string; name?: string; email?: string; avatarUrl?: string; requireOtp?: boolean; twoFactorEnabled?: boolean; accessJti?: string; sessionId?: string; allowMultipleSessions?: boolean }>(
         "/auth/host/login",
         "",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hostId: email.trim(), password }),
+          body: JSON.stringify({ hostId: email.trim(), password, deviceName: deviceLabel }),
         },
       );
       if (res.requireOtp) {
@@ -41,6 +44,8 @@ export const loginHost =
         role: "host",
         token: res.token,
         refreshToken: res.refreshToken ?? null,
+        sessionId: res.sessionId ?? null,
+        accessJti: res.accessJti ?? null,
         twoFactorEnabled: res.twoFactorEnabled ?? false,
         allowMultipleSessions: res.allowMultipleSessions ?? true,
       };
@@ -91,13 +96,13 @@ export const registerUser =
   (email: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; hostId: string; avatarUrl?: string; name?: string; email?: string }>(
+      const res = await apiFetch<{ token: string; hostId: string; avatarUrl?: string; name?: string; email?: string; refreshToken?: string; sessionId?: string; accessJti?: string; allowMultipleSessions?: boolean }>(
         "/auth/host/register",
         "",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: email.trim(), password }),
+          body: JSON.stringify({ name: email.trim(), password, deviceName: deviceLabel }),
         },
       );
       const session: CredentialsPayload = {
@@ -108,6 +113,8 @@ export const registerUser =
         role: "host",
         token: res.token,
         refreshToken: res.refreshToken ?? null,
+        sessionId: res.sessionId ?? null,
+        accessJti: res.accessJti ?? null,
         twoFactorEnabled: res.twoFactorEnabled ?? false,
         allowMultipleSessions: res.allowMultipleSessions ?? true,
       };
@@ -157,6 +164,8 @@ const updateTokens =
       role: current.role,
       token,
       refreshToken: refreshToken ?? current.refreshToken ?? null,
+      sessionId: extra?.sessionId ?? current.sessionId ?? null,
+      accessJti: extra?.accessJti ?? current.accessJti ?? null,
       twoFactorEnabled: extra?.twoFactorEnabled ?? current.twoFactorEnabled ?? false,
       allowMultipleSessions: extra?.allowMultipleSessions ?? current.allowMultipleSessions ?? true,
     };
@@ -175,13 +184,13 @@ export const verifyHostOtp =
   (hostId: string, otp: string, password: string) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; refreshToken?: string; hostId: string; name?: string; email?: string; avatarUrl?: string; twoFactorEnabled?: boolean; allowMultipleSessions?: boolean }>(
+      const res = await apiFetch<{ token: string; refreshToken?: string; hostId: string; name?: string; email?: string; avatarUrl?: string; twoFactorEnabled?: boolean; allowMultipleSessions?: boolean; sessionId?: string; accessJti?: string }>(
         "/auth/host/login/otp",
         "",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ hostId, otp }),
+          body: JSON.stringify({ hostId, otp, deviceName: deviceLabel }),
         },
       );
       const session: CredentialsPayload = {
@@ -193,6 +202,8 @@ export const verifyHostOtp =
         role: "host",
         token: res.token,
         refreshToken: res.refreshToken ?? null,
+        sessionId: res.sessionId ?? null,
+        accessJti: res.accessJti ?? null,
         twoFactorEnabled: res.twoFactorEnabled ?? true,
         allowMultipleSessions: res.allowMultipleSessions ?? true,
       };

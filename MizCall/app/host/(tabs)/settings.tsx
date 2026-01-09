@@ -15,6 +15,7 @@ import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { apiFetch, API_BASE } from "../../../state/api";
 import { setAvatarUrl, setCredentials } from "../../../state/authSlice";
 import { saveSession } from "../../../state/sessionStorage";
+import { Modal, FlatList } from "react-native";
 
 // Consistent primary blue color
 const DANGER_RED = "#ef4444";
@@ -51,6 +52,9 @@ export default function HostSettings() {
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(!!auth.twoFactorEnabled);
+  const [sessionsVisible, setSessionsVisible] = useState(false);
+  const [sessions, setSessions] = useState<Array<{ id: string; deviceLabel?: string | null; userAgent?: string | null; createdAt?: string; lastSeenAt?: string }>>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
 
   // Mock membership data - replace with actual API call
   const membership = {
@@ -235,6 +239,43 @@ export default function HostSettings() {
       setAllowMultipleSessions(!next);
       const message = e?.message || e?.error || "Failed to update concurrent sessions setting.";
       Alert.alert("Error", message);
+    }
+  };
+
+  const openSessions = async () => {
+    setSessionsVisible(true);
+    await loadSessions();
+  };
+
+  const loadSessions = async () => {
+    setSessionsLoading(true);
+    try {
+      const res = await dispatch<any>(
+        authApiFetch<{ sessions: Array<{ id: string; deviceLabel?: string | null; userAgent?: string | null; createdAt?: string; lastSeenAt?: string }> }>(
+          "/host/sessions",
+          { method: "GET" }
+        )
+      );
+      setSessions(res.sessions || []);
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Failed to load devices");
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const revokeSession = async (sessionId: string) => {
+    try {
+      await dispatch<any>(
+        authApiFetch("/host/sessions/revoke", {
+          method: "POST",
+          body: JSON.stringify({ sessionId }),
+        })
+      );
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      Toast.show({ type: "success", text1: "Device logged out" });
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Failed to log out device");
     }
   };
 
@@ -726,6 +767,9 @@ export default function HostSettings() {
             />
           </Pressable>
         </View>
+        <Pressable style={{ marginTop: 8 }} onPress={openSessions}>
+          <Text style={{ color: PRIMARY_BLUE, fontWeight: "600" }}>View logged-in devices</Text>
+        </Pressable>
       </View>
 
       {/* Support Section */}
@@ -814,6 +858,60 @@ export default function HostSettings() {
         onClose={() => setChangePasswordVisible(false)}
         onSave={handleChangePassword}
       />
+
+      <Modal visible={sessionsVisible} animationType="slide" onRequestClose={() => setSessionsVisible(false)}>
+        <View style={{ flex: 1, padding: 16, paddingTop: 48, backgroundColor: colors.background }}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+            <Pressable onPress={() => setSessionsVisible(false)} style={{ padding: 8, marginRight: 8 }}>
+              <Ionicons name="chevron-back" size={22} color={colors.text} />
+            </Pressable>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.text }}>Logged-in devices</Text>
+          </View>
+          <FlatList
+            data={sessions}
+            refreshing={sessionsLoading}
+            onRefresh={loadSessions}
+            keyExtractor={(item) => item.id}
+            ListEmptyComponent={
+              <Text style={{ color: colors.text, textAlign: "center", marginTop: 24 }}>
+                {sessionsLoading ? "Loading..." : "No active devices"}
+              </Text>
+            }
+            renderItem={({ item }) => (
+              <View
+                style={{
+                  padding: 12,
+                  marginBottom: 12,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border ?? "#e5e7eb",
+                  backgroundColor: colors.card,
+                }}
+              >
+                <Text style={{ color: colors.text, fontWeight: "600" }}>
+                  {item.deviceLabel || "Unknown device"}
+                </Text>
+                {item.userAgent ? (
+                  <Text style={{ color: colors.text, opacity: 0.7, marginTop: 4 }}>{item.userAgent}</Text>
+                ) : null}
+                <Pressable
+                  onPress={() => revokeSession(item.id)}
+                  style={{
+                    marginTop: 10,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    backgroundColor: DANGER_RED,
+                    alignSelf: "flex-start",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>Log out device</Text>
+                </Pressable>
+              </View>
+            )}
+          />
+        </View>
+      </Modal>
       </ScrollView>
     </View>
   );

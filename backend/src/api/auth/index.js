@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query } from "../../services/db.js";
-import { signToken, signRefreshToken, verifyRefreshToken } from "../../services/auth.js";
+import { signToken, signRefreshToken, verifyRefreshToken, generateJti } from "../../services/auth.js";
 import { generateHostId } from "../../services/id.js";
 import nodemailer from "nodemailer";
 import { setOtp, verifyOtp } from "../../services/otpStore.js";
@@ -87,7 +87,7 @@ router.post("/otp/verify", async (req, res) => {
 
 /* HOST LOGIN (by hostId or email; email is stored in hosts.name for now) */
 router.post("/host/login", async (req, res) => {
-  const { hostId, email, password } = req.body;
+  const { hostId, email, password, deviceName } = req.body;
   const identifier = (hostId || email)?.trim();
   if (!identifier || !password) return res.status(400).json({ error: "hostId/email and password required" });
 
@@ -162,8 +162,18 @@ router.post("/host/login", async (req, res) => {
     return res.json({ requireOtp: true, hostId: id, email: name, message: "OTP sent to email" });
   }
 
-  const token = signToken({ role: "host", hostId: id });
-  const refreshToken = signRefreshToken({ role: "host", hostId: id });
+  const accessJti = generateJti();
+  const refreshJti = generateJti();
+  const token = signToken({ role: "host", hostId: id }, accessJti);
+  const refreshToken = signRefreshToken({ role: "host", hostId: id }, refreshJti);
+  const userAgent = req.get("user-agent") || null;
+  const deviceLabel = deviceName || null;
+  const sessionResult = await query(
+    `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [id, deviceLabel, accessJti, refreshToken, userAgent]
+  );
+  const sessionId = sessionResult.rows[0].id;
 
   // store active session if single-session enforced
   if (enforce_single_session) {
@@ -183,6 +193,8 @@ router.post("/host/login", async (req, res) => {
   res.json({
     token,
     refreshToken,
+    accessJti,
+    sessionId,
     hostId: id,
     name: display_name || name,
     email: name,
@@ -194,7 +206,7 @@ router.post("/host/login", async (req, res) => {
 
 /* HOST REGISTRATION (name only) */
 router.post("/host/register", async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, deviceName } = req.body;
   const hostName = (name || email || "").trim();
   if (!hostName || !password) return res.status(400).json({ error: "name/email and password required" });
 
@@ -207,9 +219,19 @@ router.post("/host/register", async (req, res) => {
     [hostId, hostName, hostName, hashed]
   );
 
-  const token = signToken({ role: "host", hostId });
-  const refreshToken = signRefreshToken({ role: "host", hostId });
-  res.json({ hostId, token, refreshToken, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false, allowMultipleSessions: true });
+  const accessJti = generateJti();
+  const refreshJti = generateJti();
+  const token = signToken({ role: "host", hostId }, accessJti);
+  const refreshToken = signRefreshToken({ role: "host", hostId }, refreshJti);
+  const userAgent = req.get("user-agent") || null;
+  const deviceLabel = deviceName || null;
+  const sessionResult = await query(
+    `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [hostId, deviceLabel, accessJti, refreshToken, userAgent]
+  );
+  const sessionId = sessionResult.rows[0].id;
+  res.json({ hostId, token, refreshToken, accessJti, sessionId, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false, allowMultipleSessions: true });
 });
 
 /* USER LOGIN (by id or username, plain text password) */
@@ -248,7 +270,7 @@ router.post("/user/login", async (req, res) => {
 });
 
 router.post("/host/login/otp", async (req, res) => {
-  const { hostId, otp } = req.body;
+  const { hostId, otp, deviceName } = req.body;
   if (!hostId || !otp) return res.status(400).json({ error: "hostId and otp required" });
   const normalizedId = hostId.trim();
 
@@ -288,8 +310,18 @@ router.post("/host/login/otp", async (req, res) => {
     }
   }
 
-  const token = signToken({ role: "host", hostId: id });
-  const refreshToken = signRefreshToken({ role: "host", hostId: id });
+  const accessJti = generateJti();
+  const refreshJti = generateJti();
+  const token = signToken({ role: "host", hostId: id }, accessJti);
+  const refreshToken = signRefreshToken({ role: "host", hostId: id }, refreshJti);
+  const userAgent = req.get("user-agent") || null;
+  const deviceLabel = deviceName || null;
+  const sessionResult = await query(
+    `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [id, deviceLabel, accessJti, refreshToken, userAgent]
+  );
+  const sessionId = sessionResult.rows[0].id;
 
   if (enforce_single_session) {
     const decoded = jwt.decode(refreshToken);
@@ -308,6 +340,8 @@ router.post("/host/login/otp", async (req, res) => {
   res.json({
     token,
     refreshToken,
+    accessJti,
+    sessionId,
     hostId: id,
     name: display_name || name,
     email: name,
@@ -385,29 +419,24 @@ router.post("/refresh", async (req, res) => {
         active_session_expires_at,
       } = result.rows[0];
 
-      if (enforce_single_session) {
-        let stale = false;
-        try {
-          const decoded = verifyRefreshToken(active_session_refresh_token);
-          if (decoded.role !== "host" || decoded.hostId !== id) {
-            stale = true;
-          }
-        } catch {
-          stale = true;
-        }
-        if (active_session_expires_at && new Date(active_session_expires_at) < new Date()) {
-          stale = true;
-        }
-        if (stale || !active_session_refresh_token || active_session_refresh_token !== refreshToken) {
-          await query(
-            "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
-            [id]
-          );
-          return res.status(401).json({ error: "Session expired. Please sign in again." });
-        }
-      }
-      const token = signToken({ role: "host", hostId: id });
-      const nextRefresh = signRefreshToken({ role: "host", hostId: id });
+      const sessionResult = await query(
+        `SELECT id, revoked_at FROM host_sessions WHERE host_id = $1 AND refresh_token = $2 LIMIT 1`,
+        [payload.hostId, refreshToken]
+      );
+      if (sessionResult.rowCount === 0) return res.status(401).json({ error: "Session expired. Please sign in again." });
+      if (sessionResult.rows[0].revoked_at) return res.status(401).json({ error: "Session expired. Please sign in again." });
+
+      const accessJti = generateJti();
+      const refreshJti = generateJti();
+      const token = signToken({ role: "host", hostId: id }, accessJti);
+      const nextRefresh = signRefreshToken({ role: "host", hostId: id }, refreshJti);
+
+      await query(
+        `UPDATE host_sessions
+         SET refresh_token = $1, access_jti = $2, last_seen_at = now(), revoked_at = NULL
+         WHERE id = $3`,
+        [nextRefresh, accessJti, sessionResult.rows[0].id]
+      );
 
       if (enforce_single_session) {
         const decoded = jwt.decode(nextRefresh);
@@ -425,6 +454,8 @@ router.post("/refresh", async (req, res) => {
       return res.json({
         token,
         refreshToken: nextRefresh,
+        accessJti,
+        sessionId: sessionResult.rows[0].id,
         hostId: id,
         name: display_name || name,
         email: name,
@@ -468,6 +499,11 @@ router.post("/refresh", async (req, res) => {
 router.post("/logout", requireAuth, async (req, res) => {
   try {
     if (req.auth.role === "host") {
+      if (req.sessionId) {
+        await query("DELETE FROM host_sessions WHERE id = $1", [req.sessionId]);
+      } else if (req.auth.jti) {
+        await query("DELETE FROM host_sessions WHERE host_id = $1 AND access_jti = $2", [req.auth.hostId, req.auth.jti]);
+      }
       await query(
         "UPDATE hosts SET active_session_refresh_token = NULL, active_session_expires_at = NULL WHERE id = $1",
         [req.auth.hostId]
