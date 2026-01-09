@@ -87,7 +87,7 @@ router.post("/otp/verify", async (req, res) => {
 
 /* HOST LOGIN (by hostId or email; email is stored in hosts.name for now) */
 router.post("/host/login", async (req, res) => {
-  const { hostId, email, password, deviceName } = req.body;
+  const { hostId, email, password, deviceName, deviceModel, platform, osName, osVersion } = req.body;
   const identifier = (hostId || email)?.trim();
   if (!identifier || !password) return res.status(400).json({ error: "hostId/email and password required" });
 
@@ -170,9 +170,9 @@ router.post("/host/login", async (req, res) => {
   const headerDevice = req.get("x-device-name") || null;
   const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
   const sessionResult = await query(
-    `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [id, deviceLabel, accessJti, refreshToken, userAgent]
+    `INSERT INTO host_sessions (host_id, device_label, device_name, model_name, platform, os_name, os_version, access_jti, refresh_token, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    [id, deviceLabel, deviceName || headerDevice || null, deviceModel || null, platform || null, osName || null, osVersion || null, accessJti, refreshToken, userAgent]
   );
   const sessionId = sessionResult.rows[0].id;
 
@@ -207,7 +207,7 @@ router.post("/host/login", async (req, res) => {
 
 /* HOST REGISTRATION (name only) */
 router.post("/host/register", async (req, res) => {
-  const { name, email, password, deviceName } = req.body;
+  const { name, email, password, deviceName, deviceModel, platform, osName, osVersion } = req.body;
   const hostName = (name || email || "").trim();
   if (!hostName || !password) return res.status(400).json({ error: "name/email and password required" });
 
@@ -228,9 +228,9 @@ router.post("/host/register", async (req, res) => {
   const headerDevice = req.get("x-device-name") || null;
   const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
   const sessionResult = await query(
-    `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [hostId, deviceLabel, accessJti, refreshToken, userAgent]
+    `INSERT INTO host_sessions (host_id, device_label, device_name, model_name, platform, os_name, os_version, access_jti, refresh_token, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    [hostId, deviceLabel, deviceName || headerDevice || null, deviceModel || null, platform || null, osName || null, osVersion || null, accessJti, refreshToken, userAgent]
   );
   const sessionId = sessionResult.rows[0].id;
   res.json({ hostId, token, refreshToken, accessJti, sessionId, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false, allowMultipleSessions: true });
@@ -272,7 +272,7 @@ router.post("/user/login", async (req, res) => {
 });
 
 router.post("/host/login/otp", async (req, res) => {
-  const { hostId, otp, deviceName } = req.body;
+  const { hostId, otp, deviceName, deviceModel, platform, osName, osVersion } = req.body;
   if (!hostId || !otp) return res.status(400).json({ error: "hostId and otp required" });
   const normalizedId = hostId.trim();
 
@@ -320,9 +320,9 @@ router.post("/host/login/otp", async (req, res) => {
   const headerDevice = req.get("x-device-name") || null;
   const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
   const sessionResult = await query(
-    `INSERT INTO host_sessions (host_id, device_label, access_jti, refresh_token, user_agent)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [id, deviceLabel, accessJti, refreshToken, userAgent]
+    `INSERT INTO host_sessions (host_id, device_label, device_name, model_name, platform, os_name, os_version, access_jti, refresh_token, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    [id, deviceLabel, deviceName || headerDevice || null, deviceModel || null, platform || null, osName || null, osVersion || null, accessJti, refreshToken, userAgent]
   );
   const sessionId = sessionResult.rows[0].id;
 
@@ -440,6 +440,10 @@ router.post("/refresh", async (req, res) => {
         (req.body?.deviceName || refreshHeaderDevice || "").trim() ||
         (refreshUserAgent || "").trim() ||
         null;
+      const refreshModel = req.body?.deviceModel || null;
+      const refreshPlatform = req.body?.platform || null;
+      const refreshOsName = req.body?.osName || null;
+      const refreshOsVersion = req.body?.osVersion || null;
       await query(
         `UPDATE host_sessions
          SET refresh_token = $1,
@@ -447,9 +451,14 @@ router.post("/refresh", async (req, res) => {
              last_seen_at = now(),
              revoked_at = NULL,
              device_label = COALESCE($4, device_label, user_agent, 'Unknown device'),
-             user_agent = COALESCE(user_agent, $5)
+             device_name = COALESCE($5, device_name),
+             model_name = COALESCE($6, model_name),
+             platform = COALESCE($7, platform),
+             os_name = COALESCE($8, os_name),
+             os_version = COALESCE($9, os_version),
+             user_agent = COALESCE(user_agent, $10)
          WHERE id = $3`,
-        [nextRefresh, accessJti, sessionResult.rows[0].id, refreshDeviceLabel, refreshUserAgent]
+        [nextRefresh, accessJti, sessionResult.rows[0].id, refreshDeviceLabel, req.body?.deviceName || refreshHeaderDevice || null, refreshModel, refreshPlatform, refreshOsName, refreshOsVersion, refreshUserAgent]
       );
 
       if (enforce_single_session) {

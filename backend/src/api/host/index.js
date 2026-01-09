@@ -109,6 +109,11 @@ router.get("/sessions", requireAuth, requireHost, async (req, res) => {
   const result = await query(
     `SELECT id,
             COALESCE(device_label, user_agent, 'Unknown device') AS deviceLabel,
+            device_name AS deviceName,
+            model_name AS modelName,
+            platform,
+            os_name AS osName,
+            os_version AS osVersion,
             user_agent AS userAgent,
             created_at AS createdAt,
             last_seen_at AS lastSeenAt

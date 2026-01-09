@@ -490,7 +490,19 @@ function App() {
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [sessionsVisible, setSessionsVisible] = useState(false);
-  const [sessions, setSessions] = useState<Array<{ id: string; deviceLabel?: string | null; userAgent?: string | null; createdAt?: string; lastSeenAt?: string }>>([]);
+  const [sessions, setSessions] = useState<
+    Array<{
+      id: string;
+      deviceLabel?: string | null;
+      deviceName?: string | null;
+      modelName?: string | null;
+      platform?: string | null;
+      userAgent?: string | null;
+      createdAt?: string;
+      lastSeenAt?: string;
+      isCurrent?: boolean;
+    }>
+  >([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [notifText, setNotifText] = useState("");
@@ -1933,7 +1945,19 @@ function App() {
         throw new Error(msg || "Failed to load devices");
       }
       const data = await res.json();
-      setSessions(data.sessions || []);
+      const normalized =
+        data.sessions?.map((s: any) => ({
+          id: s.id,
+          deviceLabel: s.deviceLabel ?? s.devicelabel ?? "Unknown device",
+          deviceName: s.deviceName ?? s.devicename ?? null,
+          modelName: s.modelName ?? s.modelname ?? null,
+          platform: s.platform ?? null,
+          userAgent: s.userAgent ?? s.useragent ?? null,
+          createdAt: s.createdAt ?? s.createdat ?? null,
+          lastSeenAt: s.lastSeenAt ?? s.lastseenat ?? null,
+          isCurrent: session?.sessionId ? String(session.sessionId) === String(s.id) : false,
+        })) ?? [];
+      setSessions(normalized);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to load devices", "error");
     } finally {
@@ -3448,18 +3472,38 @@ function App() {
               ) : sessions.length === 0 ? (
                 <p className="muted">No active devices.</p>
               ) : (
-                sessions.map((s) => (
-                  <div key={s.id} className="card stack gap-xxs">
-                    <strong>{s.deviceLabel || "Unknown device"}</strong>
-                    {s.userAgent ? <span className="muted small">{s.userAgent}</span> : null}
-                    <div className="row-inline between">
-                      <span className="muted small">
-                        Last seen: {s.lastSeenAt ? formatDateShort(s.lastSeenAt) : "—"}
-                      </span>
-                      <Button label="Log out device" variant="danger" onClick={() => revokeSession(s.id)} />
+                sessions.map((s) => {
+                  const nameText = s.deviceName || s.deviceLabel || "Unknown device";
+                  const modelText = s.modelName ? ` (${s.modelName})` : "";
+                  const platformText = s.platform || "";
+                  const platformIcon =
+                    platformText.toLowerCase() === "android"
+                      ? "logo-android"
+                      : platformText.toLowerCase() === "ios"
+                      ? "logo-apple"
+                      : "monitor";
+                  const isCurrent = s.isCurrent;
+                  return (
+                    <div key={s.id} className="card stack gap-xxs">
+                      <div className="row-inline gap-xxs align-center">
+                        <IoStar className="muted" />
+                        <strong>
+                          <span className="muted small">{platformText ? `${platformText} • ` : ""}</span>
+                          {nameText}
+                          {modelText}
+                          {isCurrent ? <span style={{ marginLeft: 6, color: "#2563eb" }}>(Current device)</span> : null}
+                        </strong>
+                      </div>
+                      {s.userAgent ? <span className="muted small">{s.userAgent}</span> : null}
+                      <div className="row-inline between">
+                        <span className="muted small">
+                          Last seen: {s.lastSeenAt ? formatDateShort(s.lastSeenAt) : "—"}
+                        </span>
+                        <Button label={isCurrent ? "Current device" : "Log out device"} variant="danger" onClick={() => revokeSession(s.id)} disabled={isCurrent} />
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
             <div className="modal-actions">

@@ -53,7 +53,18 @@ export default function HostSettings() {
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(!!auth.twoFactorEnabled);
   const [sessionsVisible, setSessionsVisible] = useState(false);
-  const [sessions, setSessions] = useState<Array<{ id: string; deviceLabel?: string | null; userAgent?: string | null; createdAt?: string; lastSeenAt?: string }>>([]);
+  const [sessions, setSessions] = useState<
+    Array<{
+      id: string;
+      deviceLabel?: string | null;
+      deviceName?: string | null;
+      modelName?: string | null;
+      platform?: string | null;
+      userAgent?: string | null;
+      createdAt?: string;
+      lastSeenAt?: string;
+    }>
+  >([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
 
   // Mock membership data - replace with actual API call
@@ -251,12 +262,48 @@ export default function HostSettings() {
     setSessionsLoading(true);
     try {
       const res = await dispatch<any>(
-        authApiFetch<{ sessions: Array<{ id: string; deviceLabel?: string | null; userAgent?: string | null; createdAt?: string; lastSeenAt?: string }> }>(
+        authApiFetch<{
+          sessions: Array<{
+            id: string;
+            deviceLabel?: string | null;
+            deviceName?: string | null;
+            modelName?: string | null;
+            platform?: string | null;
+            userAgent?: string | null;
+            createdAt?: string;
+            lastSeenAt?: string;
+            devicelabel?: string | null;
+            devicename?: string | null;
+            modelname?: string | null;
+            platform?: string | null;
+            useragent?: string | null;
+            createdat?: string;
+            lastseenat?: string;
+          }>;
+        }>(
           "/host/sessions",
           { method: "GET" }
         )
       );
-      setSessions(res.sessions || []);
+      try {
+        console.log("[devices/list] sessions:", res?.sessions);
+      } catch {
+        // ignore console errors
+      }
+      const normalized =
+        res.sessions?.map((s) => ({
+          id: s.id,
+          deviceLabel: s.deviceLabel ?? (s as any).devicelabel ?? "Unknown device",
+          deviceName: s.deviceName ?? (s as any).devicename ?? null,
+          modelName: s.modelName ?? (s as any).modelname ?? null,
+          platform: s.platform ?? (s as any).platform ?? null,
+          userAgent: s.userAgent ?? (s as any).useragent ?? null,
+          createdAt: s.createdAt ?? (s as any).createdat ?? null,
+          lastSeenAt: s.lastSeenAt ?? (s as any).lastseenat ?? null,
+          isCurrent:
+            !!auth.sessionId && String(auth.sessionId) === String(s.id),
+        })) ?? [];
+      setSessions(normalized);
     } catch (e: any) {
       Alert.alert("Error", e?.message || "Failed to load devices");
     } finally {
@@ -877,38 +924,61 @@ export default function HostSettings() {
                 {sessionsLoading ? "Loading..." : "No active devices"}
               </Text>
             }
-            renderItem={({ item }) => (
-              <View
-                style={{
-                  padding: 12,
-                  marginBottom: 12,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: colors.border ?? "#e5e7eb",
-                  backgroundColor: colors.card,
-                }}
-              >
-                <Text style={{ color: colors.text, fontWeight: "600" }}>
-                  {item.deviceLabel || "Unknown device"}
-                </Text>
-                {item.userAgent ? (
-                  <Text style={{ color: colors.text, opacity: 0.7, marginTop: 4 }}>{item.userAgent}</Text>
-                ) : null}
-                <Pressable
-                  onPress={() => revokeSession(item.id)}
+            renderItem={({ item }) => {
+              const nameText = item.deviceName || item.deviceLabel || "Unknown device";
+              const modelText = item.modelName ? ` (${item.modelName})` : "";
+              const platformText = item.platform || "";
+              const platformIcon =
+                platformText.toLowerCase() === "android"
+                  ? "logo-android"
+                  : platformText.toLowerCase() === "ios"
+                  ? "logo-apple"
+                  : "desktop-outline";
+              const isCurrent = (item as any).isCurrent;
+              return (
+                <View
                   style={{
-                    marginTop: 10,
-                    paddingVertical: 8,
-                    paddingHorizontal: 12,
-                    borderRadius: 10,
-                    backgroundColor: DANGER_RED,
-                    alignSelf: "flex-start",
+                    padding: 12,
+                    marginBottom: 12,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border ?? "#e5e7eb",
+                    backgroundColor: colors.card,
                   }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Log out device</Text>
-                </Pressable>
-              </View>
-            )}
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name={platformIcon as any} size={18} color={colors.text} />
+                    <Text style={{ color: colors.text, fontWeight: "600" }}>
+                      {nameText}
+                      {modelText}
+                    </Text>
+                    {isCurrent ? (
+                      <Text style={{ marginLeft: 6, color: PRIMARY_BLUE, fontWeight: "700" }}>(Current device)</Text>
+                    ) : null}
+                  </View>
+                  {item.userAgent ? (
+                    <Text style={{ color: colors.text, opacity: 0.7, marginTop: 4 }}>{item.userAgent}</Text>
+                  ) : null}
+                  <Pressable
+                    onPress={() => revokeSession(item.id)}
+                    style={{
+                      marginTop: 10,
+                      paddingVertical: 8,
+                      paddingHorizontal: 12,
+                      borderRadius: 10,
+                      backgroundColor: DANGER_RED,
+                      alignSelf: "flex-start",
+                      opacity: isCurrent ? 0.6 : 1,
+                    }}
+                    disabled={isCurrent}
+                  >
+                    <Text style={{ color: "#fff", fontWeight: "600" }}>
+                      {isCurrent ? "Current device" : "Log out device"}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            }}
           />
         </View>
       </Modal>

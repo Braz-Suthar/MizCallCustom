@@ -6,11 +6,23 @@ const API_BASE = "https://custom.mizcall.com";
 const bridge = {
   env: process.env.NODE_ENV,
   deviceLabel: os.hostname?.() || os.type?.() || "Desktop",
+  deviceModel: os.type?.() || null,
+  platform: "desktop",
+  osName: os.type?.() || null,
+  osVersion: os.release?.() || null,
   async loginHost(email, password) {
     const res = await fetch(`${API_BASE}/auth/host/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Device-Name": bridge.deviceLabel },
-      body: JSON.stringify({ hostId: email?.trim?.(), password, deviceName: bridge.deviceLabel }),
+      body: JSON.stringify({
+        hostId: email?.trim?.(),
+        password,
+        deviceName: bridge.deviceLabel,
+        deviceModel: bridge.deviceModel,
+        platform: bridge.platform,
+        osName: bridge.osName,
+        osVersion: bridge.osVersion,
+      }),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -22,7 +34,15 @@ const bridge = {
     const res = await fetch(`${API_BASE}/auth/host/login/otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Device-Name": bridge.deviceLabel },
-      body: JSON.stringify({ hostId, otp, deviceName: bridge.deviceLabel }),
+      body: JSON.stringify({
+        hostId,
+        otp,
+        deviceName: bridge.deviceLabel,
+        deviceModel: bridge.deviceModel,
+        platform: bridge.platform,
+        osName: bridge.osName,
+        osVersion: bridge.osVersion,
+      }),
     });
     if (!res.ok) {
       const text = await res.text();

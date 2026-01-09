@@ -11,11 +11,24 @@ export async function requireAuth(req, res, next) {
       // Enforce active session membership for host access tokens
       if (!decoded.jti) return res.sendStatus(401);
       const result = await query(
-        "SELECT id, revoked_at FROM host_sessions WHERE host_id = $1 AND access_jti = $2 LIMIT 1",
+        "SELECT id, revoked_at, device_label, user_agent FROM host_sessions WHERE host_id = $1 AND access_jti = $2 LIMIT 1",
         [decoded.hostId, decoded.jti]
       );
       if (result.rowCount === 0) return res.sendStatus(401);
       if (result.rows[0].revoked_at) return res.sendStatus(401);
+      const headerDevice = req.get("x-device-name") || null;
+      const userAgent = req.get("user-agent") || null;
+      const currentLabel = result.rows[0].device_label;
+      if ((headerDevice || userAgent) && (!currentLabel || currentLabel === "Unknown device")) {
+        query(
+          `UPDATE host_sessions
+             SET device_label = COALESCE($1, device_label, user_agent, 'Unknown device'),
+                 device_name = COALESCE($1, device_name),
+                 user_agent = COALESCE(user_agent, $2)
+           WHERE id = $3`,
+          [headerDevice || userAgent, userAgent, result.rows[0].id]
+        ).catch(() => {});
+      }
       req.auth = decoded;
       req.sessionId = result.rows[0].id;
       // best-effort last_seen update
