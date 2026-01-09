@@ -20,12 +20,14 @@ export default function Login() {
   const [otp, setOtp] = useState("");
   const [otpPending, setOtpPending] = useState<{ hostId: string; email: string; password: string } | null>(null);
   const [otpError, setOtpError] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
   const { colors } = useTheme();
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((s) => s.auth);
   const router = useRouter();
 
   const onSubmit = async () => {
+    setErrorText(null);
     try {
       if (mode === "host") {
         const res: any = await dispatch(loginHost(email.trim(), password));
@@ -40,8 +42,14 @@ export default function Login() {
         await dispatch(loginUser(userId.trim(), password));
         router.replace("/user/dashboard");
       }
-    } catch (e) {
-      Alert.alert("Login failed", "Please check your credentials and try again.");
+    } catch (e: any) {
+      const msg = e?.message || "Login failed";
+      const friendly =
+        msg.includes("already signed in") || msg.includes("SESSION_ACTIVE")
+          ? "You're already signed in on another device. Log out there or enable concurrent sessions."
+          : msg;
+      setErrorText(friendly);
+      Alert.alert("Login failed", friendly);
     }
   };
 
@@ -52,13 +60,20 @@ export default function Login() {
       return;
     }
     setOtpError(null);
+    setErrorText(null);
     try {
       await dispatch(verifyHostOtp(otpPending.hostId, otp.trim(), otpPending.password));
       setOtpPending(null);
       setOtp("");
       router.replace("/host/dashboard");
     } catch (e: any) {
-      setOtpError(e?.message || "Verification failed");
+      const msg = e?.message || "Verification failed";
+      const friendly =
+        msg.includes("already signed in") || msg.includes("SESSION_ACTIVE")
+          ? "You're already signed in on another device. Log out there or enable concurrent sessions."
+          : msg;
+      setOtpError(friendly);
+      setErrorText(friendly);
     }
   };
 
@@ -85,8 +100,9 @@ export default function Login() {
               }}
             />
             {otpError ? <Text style={[styles.error, { color: colors.notification }]}>{otpError}</Text> : null}
+            {errorText && !otpError ? <Text style={[styles.error, { color: colors.notification }]}>{errorText}</Text> : null}
             <AppButton label="Verify" onPress={onVerifyOtp} disabled={!otp.trim() || status === "loading"} loading={status === "loading"} />
-            <AppButton label="Back" variant="ghost" onPress={() => { setOtpPending(null); setOtp(""); }} />
+            <AppButton label="Back" variant="ghost" onPress={() => { setOtpPending(null); setOtp(""); setOtpError(null); setErrorText(null); }} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -154,6 +170,7 @@ export default function Login() {
           />
 
           <AppButton label="Continue" onPress={onSubmit} disabled={disable} loading={status === "loading"} />
+          {errorText ? <Text style={[styles.error, { color: colors.notification, textAlign: "center" }]}>{errorText}</Text> : null}
 
         <Pressable onPress={() => router.push("/(auth)/forgot-password")}>
           <Text style={[styles.forgot, { color: colors.text }]}>Forgot Password?</Text>
@@ -206,6 +223,7 @@ const styles = StyleSheet.create({
   error: {
     fontSize: 13,
     marginTop: 4,
+    textAlign: "center",
   },
 });
 
