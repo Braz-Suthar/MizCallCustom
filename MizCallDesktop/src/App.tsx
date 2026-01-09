@@ -155,12 +155,14 @@ const Login = ({
   onSubmit,
   loading,
   error,
+  onForgot,
 }: {
   goRegister: () => void;
   onBack: () => void;
   onSubmit: (payload: { identifier: string; password: string }) => void;
   loading: boolean;
   error: string | null;
+  onForgot: () => void;
 }) => {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -203,7 +205,7 @@ const Login = ({
 
           <div className="flex between">
             <span />
-            <button className="linklike">Forgot your password?</button>
+            <button className="linklike" onClick={onForgot}>Forgot your password?</button>
           </div>
 
           {error ? <p className="error">{error}</p> : null}
@@ -446,11 +448,26 @@ function App() {
     email?: string;
     avatarUrl?: string;
     password?: string;
+    twoFactorEnabled?: boolean;
   } | null>(null);
   const [tab, setTab] = useState<NavTab>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
   const [systemPref, setSystemPref] = useState<"light" | "dark">("light");
+  const [hostOtpPending, setHostOtpPending] = useState<{ hostId: string; email?: string; password: string } | null>(null);
+  const [loginOtpCode, setLoginOtpCode] = useState("");
+  const [loginOtpError, setLoginOtpError] = useState<string | null>(null);
+  const [loginOtpLoading, setLoginOtpLoading] = useState(false);
+  const [loginOtpResendTimer, setLoginOtpResendTimer] = useState(0);
+  const [forgotStep, setForgotStep] = useState<"none" | "request" | "reset">("none");
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
+  const [forgotHostId, setForgotHostId] = useState("");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotOtp, setForgotOtp] = useState("");
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: "info" | "success" | "error" } | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -466,6 +483,7 @@ function App() {
   const [deviceLockEnabled, setDeviceLockEnabled] = useState(false);
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [notifText, setNotifText] = useState("");
   const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string | null }>>([]);
@@ -604,6 +622,25 @@ function App() {
   }, [session]);
 
   useEffect(() => {
+    setTwoFactorEnabled(!!session?.twoFactorEnabled);
+  }, [session?.twoFactorEnabled]);
+
+  useEffect(() => {
+    if (!hostOtpPending) {
+      setLoginOtpResendTimer(0);
+      setLoginOtpCode("");
+      setLoginOtpError(null);
+      setLoginOtpLoading(false);
+      return;
+    }
+    setLoginOtpResendTimer((t) => (t === 0 ? 25 : t));
+    const timer = setInterval(() => {
+      setLoginOtpResendTimer((t) => (t > 0 ? t - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [hostOtpPending]);
+
+  useEffect(() => {
     try {
       if (session) {
         localStorage.setItem("mizcall.session", JSON.stringify(session));
@@ -626,6 +663,13 @@ function App() {
       if (!isUser) {
         const data = await window.mizcall?.loginHost?.(payload.identifier, payload.password);
         if (!data) throw new Error("Bridge unavailable");
+        if ((data as any).requireOtp) {
+          setHostOtpPending({ hostId: (data as any).hostId, email: (data as any).email, password: payload.password });
+          setLoginOtpCode("");
+          setLoginOtpError(null);
+          setScreen("login");
+          return;
+        }
         setSession({
           role: "host",
           token: data.token,
@@ -634,6 +678,7 @@ function App() {
           name: data.name ?? payload.identifier,
           avatarUrl: data.avatarUrl,
           password: payload.password,
+          twoFactorEnabled: (data as any).twoFactorEnabled ?? false,
         });
         setScreen("login");
       } else {
@@ -650,6 +695,7 @@ function App() {
           name: userData.name ?? payload.identifier,
           avatarUrl: userData.avatarUrl,
           password: userData.password ?? payload.password,
+          twoFactorEnabled: false,
         });
         setScreen("login");
       }
@@ -657,6 +703,139 @@ function App() {
       setError(e instanceof Error ? e.message : "Login failed");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const verifyHostLoginOtp = async () => {
+    if (!hostOtpPending) return;
+    if (!loginOtpCode.trim()) {
+      setLoginOtpError("Enter the 6-digit code");
+      return;
+    }
+    setLoginOtpLoading(true);
+    setLoginOtpError(null);
+    try {
+      const data = await window.mizcall?.verifyHostOtp?.(hostOtpPending.hostId, loginOtpCode.trim());
+      if (!data) throw new Error("Bridge unavailable");
+      setSession({
+        role: "host",
+        token: (data as any).token,
+        refreshToken: (data as any).refreshToken,
+        hostId: (data as any).hostId,
+        name: (data as any).name ?? hostOtpPending.hostId,
+        avatarUrl: (data as any).avatarUrl,
+        password: hostOtpPending.password,
+        twoFactorEnabled: (data as any).twoFactorEnabled ?? true,
+        email: (data as any).email ?? hostOtpPending.email,
+      });
+      setHostOtpPending(null);
+      setLoginOtpCode("");
+      setLoginOtpResendTimer(0);
+      setScreen("login");
+    } catch (e) {
+      setLoginOtpError(e instanceof Error ? e.message : "Verification failed");
+    } finally {
+      setLoginOtpLoading(false);
+    }
+  };
+
+  const resendHostLoginOtp = async () => {
+    if (!hostOtpPending || loginOtpResendTimer > 0) return;
+    try {
+      setLoginOtpError(null);
+      setLoginOtpLoading(true);
+      const data = await window.mizcall?.loginHost?.(hostOtpPending.email || hostOtpPending.hostId, hostOtpPending.password);
+      if (!data) throw new Error("Bridge unavailable");
+      if (!(data as any).requireOtp) {
+        // Received tokens directly; log user in
+        setSession({
+          role: "host",
+          token: (data as any).token,
+          refreshToken: (data as any).refreshToken,
+          hostId: (data as any).hostId,
+          name: (data as any).name ?? hostOtpPending.hostId,
+          avatarUrl: (data as any).avatarUrl,
+          password: hostOtpPending.password,
+          twoFactorEnabled: (data as any).twoFactorEnabled ?? false,
+          email: (data as any).email ?? hostOtpPending.email,
+        });
+        setHostOtpPending(null);
+        setLoginOtpCode("");
+        setLoginOtpResendTimer(0);
+        return;
+      }
+      setHostOtpPending({
+        hostId: (data as any).hostId,
+        email: (data as any).email ?? hostOtpPending.email,
+        password: hostOtpPending.password,
+      });
+      setLoginOtpResendTimer(25);
+    } catch (e) {
+      setLoginOtpError(e instanceof Error ? e.message : "Resend failed");
+    } finally {
+      setLoginOtpLoading(false);
+    }
+  };
+
+  const handleForgotSendOtp = async () => {
+    setForgotError(null);
+    if (!forgotIdentifier.trim()) {
+      setForgotError("Enter email or Host ID");
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const data = await window.mizcall?.requestHostPasswordOtp?.(forgotIdentifier.trim());
+      if (!data) throw new Error("Bridge unavailable");
+      setForgotHostId((data as any).hostId || "");
+      setForgotEmail((data as any).email || "");
+      setForgotStep("reset");
+      setForgotOtp("");
+      setForgotNewPassword("");
+      setForgotConfirmPassword("");
+      showToast("OTP sent", "success");
+    } catch (e) {
+      setForgotError(e instanceof Error ? e.message : "Failed to send OTP");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleForgotReset = async () => {
+    setForgotError(null);
+    if (!forgotHostId.trim() || !forgotOtp.trim()) {
+      setForgotError("Enter the code");
+      return;
+    }
+    if (!forgotNewPassword.trim() || forgotNewPassword.length < 6) {
+      setForgotError("Password must be at least 6 characters");
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      setForgotError("Passwords do not match");
+      return;
+    }
+    setForgotLoading(true);
+    try {
+      const ok = await window.mizcall?.resetHostPassword?.({
+        hostId: forgotHostId.trim(),
+        otp: forgotOtp.trim(),
+        newPassword: forgotNewPassword,
+      });
+      if (ok && (ok as any).ok) {
+        showToast("Password reset. Please login.", "success");
+        setForgotStep("none");
+        setForgotIdentifier(forgotHostId);
+        setForgotOtp("");
+        setForgotNewPassword("");
+        setForgotConfirmPassword("");
+      } else {
+        throw new Error("Reset failed");
+      }
+    } catch (e) {
+      setForgotError(e instanceof Error ? e.message : "Failed to reset password");
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -685,7 +864,18 @@ function App() {
       throw new Error(`Refresh failed (${res.status})`);
     }
     const data = await res.json();
-    setSession((prev) => (prev ? { ...prev, token: data.token, refreshToken: data.refreshToken ?? prev.refreshToken, name: data.name ?? prev.name, avatarUrl: data.avatarUrl ?? prev.avatarUrl } : prev));
+    setSession((prev) =>
+      prev
+        ? {
+            ...prev,
+            token: data.token,
+            refreshToken: data.refreshToken ?? prev.refreshToken,
+            name: data.name ?? prev.name,
+            avatarUrl: data.avatarUrl ?? prev.avatarUrl,
+            twoFactorEnabled: data.twoFactorEnabled ?? prev.twoFactorEnabled,
+          }
+        : prev
+    );
     return data.token as string;
   }, [session?.refreshToken]);
 
@@ -1620,6 +1810,28 @@ function App() {
     }
   };
 
+  const handleToggleTwoFactor = async () => {
+    if (!session || session.role !== "host") return;
+    try {
+      const nextValue = !twoFactorEnabled;
+      setTwoFactorEnabled(nextValue);
+      const res = await authFetch(`${API_BASE}/host/security`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ twoFactorEnabled: nextValue }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to update security settings");
+      }
+      setSession((prev) => (prev ? { ...prev, twoFactorEnabled: nextValue } : prev));
+      showToast("Security settings updated", "success");
+    } catch (err) {
+      setTwoFactorEnabled((prev) => !prev);
+      showToast(err instanceof Error ? err.message : "Update failed", "error");
+    }
+  };
+
   useEffect(() => {
     if (tab === "users" && session?.role === "host") {
       fetchUsers();
@@ -1823,7 +2035,7 @@ function App() {
           : null;
       if (avatarUrl) {
         setSession((prev) => (prev ? { ...prev, avatarUrl } : prev));
-        showToast("Profile picture updated", "success");
+      showToast("Profile picture updated", "success");
       } else {
         showToast("Upload succeeded but no URL returned", "info");
       }
@@ -2000,6 +2212,131 @@ function App() {
     } finally {
       setEditProfileLoading(false);
     }
+  };
+
+  const renderAuthShell = () => {
+    if (hostOtpPending) {
+      return (
+        <div className="auth-shell">
+          <div className="auth-left single">
+            <div className="logo-wrap">
+              <img src={logoWhite} alt="MizCall" className="logo-img" />
+            </div>
+            <div className="auth-card flat verify-card">
+              <div className="stack gap-xxs center">
+                <h2 className="title auth-title">Enter login code</h2>
+                <p className="muted small">We sent a 6-digit code to {hostOtpPending.email || "your email"}</p>
+                <button className="linklike" onClick={() => { setHostOtpPending(null); setLoginOtpCode(""); }}>Use a different account</button>
+              </div>
+              <Input
+                label="OTP Code"
+                value={loginOtpCode}
+                onChange={setLoginOtpCode}
+                placeholder="123456"
+              />
+              {loginOtpError ? <p className="error">{loginOtpError}</p> : null}
+              <div className="full-width">
+                <Button label={loginOtpLoading ? "Verifying…" : "Verify"} onClick={verifyHostLoginOtp} loading={loginOtpLoading} />
+              </div>
+              <div className="resend-row">
+                <span className="muted small">Didn’t receive the code?</span>
+                <button className="linklike" disabled={loginOtpResendTimer > 0 || loginOtpLoading} onClick={resendHostLoginOtp}>
+                  Resend OTP {loginOtpResendTimer > 0 ? `(${loginOtpResendTimer}s)` : ""}
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="auth-right">
+            <div className="auth-hero">
+              <h2 className="title auth-title">Protecting your account</h2>
+              <p className="muted">
+                Two-factor authentication keeps your host account secure. Enter the code we emailed to continue.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (forgotStep !== "none") {
+      return (
+        <div className="auth-shell">
+          <div className="auth-left single">
+            <div className="logo-wrap">
+              <img src={logoWhite} alt="MizCall" className="logo-img" />
+            </div>
+            <div className="auth-card flat">
+              <div className="stack gap-xxs center">
+                <h2 className="title auth-title">Reset your password</h2>
+                <p className="muted small">Hosts only. We’ll email you a reset code.</p>
+              </div>
+              {forgotStep === "request" && (
+                <>
+                  <Input
+                    label="Email or Host ID"
+                    value={forgotIdentifier}
+                    onChange={setForgotIdentifier}
+                    placeholder="host@example.com or H123456"
+                  />
+                  {forgotError ? <p className="error">{forgotError}</p> : null}
+                  <div className="full-width">
+                    <Button label={forgotLoading ? "Sending…" : "Send code"} onClick={handleForgotSendOtp} loading={forgotLoading} />
+                  </div>
+                  <button className="linklike center" onClick={() => { setForgotStep("none"); setForgotError(null); }}>
+                    Back to sign in
+                  </button>
+                </>
+              )}
+              {forgotStep === "reset" && (
+                <>
+                  <Input label="OTP Code" value={forgotOtp} onChange={setForgotOtp} placeholder="123456" />
+                  <Input label="New Password" value={forgotNewPassword} onChange={setForgotNewPassword} type="password" placeholder="Minimum 6 characters" />
+                  <Input label="Confirm Password" value={forgotConfirmPassword} onChange={setForgotConfirmPassword} type="password" placeholder="Re-enter password" />
+                  {forgotError ? <p className="error">{forgotError}</p> : null}
+                  <div className="full-width">
+                    <Button label={forgotLoading ? "Resetting…" : "Reset password"} onClick={handleForgotReset} loading={forgotLoading} />
+                  </div>
+                  <button className="linklike center" onClick={() => { setForgotStep("request"); setForgotError(null); }}>
+                    Resend code
+                  </button>
+                  <button className="linklike center" onClick={() => { setForgotStep("none"); setForgotError(null); }}>
+                    Back to sign in
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="auth-right">
+            <div className="auth-hero">
+              <h2 className="title auth-title">Secure access</h2>
+              <p className="muted">
+                Reset your host password with a one-time code. Keep your account safe and only share codes with trusted contacts.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (screen === "register") {
+      return (
+        <Register
+          goLogin={() => setScreen("login")}
+          onBack={() => setScreen("login")}
+        />
+      );
+    }
+
+    return (
+      <Login
+        goRegister={() => setScreen("register")}
+        onBack={() => setScreen("login")}
+        onSubmit={doLogin}
+        loading={loading}
+        error={error}
+        onForgot={() => { setForgotStep("request"); setForgotError(null); }}
+      />
+    );
   };
 
   const renderAppShell = () => {
@@ -2639,6 +2976,13 @@ function App() {
                     <Button label="Change Password" variant="secondary" onClick={() => setShowChangePassword(true)} />
                   </div>
                   <p className="muted small">Secure your account with a new password.</p>
+                  <div className="row-inline between">
+                    <div className="stack gap-xxs">
+                      <strong>Two-factor login</strong>
+                      <span className="muted small">Send OTP when signing in.</span>
+                    </div>
+                    <ToggleSwitch checked={twoFactorEnabled} onToggle={handleToggleTwoFactor} />
+                  </div>
                 </div>
 
                 <div className="card stack gap-sm">
@@ -2907,23 +3251,7 @@ function App() {
         {session ? (
           renderAppShell()
         ) : (
-          <>
-            {screen === "login" && (
-              <Login
-                goRegister={() => setScreen("register")}
-                onBack={() => setScreen("login")}
-                onSubmit={doLogin}
-                loading={loading}
-                error={error}
-              />
-            )}
-            {screen === "register" && (
-              <Register
-                goLogin={() => setScreen("login")}
-                onBack={() => setScreen("login")}
-              />
-            )}
-          </>
+          renderAuthShell()
         )}
       </main>
       {toast ? (

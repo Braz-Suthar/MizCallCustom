@@ -42,6 +42,16 @@ router.patch("/profile", requireAuth, requireHost, async (req, res) => {
   res.json({ name: displayName || emailValue, email: emailValue });
 });
 
+/* HOST SECURITY SETTINGS */
+router.patch("/security", requireAuth, requireHost, async (req, res) => {
+  const { twoFactorEnabled } = req.body;
+  if (twoFactorEnabled === undefined) {
+    return res.status(400).json({ error: "twoFactorEnabled is required" });
+  }
+  await query("UPDATE hosts SET two_factor_enabled = $1 WHERE id = $2", [!!twoFactorEnabled, req.hostId]);
+  res.json({ twoFactorEnabled: !!twoFactorEnabled });
+});
+
 /* DASHBOARD STATS */
 router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
   try {

@@ -18,26 +18,56 @@ const transporter = nodemailer.createTransport({
 
 const fromAddress = process.env.EMAIL_FROM || "mizcallofficial@gmail.com";
 
+const OTP_TEMPLATES = {
+  login: {
+    subject: "Your MizCall login code",
+    text: (otp, name) =>
+      `Hi ${name || "there"},\n\nYour MizCall login code is ${otp}.\nIt expires in 5 minutes.\n\nIf you did not request this, please secure your account.\n\n- MizCall Team`,
+  },
+  registration: {
+    subject: "Verify your email for MizCall",
+    text: (otp, name) =>
+      `Welcome ${name || ""}!\n\nYour MizCall verification code is ${otp}.\nIt expires in 5 minutes.\n\nEnter this code to finish setting up your account.\n\n- MizCall Team`,
+  },
+  reset: {
+    subject: "Reset your MizCall password",
+    text: (otp, name) =>
+      `Hi ${name || "there"},\n\nUse this code to reset your MizCall password: ${otp}.\nIt expires in 5 minutes.\n\nIf you did not request this, you can ignore this email.\n\n- MizCall Team`,
+  },
+};
+
+async function sendOtpEmail(type, to, otp, name = "") {
+  const template = OTP_TEMPLATES[type];
+  if (!template) throw new Error("Unknown OTP template");
+
+  if (!transporter.options?.auth?.pass) {
+    console.warn(`[otp:${type}] EMAIL_PASS not configured; skipping real send. OTP:`, otp);
+    return { mock: true };
+  }
+
+  await transporter.sendMail({
+    from: fromAddress,
+    to,
+    subject: template.subject,
+    text: template.text(otp, name),
+  });
+  return { mock: false };
+}
+
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 router.post("/otp/send", async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: "email required" });
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = generateOtp();
   setOtp(email.trim().toLowerCase(), otp);
 
-  if (!transporter.options?.auth?.pass) {
-    console.warn("[otp/send] EMAIL_PASS not configured; skipping real send. OTP:", otp);
-    return res.json({ ok: true, mock: true });
-  }
-
   try {
-    await transporter.sendMail({
-      from: fromAddress,
-      to: email,
-      subject: "Your MizCall OTP",
-      text: `Your MizCall OTP is ${otp}. It expires in 5 minutes.`,
-    });
-    res.json({ ok: true });
+    const info = await sendOtpEmail("registration", email, otp);
+    res.json({ ok: true, ...info });
   } catch (e) {
     console.error("[otp/send] sendMail failed", e);
     res.status(500).json({ error: "Failed to send OTP" });
@@ -62,14 +92,14 @@ router.post("/host/login", async (req, res) => {
   const normalizedEmail = identifier.includes("@") ? identifier.toLowerCase() : null;
 
   const result = await query(
-    "SELECT id, name, display_name, password, avatar_url FROM hosts WHERE id = $1 OR lower(name) = $2",
+    "SELECT id, name, display_name, password, avatar_url, two_factor_enabled FROM hosts WHERE id = $1 OR lower(name) = $2",
     [identifier, normalizedEmail]
   );
 
   if (result.rowCount === 0)
     return res.status(401).json({ error: "Invalid host" });
 
-  const { id, name, display_name, password: hashed, avatar_url } = result.rows[0];
+  const { id, name, display_name, password: hashed, avatar_url, two_factor_enabled } = result.rows[0];
   if (!hashed) {
     return res.status(401).json({ error: "Password not set for this host" });
   }
@@ -79,9 +109,24 @@ router.post("/host/login", async (req, res) => {
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
+  if (two_factor_enabled) {
+    if (!name) {
+      return res.status(400).json({ error: "Host email not set; cannot send OTP" });
+    }
+    const otp = generateOtp();
+    setOtp(`host-login:${id}`, otp);
+    try {
+      await sendOtpEmail("login", name, otp, display_name || name);
+    } catch (err) {
+      console.error("[host/login] failed to send login otp", err);
+      return res.status(500).json({ error: "Failed to send OTP" });
+    }
+    return res.json({ requireOtp: true, hostId: id, email: name, message: "OTP sent to email" });
+  }
+
   const token = signToken({ role: "host", hostId: id });
   const refreshToken = signRefreshToken({ role: "host", hostId: id });
-  res.json({ token, refreshToken, hostId: id, name: display_name || name, email: name, avatarUrl: avatar_url });
+  res.json({ token, refreshToken, hostId: id, name: display_name || name, email: name, avatarUrl: avatar_url, twoFactorEnabled: !!two_factor_enabled });
 });
 
 /* HOST REGISTRATION (name only) */
@@ -101,7 +146,7 @@ router.post("/host/register", async (req, res) => {
 
   const token = signToken({ role: "host", hostId });
   const refreshToken = signRefreshToken({ role: "host", hostId });
-  res.json({ hostId, token, refreshToken, avatarUrl: null, name: hostName, email: hostName });
+  res.json({ hostId, token, refreshToken, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false });
 });
 
 /* USER LOGIN (by id or username, plain text password) */
@@ -139,6 +184,77 @@ router.post("/user/login", async (req, res) => {
   });
 });
 
+router.post("/host/login/otp", async (req, res) => {
+  const { hostId, otp } = req.body;
+  if (!hostId || !otp) return res.status(400).json({ error: "hostId and otp required" });
+  const normalizedId = hostId.trim();
+
+  const result = await query(
+    "SELECT id, name, display_name, avatar_url, two_factor_enabled FROM hosts WHERE id = $1",
+    [normalizedId]
+  );
+  if (result.rowCount === 0) return res.status(401).json({ error: "Invalid host" });
+
+  const { id, name, display_name, avatar_url, two_factor_enabled } = result.rows[0];
+  const ok = verifyOtp(`host-login:${id}`, String(otp).trim());
+  if (!ok) return res.status(400).json({ error: "Invalid or expired code" });
+
+  const token = signToken({ role: "host", hostId: id });
+  const refreshToken = signRefreshToken({ role: "host", hostId: id });
+  res.json({
+    token,
+    refreshToken,
+    hostId: id,
+    name: display_name || name,
+    email: name,
+    avatarUrl: avatar_url,
+    twoFactorEnabled: !!two_factor_enabled,
+  });
+});
+
+router.post("/host/password/otp", async (req, res) => {
+  const { hostId, email } = req.body;
+  if (!hostId && !email) return res.status(400).json({ error: "hostId or email required" });
+  const identifier = (hostId || email || "").trim();
+  const normalizedEmail = identifier.includes("@") ? identifier.toLowerCase() : null;
+
+  const result = await query(
+    "SELECT id, name, display_name FROM hosts WHERE id = $1 OR lower(name) = $2",
+    [identifier, normalizedEmail]
+  );
+  if (result.rowCount === 0) return res.status(404).json({ error: "Host not found" });
+
+  const { id, name, display_name } = result.rows[0];
+  const targetEmail = name || normalizedEmail;
+  if (!targetEmail) return res.status(400).json({ error: "Host email missing" });
+
+  const code = generateOtp();
+  setOtp(`host-reset:${id}`, code);
+  try {
+    await sendOtpEmail("reset", targetEmail, code, display_name || targetEmail);
+    res.json({ ok: true, hostId: id, email: targetEmail });
+  } catch (err) {
+    console.error("[host/password/otp] send failed", err);
+    res.status(500).json({ error: "Failed to send OTP" });
+  }
+});
+
+router.post("/host/password/reset", async (req, res) => {
+  const { hostId, otp, newPassword } = req.body;
+  if (!hostId || !otp || !newPassword) return res.status(400).json({ error: "hostId, otp, and newPassword required" });
+  if (String(newPassword).length < 6) return res.status(400).json({ error: "Password too short" });
+
+  const result = await query("SELECT id FROM hosts WHERE id = $1", [hostId.trim()]);
+  if (result.rowCount === 0) return res.status(404).json({ error: "Host not found" });
+
+  const ok = verifyOtp(`host-reset:${hostId.trim()}`, String(otp).trim());
+  if (!ok) return res.status(400).json({ error: "Invalid or expired code" });
+
+  const hashed = await bcrypt.hash(String(newPassword), 10);
+  await query("UPDATE hosts SET password = $1 WHERE id = $2", [hashed, hostId.trim()]);
+  res.json({ ok: true });
+});
+
 router.post("/refresh", async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(400).json({ error: "refreshToken required" });
@@ -147,11 +263,11 @@ router.post("/refresh", async (req, res) => {
     const payload = verifyRefreshToken(refreshToken);
     if (payload.role === "host") {
       const result = await query(
-        "SELECT id, name, display_name, avatar_url FROM hosts WHERE id = $1",
+        "SELECT id, name, display_name, avatar_url, two_factor_enabled FROM hosts WHERE id = $1",
         [payload.hostId]
       );
       if (result.rowCount === 0) return res.status(401).json({ error: "Host not found" });
-      const { id, name, display_name, avatar_url } = result.rows[0];
+      const { id, name, display_name, avatar_url, two_factor_enabled } = result.rows[0];
       const token = signToken({ role: "host", hostId: id });
       const nextRefresh = signRefreshToken({ role: "host", hostId: id });
       return res.json({
@@ -161,6 +277,7 @@ router.post("/refresh", async (req, res) => {
         name: display_name || name,
         email: name,
         avatarUrl: avatar_url,
+        twoFactorEnabled: !!two_factor_enabled,
       });
     }
 

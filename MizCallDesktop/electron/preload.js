@@ -16,6 +16,45 @@ const bridge = {
     }
     return res.json();
   },
+  async verifyHostOtp(hostId, otp) {
+    const res = await fetch(`${API_BASE}/auth/host/login/otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostId, otp }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `OTP verification failed (${res.status})`);
+    }
+    return res.json();
+  },
+  async requestHostPasswordOtp(identifier) {
+    const body = identifier.includes("@")
+      ? { email: identifier.trim() }
+      : { hostId: identifier.trim() };
+    const res = await fetch(`${API_BASE}/auth/host/password/otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Send OTP failed (${res.status})`);
+    }
+    return res.json();
+  },
+  async resetHostPassword({ hostId, otp, newPassword }) {
+    const res = await fetch(`${API_BASE}/auth/host/password/reset`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostId, otp, newPassword }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Reset failed (${res.status})`);
+    }
+    return res.json();
+  },
   async loginUser(userId, password) {
     const res = await fetch(`${API_BASE}/auth/user/login`, {
       method: "POST",
