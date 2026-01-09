@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { query } from "../../services/db.js";
-import { signToken } from "../../services/auth.js";
+import { signToken, signRefreshToken, verifyRefreshToken } from "../../services/auth.js";
 import { generateHostId } from "../../services/id.js";
 import nodemailer from "nodemailer";
 import { setOtp, verifyOtp } from "../../services/otpStore.js";
@@ -80,7 +80,8 @@ router.post("/host/login", async (req, res) => {
   }
 
   const token = signToken({ role: "host", hostId: id });
-  res.json({ token, hostId: id, name: display_name || name, email: name, avatarUrl: avatar_url });
+  const refreshToken = signRefreshToken({ role: "host", hostId: id });
+  res.json({ token, refreshToken, hostId: id, name: display_name || name, email: name, avatarUrl: avatar_url });
 });
 
 /* HOST REGISTRATION (name only) */
@@ -99,7 +100,8 @@ router.post("/host/register", async (req, res) => {
   );
 
   const token = signToken({ role: "host", hostId });
-  res.json({ hostId, token, avatarUrl: null, name: hostName, email: hostName });
+  const refreshToken = signRefreshToken({ role: "host", hostId });
+  res.json({ hostId, token, refreshToken, avatarUrl: null, name: hostName, email: hostName });
 });
 
 /* USER LOGIN (by id or username, plain text password) */
@@ -125,14 +127,71 @@ router.post("/user/login", async (req, res) => {
 
   const { id: resolvedId, host_id: hostId, username, password: plainPassword, avatar_url } = result.rows[0];
   const token = signToken({ role: "user", userId: resolvedId, hostId });
+  const refreshToken = signRefreshToken({ role: "user", userId: resolvedId, hostId });
   res.json({
     token,
+    refreshToken,
     hostId,
     userId: resolvedId,
     name: username || resolvedId,
     password: plainPassword,
     avatarUrl: avatar_url ?? null,
   });
+});
+
+router.post("/refresh", async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken) return res.status(400).json({ error: "refreshToken required" });
+
+  try {
+    const payload = verifyRefreshToken(refreshToken);
+    if (payload.role === "host") {
+      const result = await query(
+        "SELECT id, name, display_name, avatar_url FROM hosts WHERE id = $1",
+        [payload.hostId]
+      );
+      if (result.rowCount === 0) return res.status(401).json({ error: "Host not found" });
+      const { id, name, display_name, avatar_url } = result.rows[0];
+      const token = signToken({ role: "host", hostId: id });
+      const nextRefresh = signRefreshToken({ role: "host", hostId: id });
+      return res.json({
+        token,
+        refreshToken: nextRefresh,
+        hostId: id,
+        name: display_name || name,
+        email: name,
+        avatarUrl: avatar_url,
+      });
+    }
+
+    if (payload.role === "user") {
+      const result = await query(
+        `SELECT id, host_id, username, enabled, password, avatar_url
+         FROM users WHERE id = $1`,
+        [payload.userId]
+      );
+      if (result.rowCount === 0) return res.status(401).json({ error: "User not found" });
+      const { id, host_id: hostId, username, enabled, password, avatar_url } = result.rows[0];
+      if (!enabled) return res.status(403).json({ error: "User disabled by host" });
+
+      const token = signToken({ role: "user", userId: id, hostId });
+      const nextRefresh = signRefreshToken({ role: "user", userId: id, hostId });
+      return res.json({
+        token,
+        refreshToken: nextRefresh,
+        hostId,
+        userId: id,
+        name: username || id,
+        avatarUrl: avatar_url ?? null,
+        password,
+      });
+    }
+
+    return res.status(400).json({ error: "Unknown role" });
+  } catch (err) {
+    console.error("[auth/refresh] failed", err);
+    return res.status(401).json({ error: "Invalid refresh token" });
+  }
 });
 
 export default router;

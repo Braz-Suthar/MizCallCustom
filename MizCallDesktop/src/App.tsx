@@ -31,7 +31,7 @@
       refs.current[index - 1]?.focus();
     }
   };
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { Device } from "mediasoup-client";
 import {
@@ -439,6 +439,7 @@ function App() {
   const [session, setSession] = useState<{
     role: Mode;
     token: string;
+    refreshToken?: string;
     hostId?: string;
     userId?: string;
     name?: string;
@@ -628,6 +629,7 @@ function App() {
         setSession({
           role: "host",
           token: data.token,
+          refreshToken: data.refreshToken,
           hostId: data.hostId,
           name: data.name ?? payload.identifier,
           avatarUrl: data.avatarUrl,
@@ -642,6 +644,7 @@ function App() {
         setSession({
           role: "user",
           token: userData.token,
+          refreshToken: userData.refreshToken,
           userId: userData.userId ?? payload.identifier,
           hostId: userData.hostId,
           name: userData.name ?? payload.identifier,
@@ -657,7 +660,7 @@ function App() {
     }
   };
 
-  const doLogout = () => {
+  const doLogout = useCallback(() => {
     setSession(null);
     setError(null);
     setScreen("login");
@@ -667,7 +670,45 @@ function App() {
     } catch {
       // ignore
     }
-  };
+  }, []);
+
+  const refreshAccessToken = useCallback(async () => {
+    if (!session?.refreshToken) {
+      throw new Error("No refresh token available");
+    }
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: session.refreshToken }),
+    });
+    if (!res.ok) {
+      throw new Error(`Refresh failed (${res.status})`);
+    }
+    const data = await res.json();
+    setSession((prev) => (prev ? { ...prev, token: data.token, refreshToken: data.refreshToken ?? prev.refreshToken, name: data.name ?? prev.name, avatarUrl: data.avatarUrl ?? prev.avatarUrl } : prev));
+    return data.token as string;
+  }, [session?.refreshToken]);
+
+  const authFetch = useCallback(
+    async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      if (!session?.token) {
+        throw new Error("Not authenticated");
+      }
+      const baseHeaders = init.headers instanceof Headers ? Object.fromEntries(init.headers.entries()) : { ...(init.headers as Record<string, string> | undefined) };
+      let res = await fetch(input, { ...init, headers: { ...baseHeaders, Authorization: `Bearer ${session.token}` } });
+      if (res.status === 401 && session.refreshToken) {
+        try {
+          const newToken = await refreshAccessToken();
+          res = await fetch(input, { ...init, headers: { ...baseHeaders, Authorization: `Bearer ${newToken}` } });
+        } catch (err) {
+          doLogout();
+          throw err;
+        }
+      }
+      return res;
+    },
+    [session?.token, session?.refreshToken, refreshAccessToken, doLogout]
+  );
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -702,11 +743,7 @@ function App() {
     setUsersLoading(true);
     setUsersError(null);
     try {
-      const res = await fetch(`${API_BASE}/host/users`, {
-        headers: {
-          Authorization: `Bearer ${session.token}`,
-        },
-      });
+      const res = await authFetch(`${API_BASE}/host/users`);
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(txt || `Error ${res.status}`);
@@ -730,9 +767,8 @@ function App() {
   const handleDeleteUser = async (userId: string) => {
     if (!session?.token) return;
     try {
-      const res = await fetch(`${API_BASE}/host/users/${userId}`, {
+      const res = await authFetch(`${API_BASE}/host/users/${userId}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${session.token}` },
       });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       setUsers((prev) => prev.filter((u) => u.id !== userId));
@@ -750,11 +786,10 @@ function App() {
     }
     setCreateLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/host/users`, {
+      const res = await authFetch(`${API_BASE}/host/users`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.token}`,
         },
         body: JSON.stringify({
           username: createUsername.trim(),
@@ -789,11 +824,10 @@ function App() {
   const handleEditUser = async () => {
     if (!session?.token || session.role !== "host" || !editUser) return;
     try {
-      const res = await fetch(`${API_BASE}/host/users/${editUser.id}`, {
+      const res = await authFetch(`${API_BASE}/host/users/${editUser.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.token}`,
         },
         body: JSON.stringify({
           enabled: editEnabled,
@@ -820,9 +854,7 @@ function App() {
     setCallsLoading(true);
     setCallsError(null);
     try {
-      const res = await fetch(`${API_BASE}/host/calls`, {
-        headers: { Authorization: `Bearer ${session.token}` },
-      });
+      const res = await authFetch(`${API_BASE}/host/calls`);
       if (!res.ok) {
         const txt = await res.text();
         throw new Error(txt || `Error ${res.status}`);
@@ -840,9 +872,8 @@ function App() {
     if (!session?.token || session.role !== "host") return;
     setStartCallLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/host/calls/start`, {
+      const res = await authFetch(`${API_BASE}/host/calls/start`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${session.token}` },
       });
       if (!res.ok) {
         const txt = await res.text();
@@ -875,9 +906,8 @@ function App() {
   const endCall = async (id: string) => {
     if (!session?.token || session.role !== "host") return leaveCall();
     try {
-      const res = await fetch(`${API_BASE}/host/calls/${id}/end`, {
+      const res = await authFetch(`${API_BASE}/host/calls/${id}/end`, {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${session.token}` },
       });
       if (!res.ok) throw new Error(`End call failed (${res.status})`);
       const now = new Date().toISOString();
@@ -1563,11 +1593,10 @@ function App() {
     }
     try {
       setPwLoading(true);
-      const res = await fetch(`${API_BASE}/host/change-password`, {
+      const res = await authFetch(`${API_BASE}/host/change-password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.token}`,
         },
         body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }),
       });
@@ -1776,11 +1805,8 @@ function App() {
     const endpoint = session.role === "host" ? "/host/avatar" : "/user/avatar";
 
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`, {
+      const res = await authFetch(`${API_BASE}${endpoint}`, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${session.token}`,
-        },
         body: formData,
       });
       const data = await res.json();
@@ -1797,7 +1823,7 @@ function App() {
           : null;
       if (avatarUrl) {
         setSession((prev) => (prev ? { ...prev, avatarUrl } : prev));
-      showToast("Profile picture updated", "success");
+        showToast("Profile picture updated", "success");
       } else {
         showToast("Upload succeeded but no URL returned", "info");
       }
@@ -1815,9 +1841,7 @@ function App() {
     setRecordingsLoading(true);
     setRecordingsError(null);
     try {
-      const res = await fetch(`${API_BASE}/host/recordings`, {
-        headers: { Authorization: `Bearer ${session.token}` },
-      });
+      const res = await authFetch(`${API_BASE}/host/recordings`);
       if (!res.ok) {
         const msg = await res.text();
         throw new Error(msg || "Failed to load recordings");
@@ -1849,7 +1873,15 @@ function App() {
       if (!audioRef.current) {
         audioRef.current = new Audio();
       }
-      const src = `${API_BASE}/recordings/${recId}/stream?token=${encodeURIComponent(session.token)}`;
+      let playbackToken = session.token;
+      if (session.refreshToken) {
+        try {
+          playbackToken = await refreshAccessToken();
+        } catch {
+          // fallback to existing token if refresh fails; playback may error and will be handled below
+        }
+      }
+      const src = `${API_BASE}/recordings/${recId}/stream?token=${encodeURIComponent(playbackToken)}`;
       audioRef.current.src = src;
       await audioRef.current.play();
       setPlayingRecordingId(recId);
@@ -1872,9 +1904,8 @@ function App() {
   const deleteRecording = async (recId: string) => {
     if (!session?.token || session.role !== "host") return;
     try {
-      const res = await fetch(`${API_BASE}/host/recordings/${recId}`, {
+      const res = await authFetch(`${API_BASE}/host/recordings/${recId}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${session.token}` },
       });
       if (!res.ok) {
         const msg = await res.text();
@@ -1945,11 +1976,10 @@ function App() {
     }
     try {
       setEditProfileLoading(true);
-      const res = await fetch(`${API_BASE}/host/profile`, {
+      const res = await authFetch(`${API_BASE}/host/profile`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session.token}`,
         },
         body: JSON.stringify({ name: editProfileEmail.trim(), email: editProfileEmail.trim(), displayName: editProfileName.trim() }),
       });
