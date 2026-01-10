@@ -974,6 +974,34 @@ function App() {
     [session?.token, session?.refreshToken, refreshAccessToken, doLogout]
   );
 
+  const fetchUserActiveCall = useCallback(async () => {
+    if (!session || session.role !== "user") return;
+    try {
+      const res = await authFetch(`${API_BASE}/user/active-call`);
+      if (res.status === 404) {
+        setActiveCall(null);
+        hostProducerIdRef.current = null;
+        return;
+      }
+      if (!res.ok) return;
+      const data = await res.json();
+      const call = data?.call;
+      if (call) {
+        const id = call.id || call.room_id;
+        setActiveCall({
+          id,
+          started_at: call.started_at ?? new Date().toISOString(),
+          routerRtpCapabilities: call.router_rtp_capabilities ?? null,
+        });
+        if (call.host_producer_id) {
+          hostProducerIdRef.current = call.host_producer_id;
+        }
+      }
+    } catch (err) {
+      console.warn("[desktop] fetchUserActiveCall failed", err);
+    }
+  }, [authFetch, session]);
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -2007,6 +2035,11 @@ function App() {
     }
     if (tab === "calls" && session?.role === "host") {
       fetchCalls();
+    }
+
+    // For users, when landing on dashboard, check if host already has an active call
+    if (tab === "dashboard" && session?.role === "user") {
+      fetchUserActiveCall();
     }
 
     if (!activeCallListenerRef.current && window.mizcall?.onActiveCallContext) {

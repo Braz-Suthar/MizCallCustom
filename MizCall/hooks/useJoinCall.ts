@@ -140,6 +140,26 @@ export function useJoinCall() {
   };
 
   const join = useCallback(async () => {
+    // Ensure a clean slate on every join attempt (helps when rejoining)
+    try {
+      consumerRef.current?.close?.();
+    } catch {}
+    consumerRef.current = null;
+    try {
+      producerRef.current?.close?.();
+    } catch {}
+    producerRef.current = null;
+    producerIdRef.current = null;
+    recvTransportRef.current?.close?.();
+    recvTransportRef.current = null;
+    sendTransportRef.current?.close?.();
+    sendTransportRef.current = null;
+    deviceRef.current = null;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks?.().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+
     if (!token || role !== "user") {
       setError("Missing auth");
       setState("error");
