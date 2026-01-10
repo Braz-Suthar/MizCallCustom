@@ -21,7 +21,7 @@ export default function UserActiveCallScreen() {
   const primaryTint = primaryColor.startsWith("#") ? `${primaryColor}15` : primaryColor;
   const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
-  const { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket, callEnded } = useJoinCall();
+  const { join, leave, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket, callEnded } = useJoinCall();
   const hasJoinedRef = useRef(false);
   const [isPressing, setIsPressing] = React.useState(false);
   const [hostMuted, setHostMuted] = React.useState(false);
@@ -37,6 +37,7 @@ export default function UserActiveCallScreen() {
   useEffect(() => {
     if (callEnded && !isLeaving) {
       console.log("[user-active-call] Call ended by host, navigating to dashboard");
+      leave();
       setIsLeaving(true);
       
       // Navigate back after a short delay to show the toast
@@ -79,6 +80,7 @@ export default function UserActiveCallScreen() {
     setShowLeaveModal(false);
     hasJoinedRef.current = false;
     setIsLeaving(true);
+    leave();
     
     // Small delay to allow usePreventRemove to update
     setTimeout(() => {

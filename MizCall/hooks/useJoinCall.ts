@@ -35,6 +35,8 @@ export function useJoinCall() {
   const producerIdRef = useRef<string | null>(null);
   const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
+  const processedConsumerIdsRef = useRef<Set<string>>(new Set());
+const processedConsumerIdsRef = useRef<Set<string>>(new Set());
   const meterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zeroLevelCountRef = useRef(0);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -60,6 +62,8 @@ export function useJoinCall() {
       console.warn("[useJoinCall] Error closing consumer:", e);
     }
     consumerRef.current = null;
+    processedConsumerIdsRef.current.clear();
+    processedConsumerIdsRef.current.clear();
     
     // Close producer when leaving call
     try {
@@ -145,6 +149,7 @@ export function useJoinCall() {
       consumerRef.current?.close?.();
     } catch {}
     consumerRef.current = null;
+    processedConsumerIdsRef.current.clear();
     try {
       producerRef.current?.close?.();
     } catch {}
@@ -367,12 +372,30 @@ export function useJoinCall() {
         if (msg.type === "NEW_PRODUCER") {
           console.log("[useJoinCall] NEW_PRODUCER received:", msg.producerId);
           producerIdRef.current = msg.producerId;
+          // If a new producer arrives, drop any existing consumer so we can attach cleanly
+          if (consumerRef.current) {
+            try {
+              consumerRef.current.close?.();
+            } catch {}
+            consumerRef.current = null;
+            processedConsumerIdsRef.current.clear();
+            setRemoteStream(null);
+          }
           sendConsume(msg.producerId);
         }
 
         if (msg.type === "HOST_PRODUCER") {
           console.log("[useJoinCall] HOST_PRODUCER received:", msg.producerId);
           producerIdRef.current = msg.producerId;
+          // If host producer changes, drop any existing consumer so we can attach cleanly
+          if (consumerRef.current) {
+            try {
+              consumerRef.current.close?.();
+            } catch {}
+            consumerRef.current = null;
+            processedConsumerIdsRef.current.clear();
+            setRemoteStream(null);
+          }
           sendConsume(msg.producerId);
         }
 
@@ -401,10 +424,10 @@ export function useJoinCall() {
           }
           
           // Skip if we already have ANY consumer (prevent duplicate creation)
-          if (consumerRef.current) {
-            console.log("[useJoinCall] Consumer already exists (ID:", consumerRef.current.id, "), skipping event:", msg.type);
-            return;
-          }
+        if (consumerId && processedConsumerIdsRef.current.has(consumerId)) {
+          console.log("[useJoinCall] Consumer already processed (ID:", consumerId, "), skipping event:", msg.type);
+          return;
+        }
           
           if (!recvTransportRef.current || !deviceRef.current) {
             console.warn("[useJoinCall] recvTransport or device not ready");
@@ -422,6 +445,9 @@ export function useJoinCall() {
             });
             
             consumerRef.current = consumer;
+          if (consumerId) {
+            processedConsumerIdsRef.current.add(consumerId);
+          }
             console.log("[useJoinCall] Consumer created successfully");
             console.log("[useJoinCall] Consumer created, resuming...");
             // Resume to ensure audio flows
@@ -683,6 +709,11 @@ export function useJoinCall() {
     }
   }, [roomId]);
 
-  return { join, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket: socketRef.current, callEnded };
+  const leave = useCallback(() => {
+    cleanup();
+    setState("idle");
+  }, []);
+
+  return { join, leave, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket: socketRef.current, callEnded };
 }
 
