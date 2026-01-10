@@ -1,5 +1,6 @@
 import admin from "firebase-admin";
 import { query } from "./db.js";
+import fs from "fs";
 
 let firebaseInitialized = false;
 
@@ -26,7 +27,7 @@ export function initializeFirebase() {
     }
 
     const serviceAccount = JSON.parse(
-      require("fs").readFileSync(serviceAccountPath, "utf8")
+      fs.readFileSync(serviceAccountPath, "utf8")
     );
 
     admin.initializeApp({
