@@ -35,6 +35,8 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const pendingConsumeRef = useRef<Array<{ producerId: string; userId?: string }>>([]);
   const processedConsumerIdsRef = useRef<Set<string>>(new Set());
   const restartingRef = useRef(false);
+  const startRef = useRef<null | (() => void)>(null);
+  const cancelledRef = useRef(false);
 
   const createDevice = useCallback(() => {
     // React Native needs the explicit handler; desktop/web can use default
@@ -144,6 +146,8 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
     }
 
     let cancelled = false;
+
+    cancelledRef.current = false;
 
     const start = async () => {
       setState("connecting");
@@ -412,10 +416,11 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       socket.on("USER_SPEAKING_STATUS", handleMessage);
     };
 
+    startRef.current = start;
     start();
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       cleanup();
     };
   }, [token, role, call?.roomId, cleanup, onSpeakingStatus]);
@@ -492,9 +497,17 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       });
       transport.on("connectionstatechange", (state: any) => {
           console.log("[useHostCallMedia] recv transport state", state);
-          if (state === "failed" || state === "disconnected") {
+          if ((state === "failed" || state === "disconnected") && !restartingRef.current) {
             setError("Recv transport failed");
             setState("error");
+            restartingRef.current = true;
+            cleanup();
+            setTimeout(() => {
+              restartingRef.current = false;
+              if (!cancelledRef.current && token && role === "host" && call?.roomId) {
+                startRef.current?.();
+              }
+            }, 300);
           }
       });
 
@@ -569,9 +582,17 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
       transport.on("connectionstatechange", (state: any) => {
         console.log("[useHostCallMedia] send transport state", state);
-        if (state === "failed" || state === "disconnected") {
+        if ((state === "failed" || state === "disconnected") && !restartingRef.current) {
           setError("Send transport failed");
           setState("error");
+          restartingRef.current = true;
+          cleanup();
+          setTimeout(() => {
+            restartingRef.current = false;
+            if (!cancelledRef.current && token && role === "host" && call?.roomId) {
+              startRef.current?.();
+            }
+          }, 300);
         }
       });
 
