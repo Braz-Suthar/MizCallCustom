@@ -36,7 +36,6 @@ export function useJoinCall() {
   const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
   const processedConsumerIdsRef = useRef<Set<string>>(new Set());
-const processedConsumerIdsRef = useRef<Set<string>>(new Set());
   const meterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zeroLevelCountRef = useRef(0);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -62,7 +61,6 @@ const processedConsumerIdsRef = useRef<Set<string>>(new Set());
       console.warn("[useJoinCall] Error closing consumer:", e);
     }
     consumerRef.current = null;
-    processedConsumerIdsRef.current.clear();
     processedConsumerIdsRef.current.clear();
     
     // Close producer when leaving call
