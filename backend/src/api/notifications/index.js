@@ -17,8 +17,9 @@ router.post("/register-token", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "token required" });
     }
 
-    const userId = req.userId || null;
-    const hostId = req.hostId || null;
+    // Get userId/hostId from req.auth (set by requireAuth middleware)
+    const userId = req.auth?.userId || null;
+    const hostId = req.auth?.hostId || null;
 
     const result = await registerDeviceToken(userId, hostId, token, platform, deviceName);
     
