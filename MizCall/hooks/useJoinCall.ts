@@ -70,7 +70,6 @@ export function useJoinCall() {
       console.warn("[useJoinCall] Error closing producer:", e);
     }
     producerRef.current = null;
-    producerIdRef.current = null;
     
     // Close transports
     try {
@@ -103,7 +102,7 @@ export function useJoinCall() {
       localStreamRef.current = null;
     }
     
-    // Clear device
+    // Clear device and refs
     deviceRef.current = null;
     hostProducerIdRef.current = null;
     routerCapsRef.current = null;

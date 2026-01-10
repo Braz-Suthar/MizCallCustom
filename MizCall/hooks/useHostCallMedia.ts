@@ -32,6 +32,8 @@ export function useHostCallMedia(opts: {
   const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
   const routerCapsRef = useRef<any>(null);
+  const currentProducerIdRef = useRef<string | null>(null);
+  const pendingConsumeRef = useRef<Array<{ producerId: string; userId: string }>>([]);
 
   const cleanup = useCallback(() => {
     console.log("[useHostCallMedia] Starting cleanup...");
@@ -73,6 +75,8 @@ export function useHostCallMedia(opts: {
     
     deviceRef.current = null;
     routerCapsRef.current = null;
+    currentProducerIdRef.current = null;
+    pendingConsumeRef.current = [];
     
     if (micStreamRef.current) {
       console.log("[useHostCallMedia] Stopping microphone tracks");
@@ -241,19 +245,65 @@ export function useHostCallMedia(opts: {
               socket.emit("CONNECT_RECV_TRANSPORT", { dtlsParameters, roomId: call.roomId });
               callback();
             });
+            
+            console.log("[useHostCallMedia] Recv transport created, processing pending consumes");
+            
+            // Process any pending consume requests
+            if (pendingConsumeRef.current.length > 0) {
+              console.log("[useHostCallMedia] Processing", pendingConsumeRef.current.length, "pending consume requests");
+              for (const pending of pendingConsumeRef.current) {
+                console.log("[useHostCallMedia] Consuming pending producer:", pending.producerId);
+                socket.emit("CONSUME", {
+                  type: "CONSUME",
+                  producerId: pending.producerId,
+                  rtpCapabilities: device.rtpCapabilities,
+                  roomId: call.roomId,
+                });
+              }
+              pendingConsumeRef.current = [];
+            }
 
             setState("connected");
             setError(null);
           }
 
           if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "user") {
-            console.log("[useHostCallMedia] NEW_PRODUCER from user:", msg.producerId, "userId:", msg.userId);
+            console.log("[useHostCallMedia] NEW_PRODUCER from user:", {
+              producerId: msg.producerId,
+              userId: msg.userId,
+              hasRecvTransport: !!recvTransportRef.current,
+              hasDevice: !!deviceRef.current
+            });
             
-            if (!recvTransportRef.current || !deviceRef.current) {
-              console.warn("[useHostCallMedia] Recv transport not ready for consume");
+            // Check if we already have a consumer for this producer (prevent duplicate consumption)
+            if (consumerRef.current && currentProducerIdRef.current === msg.producerId) {
+              console.log("[useHostCallMedia] Already consuming this producer, skipping");
               return;
             }
+            
+            // If we have a different producer, close the old consumer
+            if (consumerRef.current && currentProducerIdRef.current !== msg.producerId) {
+              console.log("[useHostCallMedia] User rejoined with new producer, closing old consumer");
+              try {
+                consumerRef.current.close?.();
+              } catch (e) {
+                console.warn("[useHostCallMedia] Failed to close old consumer:", e);
+              }
+              consumerRef.current = null;
+              currentProducerIdRef.current = null;
+            }
+            
+            // Store this as pending if transports aren't ready yet
+            if (!recvTransportRef.current || !deviceRef.current) {
+              console.log("[useHostCallMedia] Recv transport not ready, storing pending consume");
+              pendingConsumeRef.current.push({ producerId: msg.producerId, userId: msg.userId });
+              return;
+            }
+            
+            // Track this producer ID
+            currentProducerIdRef.current = msg.producerId;
 
+            console.log("[useHostCallMedia] Requesting consume for user producer:", msg.producerId);
             socket.emit("CONSUME", {
               type: "CONSUME",
               producerId: msg.producerId,
