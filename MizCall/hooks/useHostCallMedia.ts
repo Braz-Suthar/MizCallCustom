@@ -583,7 +583,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           setTimeout(() => {
             restartingRef.current = false;
             if (token && role === "host" && call?.roomId) {
-              start();
+              void start();
             }
           }, 300);
         }
