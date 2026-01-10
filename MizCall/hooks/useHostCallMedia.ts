@@ -46,14 +46,16 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
     return new Device();
   }, []);
 
-  const cleanup = useCallback(() => {
+  const cleanup = useCallback((disconnectSocket: boolean = true) => {
     console.log("[useHostCallMedia] Starting cleanup...");
     
     // Remove all socket listeners first
     if (socketRef.current) {
-      console.log("[useHostCallMedia] Removing socket listeners and disconnecting");
+      console.log("[useHostCallMedia] Removing socket listeners" + (disconnectSocket ? " and disconnecting" : ""));
       socketRef.current.removeAllListeners();
-      socketRef.current.disconnect();
+      if (disconnectSocket) {
+        socketRef.current.disconnect();
+      }
     }
     socketRef.current = null;
     
@@ -521,11 +523,11 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       });
       transport.on("connectionstatechange", (state: any) => {
           console.log("[useHostCallMedia] recv transport state", state);
-          if ((state === "failed" || state === "disconnected") && !restartingRef.current) {
+          if (state === "failed" && !restartingRef.current) {
             setError("Recv transport failed");
             setState("error");
             restartingRef.current = true;
-            cleanup();
+            cleanup(false);
             setTimeout(() => {
               restartingRef.current = false;
               if (!cancelledRef.current && token && role === "host" && call?.roomId) {
@@ -615,11 +617,11 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
       transport.on("connectionstatechange", (state: any) => {
         console.log("[useHostCallMedia] send transport state", state);
-        if ((state === "failed" || state === "disconnected") && !restartingRef.current) {
+        if (state === "failed" && !restartingRef.current) {
           setError("Send transport failed");
           setState("error");
           restartingRef.current = true;
-          cleanup();
+          cleanup(false);
           setTimeout(() => {
             restartingRef.current = false;
             if (!cancelledRef.current && token && role === "host" && call?.roomId) {
