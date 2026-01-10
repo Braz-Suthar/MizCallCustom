@@ -32,52 +32,56 @@ export function useHostCallMedia(opts: {
   const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
   const routerCapsRef = useRef<any>(null);
-  const currentProducerIdRef = useRef<string | null>(null);
-  const pendingConsumeRef = useRef<Array<{ producerId: string; userId: string }>>([]);
+  const pendingConsumeRef = useRef<Array<{ producerId: string }>>([]);
+  const creatingConsumerRef = useRef(false); // Guard against simultaneous consumer creation
 
-  const cleanup = useCallback(() => {
+  const cleanupCallMedia = useCallback(() => {
     console.log("[useHostCallMedia] Starting cleanup...");
     
-    if (socketRef.current) {
-      console.log("[useHostCallMedia] Disconnecting socket");
-      socketRef.current.removeAllListeners();
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-    
+    // Close consumer
     try {
-      consumerRef.current?.close?.();
+      if (consumerRef.current) {
+        console.log("[useHostCallMedia] Closing consumer");
+        consumerRef.current.close?.();
+      }
     } catch (e) {
       console.warn("[useHostCallMedia] Error closing consumer:", e);
     }
     consumerRef.current = null;
     
+    // Close producer
     try {
-      producerRef.current?.close?.();
+      if (producerRef.current) {
+        console.log("[useHostCallMedia] Closing producer");
+        producerRef.current.close?.();
+      }
     } catch (e) {
       console.warn("[useHostCallMedia] Error closing producer:", e);
     }
     producerRef.current = null;
     
+    // Close transports
     try {
-      recvTransportRef.current?.close?.();
-    } catch (e) {
-      console.warn("[useHostCallMedia] Error closing recv transport:", e);
-    }
-    recvTransportRef.current = null;
-    
-    try {
-      sendTransportRef.current?.close?.();
+      if (sendTransportRef.current) {
+        console.log("[useHostCallMedia] Closing send transport");
+        sendTransportRef.current.close?.();
+      }
     } catch (e) {
       console.warn("[useHostCallMedia] Error closing send transport:", e);
     }
     sendTransportRef.current = null;
     
-    deviceRef.current = null;
-    routerCapsRef.current = null;
-    currentProducerIdRef.current = null;
-    pendingConsumeRef.current = [];
+    try {
+      if (recvTransportRef.current) {
+        console.log("[useHostCallMedia] Closing recv transport");
+        recvTransportRef.current.close?.();
+      }
+    } catch (e) {
+      console.warn("[useHostCallMedia] Error closing recv transport:", e);
+    }
+    recvTransportRef.current = null;
     
+    // Stop media tracks
     if (micStreamRef.current) {
       console.log("[useHostCallMedia] Stopping microphone tracks");
       micStreamRef.current.getTracks?.().forEach((t) => {
@@ -86,6 +90,7 @@ export function useHostCallMedia(opts: {
       micStreamRef.current = null;
     }
     
+    // Stop call audio
     try {
       stopCallAudio();
       disableSpeakerphone();
@@ -93,65 +98,173 @@ export function useHostCallMedia(opts: {
       console.warn("[useHostCallMedia] Error stopping call audio:", e);
     }
     
+    // Clear remote stream
     setRemoteStream(null);
     
+    // Cleanup socket - DISCONNECT IT (like desktop does)
+    if (socketRef.current) {
+      console.log("[useHostCallMedia] Cleaning up socket");
+      if (call?.roomId) {
+        socketRef.current.emit?.("CALL_STOPPED", { roomId: call.roomId });
+      }
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect?.();
+    }
+    socketRef.current = null;
+    
+    // Clear device and refs
+    deviceRef.current = null;
+    routerCapsRef.current = null;
+    pendingConsumeRef.current = [];
+    creatingConsumerRef.current = false; // Reset consumer creation guard
+    
+    // Reset state
+    setState("idle");
+    setError(null);
+    
     console.log("[useHostCallMedia] ✅ Cleanup complete");
-  }, []);
+  }, [call?.roomId]);
 
-  useEffect(() => cleanup, [cleanup]);
+  useEffect(() => cleanupCallMedia, [cleanupCallMedia]);
 
   useEffect(() => {
     if (!token || role !== "host" || !call?.roomId) {
-      console.log("[useHostCallMedia] No call or not authorized, cleaning up");
-      cleanup();
-      setState("idle");
-      setError(null);
+      console.log("[useHostCallMedia] No call or not authorized");
       return;
     }
 
-    if (socketRef.current?.connected) {
-      console.log("[useHostCallMedia] Socket already connected, skipping initialization");
-      return;
-    }
-
-    let cancelled = false;
-
-    const start = async () => {
+    // DESKTOP PATTERN: Create fresh socket on every join
+    const joinActiveCall = async () => {
+      // Clean up first (like desktop does)
+      cleanupCallMedia();
+      
       setState("connecting");
       setError(null);
-
-      console.log("[useHostCallMedia] Connecting to Socket.IO...");
-
-      const socket = io(SOCKET_URL, {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 2000,
-        timeout: 10000,
-        auth: { token }
+      
+      // Store router caps from call state (like desktop)
+      routerCapsRef.current = call.routerRtpCapabilities ?? null;
+      
+      console.log("[useHostCallMedia] joinActiveCall", {
+        role,
+        roomId: call.roomId,
+        hasCaps: !!routerCapsRef.current,
       });
 
-      socketRef.current = socket;
+      // Create NEW socket (like desktop does)
+      const ws: Socket = io(SOCKET_URL, {
+        transports: ["websocket", "polling"],
+        reconnection: false,  // Desktop doesn't auto-reconnect
+      });
+      socketRef.current = ws;
 
-      socket.on("connect", () => {
-        console.log("[useHostCallMedia] Socket.IO connected:", socket.id);
-        socket.emit("auth", { type: "auth", token });
-        socket.emit("JOIN", { type: "JOIN", token, roomId: call.roomId });
-        socket.emit("CALL_STARTED", { type: "CALL_STARTED", roomId: call.roomId });
-        socket.emit("GET_ROUTER_CAPS", { type: "GET_ROUTER_CAPS", roomId: call.roomId });
+      // Helper functions (like desktop has)
+      const drainPendingConsumes = () => {
+        if (!recvTransportRef.current || !deviceRef.current || !ws) return;
+        const pending = [...pendingConsumeRef.current];
+        pendingConsumeRef.current = [];
+        
+        // Deduplicate by producerId
+        const uniqueProducers = Array.from(new Set(pending.map(p => p.producerId)));
+        console.log("[useHostCallMedia] Draining", uniqueProducers.length, "unique pending consumes (was", pending.length, ")");
+        
+        uniqueProducers.forEach((producerId) => {
+          console.log("[useHostCallMedia] Draining pending consume:", producerId);
+          ws.emit("CONSUME", {
+            type: "CONSUME",
+            producerId,
+            rtpCapabilities: deviceRef.current?.rtpCapabilities,
+            roomId: call.roomId,
+          });
+        });
+      };
+
+      const requestConsume = (producerId: string) => {
+        if (!ws) {
+          console.warn("[useHostCallMedia] No socket, cannot consume:", producerId);
+          return;
+        }
+        if (!recvTransportRef.current || !deviceRef.current) {
+          // Check if already queued to avoid duplicates
+          const alreadyQueued = pendingConsumeRef.current.some(p => p.producerId === producerId);
+          if (alreadyQueued) {
+            console.log("[useHostCallMedia] Producer already queued, skipping:", producerId);
+            return;
+          }
+          console.log("[useHostCallMedia] Recv transport not ready, queueing consume:", producerId);
+          pendingConsumeRef.current.push({ producerId });
+          return;
+        }
+        console.log("[useHostCallMedia] Requesting consume for producer:", producerId, {
+          hasRecvTransport: !!recvTransportRef.current,
+          hasDevice: !!deviceRef.current,
+          roomId: call.roomId
+        });
+        ws.emit("CONSUME", {
+          type: "CONSUME",
+          producerId,
+          rtpCapabilities: deviceRef.current.rtpCapabilities,
+          roomId: call.roomId,
+        });
+      };
+
+      ws.on("connect", () => {
+        console.log("[useHostCallMedia] Socket connected:", ws.id);
+        ws.emit("AUTH", { token });
+        ws.emit("CALL_STARTED", { roomId: call.roomId });
+        ws.emit("GET_ROUTER_CAPS", { roomId: call.roomId });
+        ws.emit("JOIN", { token, roomId: call.roomId });
       });
 
-      socket.on("disconnect", (reason) => {
-        console.log("[useHostCallMedia] Socket.IO disconnected:", reason);
+      ws.on("connect_error", (err) => {
+        console.warn("[useHostCallMedia] Socket error:", err);
+        setState("error");
+        setError("Socket error");
       });
 
-      socket.on("connect_error", (error) => {
-        console.log("[useHostCallMedia] Connection error:", error.message);
-        if (!cancelled) {
-          setError("Connection error");
+      ws.on("disconnect", () => {
+        console.log("[useHostCallMedia] Socket disconnected");
+        // Don't change state if already connected (allows brief disconnects)
+      });
+
+      const ensureDeviceLoaded = async () => {
+        if (deviceRef.current) return deviceRef.current;
+        const caps = routerCapsRef.current;
+        if (!caps) throw new Error("Missing router capabilities");
+        const device = new Device({ 
+          handlerName: Platform.OS === "ios" || Platform.OS === "android" ? "ReactNative106" as any : undefined 
+        });
+        await device.load({ routerRtpCapabilities: caps });
+        deviceRef.current = device;
+        return device;
+      };
+
+      const startHostProducer = async () => {
+        if (producerRef.current || !sendTransportRef.current) return;
+        try {
+          console.log("[useHostCallMedia] Starting host producer...");
+          
+          if (Platform.OS === "android") {
+            const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+            if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+              throw new Error("Microphone permission denied");
+            }
+          }
+
+          const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+          micStreamRef.current = stream;
+          const track = stream.getAudioTracks()[0] as any;
+          const producer = await sendTransportRef.current.produce({ track });
+          producerRef.current = producer;
+          track.enabled = micEnabled;
+          setState("connected");
+          setError(null);
+          console.log("[useHostCallMedia] Host producer created");
+        } catch (err: any) {
+          console.warn("[useHostCallMedia] Host produce error", err);
+          setError("Microphone failed");
           setState("error");
         }
-      });
+      };
 
       const handleMsg = async (msgRaw: any) => {
         try {
@@ -160,111 +273,98 @@ export function useHostCallMedia(opts: {
 
           if (msg.type === "ROUTER_CAPS") {
             routerCapsRef.current = msg.routerRtpCapabilities;
-            console.log("[useHostCallMedia] Router caps received");
           }
 
           if (msg.type === "SEND_TRANSPORT_CREATED") {
-            if (sendTransportRef.current) {
-              console.log("[useHostCallMedia] Send transport already exists, skipping");
-              return;
-            }
-
-            const device = new Device({ handlerName: Platform.OS === "ios" || Platform.OS === "android" ? "ReactNative106" as any : undefined });
-            
-            // Load device with router caps from ref (populated by ROUTER_CAPS message)
-            if (!routerCapsRef.current) {
-              console.error("[useHostCallMedia] Missing router caps for device load");
+            // Skip if we already have a fresh send transport
+            if (sendTransportRef.current && !producerRef.current) {
+              console.log("[useHostCallMedia] Send transport already exists, skipping duplicate");
               return;
             }
             
-            await device.load({ routerRtpCapabilities: routerCapsRef.current });
-            deviceRef.current = device;
-            
+            const device = await ensureDeviceLoaded();
             const transport = device.createSendTransport(msg.params);
-            sendTransportRef.current = transport;
-
-            transport.on("connect", ({ dtlsParameters }, callback) => {
-              socket.emit("CONNECT_SEND_TRANSPORT", { dtlsParameters, roomId: call.roomId });
-              callback();
-            });
-
-            transport.on("produce", ({ kind, rtpParameters }, callback) => {
-              socket.emit("PRODUCE", { kind, rtpParameters, roomId: call.roomId });
-              const randomId = `${Date.now()}-${Math.random()}`;
-              callback({ id: randomId });
-            });
-
-            // Start host producer immediately
-            if (!producerRef.current) {
+            
+            transport.on("connect", ({ dtlsParameters }, callback, errback) => {
               try {
-                if (Platform.OS === "android") {
-                  const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
-                  if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-                    throw new Error("Microphone permission denied");
-                  }
-                }
-
-                const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
-                micStreamRef.current = stream;
-                const track = stream.getAudioTracks()[0] as any;
-                const producer = await transport.produce({ track });
-                producerRef.current = producer;
-                track.enabled = micEnabled;
-                setState("connected");
-                setError(null);
-                console.log("[useHostCallMedia] Host producer created");
-              } catch (err: any) {
-                console.warn("[useHostCallMedia] Host produce error", err);
-                setError("Microphone failed");
-                setState("error");
+                console.log("[useHostCallMedia] Send transport connecting...");
+                ws.emit("CONNECT_SEND_TRANSPORT", { 
+                  type: "CONNECT_SEND_TRANSPORT",
+                  dtlsParameters, 
+                  roomId: call.roomId 
+                });
+                callback();
+              } catch (err) {
+                console.error("[useHostCallMedia] Send transport connect error:", err);
+                errback?.(err as Error);
               }
-            }
+            });
+            
+            transport.on("produce", ({ kind, rtpParameters }, callback, errback) => {
+              try {
+                console.log("[useHostCallMedia] Producing", kind, "for room:", call.roomId);
+                ws.emit("PRODUCE", { 
+                  type: "PRODUCE",
+                  kind, 
+                  rtpParameters, 
+                  roomId: call.roomId 
+                });
+                const randomId = `${Date.now()}-${Math.random()}`;
+                callback({ id: randomId });
+              } catch (err) {
+                console.error("[useHostCallMedia] Produce emit error:", err);
+                errback?.(err as Error);
+              }
+            });
+            
+            sendTransportRef.current = transport;
+            
+            // Start host producer immediately (like desktop)
+            startHostProducer();
+            setState("connected");
+            setError(null);
           }
 
           if (msg.type === "RECV_TRANSPORT_CREATED") {
-            if (recvTransportRef.current) {
-              console.log("[useHostCallMedia] Recv transport already exists, skipping");
+            // Skip if we already have a fresh recv transport in new/connecting state
+            const currentState = recvTransportRef.current?.connectionState;
+            if (recvTransportRef.current && (currentState === "new" || currentState === "connecting")) {
+              console.log("[useHostCallMedia] Recv transport already exists in state:", currentState, "- skipping duplicate creation");
               return;
             }
-
-            const device = deviceRef.current || new Device({ handlerName: Platform.OS === "ios" || Platform.OS === "android" ? "ReactNative106" as any : undefined });
             
-            if (!device.loaded) {
-              if (!routerCapsRef.current) {
-                console.error("[useHostCallMedia] Missing router caps for recv device load");
-                return;
-              }
-              await device.load({ routerRtpCapabilities: routerCapsRef.current });
-              deviceRef.current = device;
+            // Close old transport if it exists (should have been closed in NEW_PRODUCER handler)
+            if (recvTransportRef.current) {
+              console.log("[useHostCallMedia] Closing previous recv transport in state:", currentState);
+              try {
+                recvTransportRef.current.close?.();
+              } catch {}
+              recvTransportRef.current = null;
             }
-
+            
+            const device = await ensureDeviceLoaded();
             const transport = device.createRecvTransport(msg.params);
-            recvTransportRef.current = transport;
-
-            transport.on("connect", ({ dtlsParameters }, callback) => {
-              socket.emit("CONNECT_RECV_TRANSPORT", { dtlsParameters, roomId: call.roomId });
-              callback();
+            
+            transport.on("connect", ({ dtlsParameters }, callback, errback) => {
+              try {
+                console.log("[useHostCallMedia] Recv transport connecting...");
+                ws.emit("CONNECT_RECV_TRANSPORT", { 
+                  type: "CONNECT_RECV_TRANSPORT",
+                  dtlsParameters, 
+                  roomId: call.roomId 
+                });
+                callback();
+              } catch (err) {
+                console.error("[useHostCallMedia] Recv transport connect error:", err);
+                errback?.(err as Error);
+              }
             });
             
-            console.log("[useHostCallMedia] Recv transport created, processing pending consumes");
-            
-            // Process any pending consume requests
-            if (pendingConsumeRef.current.length > 0) {
-              console.log("[useHostCallMedia] Processing", pendingConsumeRef.current.length, "pending consume requests");
-              for (const pending of pendingConsumeRef.current) {
-                console.log("[useHostCallMedia] Consuming pending producer:", pending.producerId);
-                socket.emit("CONSUME", {
-                  type: "CONSUME",
-                  producerId: pending.producerId,
-                  rtpCapabilities: device.rtpCapabilities,
-                  roomId: call.roomId,
-                });
-              }
-              pendingConsumeRef.current = [];
-            }
-
+            recvTransportRef.current = transport;
+            console.log("[useHostCallMedia] ✅ Fresh recv transport created");
             setState("connected");
             setError(null);
+            drainPendingConsumes();
           }
 
           if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "user") {
@@ -272,80 +372,85 @@ export function useHostCallMedia(opts: {
               producerId: msg.producerId,
               userId: msg.userId,
               hasRecvTransport: !!recvTransportRef.current,
-              hasDevice: !!deviceRef.current
+              recvTransportState: recvTransportRef.current?.connectionState,
+              hasDevice: !!deviceRef.current,
+              hasPendingConsumes: pendingConsumeRef.current.length
             });
             
-            // Check if we already have a consumer for this producer (prevent duplicate consumption)
-            if (consumerRef.current && currentProducerIdRef.current === msg.producerId) {
-              console.log("[useHostCallMedia] Already consuming this producer, skipping");
-              return;
-            }
-            
-            // If we have a different producer, close the old consumer
-            if (consumerRef.current && currentProducerIdRef.current !== msg.producerId) {
-              console.log("[useHostCallMedia] User rejoined with new producer, closing old consumer");
+            // Detect stale transport (already connected to previous user session)
+            const transportState = recvTransportRef.current?.connectionState;
+            if (recvTransportRef.current && (transportState === "connected" || transportState === "failed" || transportState === "disconnected")) {
+              console.log("[useHostCallMedia] ⚠️ Recv transport in stale state:", transportState, "- closing and requesting fresh transport");
+              
+              // Close stale transport and consumer
               try {
-                consumerRef.current.close?.();
+                recvTransportRef.current.close?.();
               } catch (e) {
-                console.warn("[useHostCallMedia] Failed to close old consumer:", e);
+                console.warn("[useHostCallMedia] Error closing stale recv transport:", e);
               }
-              consumerRef.current = null;
-              currentProducerIdRef.current = null;
-            }
-            
-            // Store this as pending if transports aren't ready yet
-            if (!recvTransportRef.current || !deviceRef.current) {
-              console.log("[useHostCallMedia] Recv transport not ready, storing pending consume");
-              pendingConsumeRef.current.push({ producerId: msg.producerId, userId: msg.userId });
+              recvTransportRef.current = null;
+              
+              if (consumerRef.current) {
+                try {
+                  consumerRef.current.close?.();
+                } catch (e) {
+                  console.warn("[useHostCallMedia] Error closing stale consumer:", e);
+                }
+                consumerRef.current = null;
+              }
+              
+              // Queue this consume and request fresh recv transport
+              pendingConsumeRef.current.push({ producerId: msg.producerId });
+              console.log("[useHostCallMedia] Requesting fresh RECV transport via JOIN");
+              ws.emit("JOIN", { type: "JOIN", token, roomId: call.roomId });
               return;
             }
             
-            // Track this producer ID
-            currentProducerIdRef.current = msg.producerId;
-
-            console.log("[useHostCallMedia] Requesting consume for user producer:", msg.producerId);
-            socket.emit("CONSUME", {
-              type: "CONSUME",
-              producerId: msg.producerId,
-              rtpCapabilities: deviceRef.current.rtpCapabilities,
-              roomId: call.roomId,
-            });
+            requestConsume(msg.producerId);
           }
 
           if (msg.type === "CONSUMER_CREATED" || msg.type === "CONSUMED") {
+            if (!recvTransportRef.current) {
+              console.warn("[useHostCallMedia] No recv transport for CONSUMED event");
+              return;
+            }
+            
             const params = msg.params || msg;
-            console.log("[useHostCallMedia] CONSUMED event received:", {
+            console.log("[useHostCallMedia] CONSUMED event:", {
               consumerId: params.id,
               producerId: params.producerId,
-              hasRecvTransport: !!recvTransportRef.current,
-              currentConsumer: consumerRef.current?.id,
-              currentProducerId: currentProducerIdRef.current
+              kind: params.kind,
+              hasRtpParams: !!params.rtpParameters,
+              currentConsumerId: consumerRef.current?.id,
+              alreadyCreating: creatingConsumerRef.current
             });
             
-            // Skip if we already have a consumer for this ID (duplicate event)
-            if (consumerRef.current && consumerRef.current.id === params.id) {
-              console.log("[useHostCallMedia] Skipping duplicate CONSUMED event for consumer:", params.id);
+            // Skip if we're already creating a consumer (prevents race conditions)
+            if (creatingConsumerRef.current) {
+              console.log("[useHostCallMedia] Already creating consumer, skipping duplicate CONSUMED event");
               return;
             }
             
-            if (!recvTransportRef.current) {
-              console.warn("[useHostCallMedia] No recv transport, cannot create consumer");
+            // Skip if we're already processing this exact consumer ID (duplicate event)
+            if (consumerRef.current && consumerRef.current.id === params.id) {
+              console.log("[useHostCallMedia] Skipping duplicate CONSUMED event for same consumer:", params.id);
               return;
             }
+            
+            creatingConsumerRef.current = true; // Mark as creating
             
             try {
-              // Close old consumer if exists
-              if (consumerRef.current) {
-                console.log("[useHostCallMedia] Closing previous consumer:", consumerRef.current.id);
+              // Close old consumer if exists and it's a different one
+              if (consumerRef.current && consumerRef.current.id !== params.id) {
+                console.log("[useHostCallMedia] Closing old consumer:", consumerRef.current.id, "-> new:", params.id);
                 try {
                   consumerRef.current.close?.();
                 } catch (e) {
                   console.warn("[useHostCallMedia] Error closing old consumer:", e);
                 }
-                consumerRef.current = null;
               }
               
-              console.log("[useHostCallMedia] Creating new consumer:", params.id);
+              console.log("[useHostCallMedia] Creating consumer for user audio...");
               const consumer = await recvTransportRef.current.consume({
                 id: params.id,
                 producerId: params.producerId,
@@ -354,16 +459,14 @@ export function useHostCallMedia(opts: {
               });
               
               consumerRef.current = consumer;
-              currentProducerIdRef.current = params.producerId;
-              
-              console.log("[useHostCallMedia] Consumer created successfully, resuming...");
+              console.log("[useHostCallMedia] Consumer created, resuming...");
               await consumer.resume?.();
               consumer.track.enabled = true;
               
               const stream = new MediaStream([consumer.track]);
               setRemoteStream(stream);
               
-              console.log("[useHostCallMedia] User audio consumed", {
+              console.log("[useHostCallMedia] ✅ User audio consumed successfully", {
                 consumerId: consumer.id,
                 producerId: params.producerId,
                 trackState: consumer.track.readyState,
@@ -376,29 +479,25 @@ export function useHostCallMedia(opts: {
                 if (isMobilePlatform) {
                   await (mediaDevices as any).setSpeakerphoneOn?.(true);
                 }
+                console.log("[useHostCallMedia] Audio routing complete");
               } catch (e) {
-                console.warn("[useHostCallMedia] Error enabling audio:", e);
+                console.warn("[useHostCallMedia] Audio routing error:", e);
               }
-              
-              setState("connected");
-              console.log("[useHostCallMedia] ✅ Consumer setup complete, state set to connected");
             } catch (e: any) {
-              // Ignore SessionDescription NULL errors (transient)
+              console.error("[useHostCallMedia] ❌ Error consuming user audio:", e);
               if (e?.message?.includes("SessionDescription is NULL")) {
-                console.log("[useHostCallMedia] Ignoring SessionDescription NULL error (transient)");
+                console.log("[useHostCallMedia] Ignoring SessionDescription NULL error (likely duplicate event)");
                 return;
               }
-              
-              console.error("[useHostCallMedia] Error creating consumer:", e);
-              setError(e?.message ?? "Failed to consume audio");
-              setState("error");
+              setError(e?.message ?? "Failed to consume user audio");
+            } finally {
+              creatingConsumerRef.current = false; // Reset flag
             }
           }
 
           if (msg.type === "USER_SPEAKING_STATUS") {
             const userId = msg.userId || msg.id;
             const speaking = msg.speaking;
-            console.log("[useHostCallMedia] USER_SPEAKING_STATUS", { userId, speaking });
             if (onSpeakingStatus) {
               onSpeakingStatus(userId, speaking);
             }
@@ -408,7 +507,7 @@ export function useHostCallMedia(opts: {
         }
       };
 
-      socket.on("message", handleMsg);
+      // Listen ONLY to specific events (not "message") to avoid duplicates
       [
         "ROUTER_CAPS",
         "SEND_TRANSPORT_CREATED",
@@ -418,17 +517,16 @@ export function useHostCallMedia(opts: {
         "CONSUMED",
         "USER_SPEAKING_STATUS",
       ].forEach((event) => {
-        socket.on(event, (payload) => handleMsg(payload ?? { type: event }));
+        ws.on(event, (payload) => handleMsg(payload ?? { type: event }));
       });
     };
 
-    start();
+    joinActiveCall();
 
     return () => {
-      cancelled = true;
-      cleanup();
+      cleanupCallMedia();
     };
-  }, [token, role, call?.roomId, cleanup, onSpeakingStatus, micEnabled, call]);
+  }, [token, role, call?.roomId, call?.routerRtpCapabilities, cleanupCallMedia, onSpeakingStatus, micEnabled, call]);
 
   const toggleMic = useCallback((enabled: boolean) => {
     setMicEnabled(enabled);

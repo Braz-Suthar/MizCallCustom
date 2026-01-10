@@ -37,6 +37,7 @@ export default function UserActiveCallScreen() {
   useEffect(() => {
     if (callEnded && !isLeaving) {
       console.log("[user-active-call] Call ended by host, navigating to dashboard");
+      hasJoinedRef.current = false;
       leave();
       setIsLeaving(true);
       
@@ -49,7 +50,7 @@ export default function UserActiveCallScreen() {
         }
       }, 1000);
     }
-  }, [callEnded, isLeaving, router]);
+  }, [callEnded, isLeaving, router, leave]);
 
   // Listen for host mic status updates
   useEffect(() => {
@@ -64,6 +65,16 @@ export default function UserActiveCallScreen() {
       socket.off("HOST_MIC_STATUS");
     };
   }, [socket]);
+
+  // Reset hasJoinedRef when activeCall ID changes (new call) or component unmounts/remounts
+  useEffect(() => {
+    hasJoinedRef.current = false;
+    setIsLeaving(false);
+    
+    return () => {
+      hasJoinedRef.current = false;
+    };
+  }, [activeCall?.roomId]);
 
   useEffect(() => {
     if (!hasJoinedRef.current && activeCall?.routerRtpCapabilities) {
