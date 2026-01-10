@@ -39,6 +39,16 @@ declare global {
       openActiveCallWindow?: (payload: any) => void;
       onActiveCallContext?: (cb: (data: any) => void) => () => void;
       openSystemSettings?: (type: "microphone" | "camera") => void;
+      checkBiometricSupport?: () => Promise<{
+        available: boolean;
+        type: "touchid" | "windowshello" | "none";
+        platform: string;
+      }>;
+      authenticateBiometric?: (reason?: string) => Promise<{
+        success: boolean;
+        method: "touchid" | "windowshello" | "none";
+        error?: string;
+      }>;
     };
   }
 }

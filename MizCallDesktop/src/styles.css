@@ -1622,3 +1622,26 @@ body,
   color: #ef4444;
   font-weight: 700;
 }
+
+.divider-text {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 12px 0;
+}
+
+.divider-text::before,
+.divider-text::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid var(--border-light);
+}
+
+body.theme-dark .divider-text::before,
+body.theme-dark .divider-text::after {
+  border-bottom-color: var(--border-dark);
+}
+
+.divider-text span {
+  padding: 0 12px;
+}

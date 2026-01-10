@@ -130,6 +130,27 @@ const bridge = {
       console.error("[Preload] Error stack:", error.stack);
     }
   },
+  // Biometric authentication support
+  async checkBiometricSupport() {
+    try {
+      const result = await ipcRenderer.invoke("check-biometric-support");
+      console.log("[Preload] Biometric support:", result);
+      return result;
+    } catch (error) {
+      console.error("[Preload] Error checking biometric support:", error);
+      return { available: false, type: "none" };
+    }
+  },
+  async authenticateBiometric(reason = "unlock the app") {
+    try {
+      const result = await ipcRenderer.invoke("authenticate-biometric", reason);
+      console.log("[Preload] Biometric authentication result:", result);
+      return result;
+    } catch (error) {
+      console.error("[Preload] Biometric authentication error:", error);
+      return { success: false, error: error.message };
+    }
+  },
 };
 
 // Expose a minimal bridge; expand as needed (e.g., system info, settings).

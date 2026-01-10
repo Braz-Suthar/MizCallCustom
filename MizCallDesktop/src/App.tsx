@@ -498,6 +498,12 @@ function App() {
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [showDeviceLockPrompt, setShowDeviceLockPrompt] = useState(false);
+  const [deviceLockPassword, setDeviceLockPassword] = useState("");
+  const [deviceLockError, setDeviceLockError] = useState<string | null>(null);
+  const [showDeviceLockAuth, setShowDeviceLockAuth] = useState(false);
+  const [deviceLockAuthPassword, setDeviceLockAuthPassword] = useState("");
+  const [biometricSupport, setBiometricSupport] = useState<{ available: boolean; type: string } | null>(null);
   const [sessionsVisible, setSessionsVisible] = useState(false);
   const [sessions, setSessions] = useState<
     Array<{
@@ -598,6 +604,16 @@ function App() {
   const userWsRef = useRef<Socket | null>(null);
 
   useEffect(() => {
+    // Check for biometric support
+    const checkBiometrics = async () => {
+      if (window.mizcall?.checkBiometricSupport) {
+        const support = await window.mizcall.checkBiometricSupport();
+        console.log("[Desktop] Biometric support:", support);
+        setBiometricSupport(support);
+      }
+    };
+    checkBiometrics();
+    
     // Restore persisted theme and session
     try {
       const storedTheme = localStorage.getItem("mizcall.theme");
@@ -607,13 +623,33 @@ function App() {
     } catch {
       // ignore
     }
+    
+    // Load device lock preference
+    try {
+      const lockEnabled = localStorage.getItem("mizcall.deviceLockEnabled");
+      if (lockEnabled === "true") {
+        setDeviceLockEnabled(true);
+      }
+    } catch {
+      // ignore
+    }
+    
     try {
       const raw = localStorage.getItem("mizcall.session");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed?.token && parsed?.role) {
-          setSession(parsed);
-          setScreen("login");
+          // Check if device lock is enabled - if so, require authentication before restoring session
+          const lockEnabled = localStorage.getItem("mizcall.deviceLockEnabled");
+          if (lockEnabled === "true") {
+            // Show device lock authentication prompt
+            setSession(parsed); // Store session but don't show app yet
+            setShowDeviceLockAuth(true);
+            setScreen("login"); // Keep on login screen until authenticated
+          } else {
+            setSession(parsed);
+            setScreen("login");
+          }
         }
       }
     } catch {
@@ -2123,6 +2159,117 @@ function App() {
     }
   };
 
+  const handleToggleDeviceLock = async () => {
+    const next = !deviceLockEnabled;
+    if (!next) {
+      // Disabling - just turn off
+      setDeviceLockEnabled(false);
+      try {
+        localStorage.setItem("mizcall.deviceLockEnabled", "false");
+      } catch {}
+      showToast("Device lock disabled", "success");
+      return;
+    }
+
+    // Enabling - use biometric if available, otherwise password
+    if (biometricSupport?.available) {
+      try {
+        const result = await window.mizcall?.authenticateBiometric?.("enable device lock");
+        if (result?.success) {
+          setDeviceLockEnabled(true);
+          try {
+            localStorage.setItem("mizcall.deviceLockEnabled", "true");
+          } catch {}
+          showToast(`Device lock enabled with ${biometricSupport.type === "touchid" ? "Touch ID" : "biometric"}. You'll be prompted when opening the app.`, "success");
+        } else {
+          showToast("Authentication failed. Device lock not enabled.", "error");
+        }
+      } catch (error) {
+        console.error("[Desktop] Biometric auth error:", error);
+        showToast("Authentication failed. Device lock not enabled.", "error");
+      }
+    } else {
+      // No biometric support - use password
+      setShowDeviceLockPrompt(true);
+      setDeviceLockPassword("");
+      setDeviceLockError(null);
+    }
+  };
+
+  const handleEnableDeviceLock = () => {
+    if (!deviceLockPassword.trim()) {
+      setDeviceLockError("Please enter your password");
+      return;
+    }
+
+    // Verify password matches current session password
+    if (deviceLockPassword !== session?.password) {
+      setDeviceLockError("Incorrect password");
+      return;
+    }
+
+    // Enable device lock
+    setDeviceLockEnabled(true);
+    try {
+      localStorage.setItem("mizcall.deviceLockEnabled", "true");
+    } catch {}
+    
+    setShowDeviceLockPrompt(false);
+    setDeviceLockPassword("");
+    setDeviceLockError(null);
+    showToast("Device lock enabled. You'll need to enter your password when opening the app.", "success");
+  };
+
+  const handleDeviceLockAuthWithPassword = () => {
+    // Password authentication
+    if (!deviceLockAuthPassword.trim()) {
+      setDeviceLockError("Please enter your password");
+      return;
+    }
+
+    // Verify password
+    if (deviceLockAuthPassword !== session?.password) {
+      setDeviceLockError("Incorrect password");
+      setDeviceLockAuthPassword("");
+      return;
+    }
+
+    // Authentication successful
+    setShowDeviceLockAuth(false);
+    setDeviceLockAuthPassword("");
+    setDeviceLockError(null);
+    showToast("Welcome back!", "success");
+  };
+
+  const handleDeviceLockAuthWithBiometric = async () => {
+    try {
+      const result = await window.mizcall?.authenticateBiometric?.("unlock MizCall");
+      if (result?.success) {
+        // Biometric authentication successful
+        setShowDeviceLockAuth(false);
+        setDeviceLockAuthPassword("");
+        setDeviceLockError(null);
+        showToast("Welcome back!", "success");
+      } else {
+        // Biometric failed
+        setDeviceLockError(`${biometricSupport?.type === "touchid" ? "Touch ID" : "Biometric"} authentication failed. Try password instead.`);
+      }
+    } catch (error) {
+      console.error("[Desktop] Biometric auth error:", error);
+      setDeviceLockError("Authentication failed. Try password instead.");
+    }
+  };
+
+  // Auto-trigger biometric auth on device lock screen mount
+  useEffect(() => {
+    if (showDeviceLockAuth && biometricSupport?.available) {
+      // Auto-prompt for biometric when lock screen appears
+      setTimeout(() => {
+        handleDeviceLockAuthWithBiometric();
+      }, 300);
+    }
+  }, [showDeviceLockAuth, biometricSupport]);
+
   const loadSessions = useCallback(async () => {
     if (!session || session.role !== "host") return;
     setSessionsLoading(true);
@@ -3384,9 +3531,18 @@ function App() {
                   <div className="row-inline between">
                     <div className="stack gap-xxs">
                       <strong>Device Lock</strong>
-                      <span className="muted small">Require device auth when opening the app.</span>
+                      <span className="muted small">
+                        {biometricSupport?.available 
+                          ? `Require ${biometricSupport.type === "touchid" ? "Touch ID" : "biometric"} or password when opening the app.`
+                          : "Require password when opening the app."}
+                      </span>
+                      {biometricSupport?.available && (
+                        <span className="muted small" style={{ color: "#22c55e" }}>
+                          ✓ {biometricSupport.type === "touchid" ? "Touch ID" : "Biometric"} available
+                        </span>
+                      )}
                     </div>
-                    <ToggleSwitch checked={deviceLockEnabled} onToggle={() => setDeviceLockEnabled((v) => !v)} />
+                    <ToggleSwitch checked={deviceLockEnabled} onToggle={handleToggleDeviceLock} />
                   </div>
                   <div className="row-inline between">
                     <div className="stack gap-xxs">
@@ -3632,11 +3788,11 @@ function App() {
   return (
     <div className="app">
       <main className={`main ${session ? "main-app" : "main-auth"}`}>
-        {session ? (
+        {session && !showDeviceLockAuth ? (
           renderAppShell()
-        ) : (
+        ) : !session ? (
           renderAuthShell()
-        )}
+        ) : null}
       </main>
       {toast ? (
         <div className={`toast toast-${toast.kind}`}>
@@ -4030,6 +4186,121 @@ function App() {
                 }}
               />
               <Button label={pwLoading ? "Updating..." : "Save"} onClick={handleChangePasswordSubmit} disabled={pwLoading} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Device Lock Enable Prompt Modal */}
+      {showDeviceLockPrompt ? (
+        <div className="modal-backdrop" onClick={() => setShowDeviceLockPrompt(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <p className="muted strong">Enable Device Lock</p>
+            </div>
+            <div className="modal-body stack gap-sm">
+              <p className="muted small">
+                Verify your identity to enable device lock. 
+                You'll need to authenticate when opening the app.
+              </p>
+              {deviceLockError ? <p className="error">{deviceLockError}</p> : null}
+              <div onKeyDown={(e) => {
+                if (e.key === "Enter" && deviceLockPassword.trim()) {
+                  handleEnableDeviceLock();
+                }
+              }}>
+                <Input 
+                  label="Your Password" 
+                  type="password" 
+                  value={deviceLockPassword} 
+                  onChange={setDeviceLockPassword} 
+                  placeholder="Enter your password" 
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="modal-actions">
+              <Button
+                label="Cancel"
+                variant="ghost"
+                onClick={() => {
+                  setShowDeviceLockPrompt(false);
+                  setDeviceLockPassword("");
+                  setDeviceLockError(null);
+                }}
+              />
+              <Button 
+                label="Enable" 
+                onClick={handleEnableDeviceLock}
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Device Lock Authentication Modal (shown on app startup) */}
+      {showDeviceLockAuth && session ? (
+        <div className="modal-backdrop" style={{ zIndex: 10000 }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <p className="muted strong">🔒 Device Locked</p>
+            </div>
+            <div className="modal-body stack gap-sm">
+              {biometricSupport?.available ? (
+                <>
+                  <p className="muted small">
+                    Use {biometricSupport.type === "touchid" ? "Touch ID" : "biometric authentication"} or enter your password to unlock
+                  </p>
+                  <p className="muted small"><strong>Logged in as:</strong> {session.name || session.hostId || session.userId}</p>
+                  {deviceLockError ? <p className="error">{deviceLockError}</p> : null}
+                  
+                  <Button
+                    label={`Use ${biometricSupport.type === "touchid" ? "Touch ID" : "Biometric"}`}
+                    variant="primary"
+                    onClick={handleDeviceLockAuthWithBiometric}
+                    icon={<span>🔐</span>}
+                  />
+                  
+                  <div className="divider-text">
+                    <span className="muted small">or</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="muted small">Enter your password to unlock the app</p>
+                  <p className="muted small"><strong>Logged in as:</strong> {session.name || session.hostId || session.userId}</p>
+                  {deviceLockError ? <p className="error">{deviceLockError}</p> : null}
+                </>
+              )}
+              
+              <div onKeyDown={(e) => {
+                if (e.key === "Enter" && deviceLockAuthPassword.trim()) {
+                  handleDeviceLockAuthWithPassword();
+                }
+              }}>
+                <Input 
+                  label="Password" 
+                  type="password" 
+                  value={deviceLockAuthPassword} 
+                  onChange={setDeviceLockAuthPassword} 
+                  placeholder="Enter your password" 
+                  autoFocus={!biometricSupport?.available}
+                />
+              </div>
+            </div>
+            <div className="modal-actions">
+              <Button
+                label="Log Out"
+                variant="danger"
+                onClick={() => {
+                  setShowDeviceLockAuth(false);
+                  doLogout();
+                }}
+              />
+              <Button 
+                label={biometricSupport?.available ? "Unlock with Password" : "Unlock"} 
+                onClick={handleDeviceLockAuthWithPassword}
+              />
             </div>
           </div>
         </div>

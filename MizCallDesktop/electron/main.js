@@ -1,6 +1,10 @@
-import { app, BrowserWindow, nativeTheme, ipcMain, systemPreferences, shell } from "electron";
+import { app, BrowserWindow, nativeTheme, ipcMain, systemPreferences, shell, safeStorage } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+
+const execAsync = promisify(exec);
 
 // Electron exposes a reliable flag; avoids relying on NODE_ENV being set.
 const isDev = !app.isPackaged;
@@ -194,6 +198,61 @@ app.whenReady().then(async () => {
   });
   
   console.log("[Electron] IPC handlers registered successfully");
+  
+  // Biometric authentication handlers
+  ipcMain.handle("check-biometric-support", async () => {
+    try {
+      if (process.platform === "darwin") {
+        // macOS - check for Touch ID
+        const canPrompt = await systemPreferences.canPromptTouchID?.();
+        return {
+          available: canPrompt === true,
+          type: "touchid",
+          platform: "darwin"
+        };
+      } else if (process.platform === "win32") {
+        // Windows - check for Windows Hello
+        try {
+          // Try to check if Windows Hello is available
+          const { stdout } = await execAsync('powershell -Command "Get-WmiObject -Namespace root\\cimv2\\security\\microsofttpm -Class Win32_Tpm | Select-Object -ExpandProperty IsEnabled_InitialValue"');
+          const available = stdout.trim() === "True";
+          return {
+            available,
+            type: "windowshello",
+            platform: "win32"
+          };
+        } catch {
+          return { available: false, type: "none", platform: "win32" };
+        }
+      } else {
+        // Linux or other - no biometric support
+        return { available: false, type: "none", platform: process.platform };
+      }
+    } catch (error) {
+      console.error("[Electron] Error checking biometric support:", error);
+      return { available: false, type: "none", platform: process.platform };
+    }
+  });
+
+  ipcMain.handle("authenticate-biometric", async (_event, reason = "unlock the app") => {
+    try {
+      if (process.platform === "darwin") {
+        // macOS Touch ID
+        await systemPreferences.promptTouchID?.(reason);
+        return { success: true, method: "touchid" };
+      } else if (process.platform === "win32") {
+        // Windows Hello - would need native module, fallback to false for now
+        // In production, use a package like "windows-hello" or "node-biometric"
+        console.log("[Electron] Windows Hello not yet implemented, returning false");
+        return { success: false, method: "none", error: "Windows Hello requires native module" };
+      } else {
+        return { success: false, method: "none", error: "Platform not supported" };
+      }
+    } catch (error) {
+      console.error("[Electron] Biometric authentication failed:", error);
+      return { success: false, method: "none", error: error.message };
+    }
+  });
   
   createWindow();
 
