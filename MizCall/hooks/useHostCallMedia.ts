@@ -34,6 +34,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const turnConfigRef = useRef<any>(null);
   const pendingConsumeRef = useRef<Array<{ producerId: string; userId?: string }>>([]);
   const processedConsumerIdsRef = useRef<Set<string>>(new Set());
+  const restartingRef = useRef(false);
 
   const createDevice = useCallback(() => {
     // React Native needs the explicit handler; desktop/web can use default
@@ -490,7 +491,17 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         }
       });
       transport.on("connectionstatechange", (state: any) => {
-        console.log("[useHostCallMedia] recv transport state", state);
+          console.log("[useHostCallMedia] recv transport state", state);
+          if ((state === "failed" || state === "disconnected") && !restartingRef.current) {
+            restartingRef.current = true;
+            cleanup();
+            setTimeout(() => {
+              restartingRef.current = false;
+              if (!cancelled && token && role === "host" && call?.roomId) {
+                start();
+              }
+            }, 300);
+          }
       });
 
       const pending = [...pendingConsumeRef.current];
@@ -564,9 +575,17 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
       transport.on("connectionstatechange", (state: any) => {
         console.log("[useHostCallMedia] send transport state", state);
-        if (state === "failed") {
+        if ((state === "failed" || state === "disconnected") && !restartingRef.current) {
           setError("Send transport failed");
           setState("error");
+          restartingRef.current = true;
+          cleanup();
+          setTimeout(() => {
+            restartingRef.current = false;
+            if (token && role === "host" && call?.roomId) {
+              start();
+            }
+          }, 300);
         }
       });
 
