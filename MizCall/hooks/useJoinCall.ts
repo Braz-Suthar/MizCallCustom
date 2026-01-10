@@ -36,6 +36,7 @@ export function useJoinCall() {
   const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
   const processedConsumerIdsRef = useRef<Set<string>>(new Set());
+  const producerCreatedRef = useRef(false);
   const meterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zeroLevelCountRef = useRef(0);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -74,6 +75,7 @@ export function useJoinCall() {
     }
     producerRef.current = null;
     producerIdRef.current = null;
+    producerCreatedRef.current = false;
     
     // Close transports
     try {
@@ -152,6 +154,7 @@ export function useJoinCall() {
       producerRef.current?.close?.();
     } catch {}
     producerRef.current = null;
+    producerCreatedRef.current = false;
     producerIdRef.current = null;
     recvTransportRef.current?.close?.();
     recvTransportRef.current = null;
@@ -305,6 +308,25 @@ export function useJoinCall() {
             }
           });
           setPttReady(true);
+
+          // Create a persistent producer immediately (track disabled) to minimize join latency
+          if (!producerCreatedRef.current) {
+            try {
+              const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+              localStreamRef.current = stream;
+              const track = stream.getAudioTracks()[0];
+              track.enabled = false; // start muted until user presses PTT
+              const opusCodec = (device.rtpCapabilities?.codecs || []).find(
+                (c: any) => c.mimeType?.toLowerCase?.() === "audio/opus"
+              );
+              producerRef.current = await transport.produce({ track, codec: opusCodec });
+              producerIdRef.current = producerRef.current.id || null;
+              producerCreatedRef.current = true;
+              console.log("[useJoinCall] Persistent producer created on join", producerRef.current.id);
+            } catch (err: any) {
+              console.warn("[useJoinCall] Failed to create persistent producer on join", err?.message || err);
+            }
+          }
         }
 
         if (msg.type === "RECV_TRANSPORT_CREATED") {
@@ -370,30 +392,12 @@ export function useJoinCall() {
         if (msg.type === "NEW_PRODUCER") {
           console.log("[useJoinCall] NEW_PRODUCER received:", msg.producerId);
           producerIdRef.current = msg.producerId;
-          // If a new producer arrives, drop any existing consumer so we can attach cleanly
-          if (consumerRef.current) {
-            try {
-              consumerRef.current.close?.();
-            } catch {}
-            consumerRef.current = null;
-            processedConsumerIdsRef.current.clear();
-            setRemoteStream(null);
-          }
           sendConsume(msg.producerId);
         }
 
         if (msg.type === "HOST_PRODUCER") {
           console.log("[useJoinCall] HOST_PRODUCER received:", msg.producerId);
           producerIdRef.current = msg.producerId;
-          // If host producer changes, drop any existing consumer so we can attach cleanly
-          if (consumerRef.current) {
-            try {
-              consumerRef.current.close?.();
-            } catch {}
-            consumerRef.current = null;
-            processedConsumerIdsRef.current.clear();
-            setRemoteStream(null);
-          }
           sendConsume(msg.producerId);
         }
 
@@ -421,11 +425,11 @@ export function useJoinCall() {
             return;
           }
           
-          // Skip if we already have ANY consumer (prevent duplicate creation)
-        if (consumerId && processedConsumerIdsRef.current.has(consumerId)) {
-          console.log("[useJoinCall] Consumer already processed (ID:", consumerId, "), skipping event:", msg.type);
-          return;
-        }
+          // Skip if we already have this consumer (prevent duplicate creation)
+          if (consumerId && processedConsumerIdsRef.current.has(consumerId)) {
+            console.log("[useJoinCall] Consumer already processed (ID:", consumerId, "), skipping event:", msg.type);
+            return;
+          }
           
           if (!recvTransportRef.current || !deviceRef.current) {
             console.warn("[useJoinCall] recvTransport or device not ready");
