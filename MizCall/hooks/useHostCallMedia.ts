@@ -37,6 +37,10 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const restartingRef = useRef(false);
   const startRef = useRef<null | (() => void)>(null);
   const cancelledRef = useRef(false);
+  const sendTransportIdRef = useRef<string | null>(null);
+  const recvTransportIdRef = useRef<string | null>(null);
+  const sendConnectCalledRef = useRef(false);
+  const recvConnectCalledRef = useRef(false);
 
   const createDevice = useCallback(() => {
     // React Native needs the explicit handler; desktop/web can use default
@@ -82,6 +86,8 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       console.warn("[useHostCallMedia] Error closing recv transport:", e);
     }
     recvTransportRef.current = null;
+    recvTransportIdRef.current = null;
+    recvConnectCalledRef.current = false;
     
     try {
       if (sendTransportRef.current) {
@@ -92,6 +98,8 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       console.warn("[useHostCallMedia] Error closing send transport:", e);
     }
     sendTransportRef.current = null;
+    sendTransportIdRef.current = null;
+    sendConnectCalledRef.current = false;
     
     // Clear device
     deviceRef.current = null;
@@ -233,13 +241,20 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }
 
           if (msg.type === "SEND_TRANSPORT_CREATED") {
-            // Guard: if we already have a send transport, close it before using new params
-            if (sendTransportRef.current) {
+            const incomingId = msg.params?.id;
+            if (sendTransportRef.current && sendTransportIdRef.current === incomingId) {
+              console.log("[useHostCallMedia] send transport already active for id", incomingId, "skipping duplicate");
+              return;
+            }
+            // If a different send transport exists, close it before recreating
+            if (sendTransportRef.current && sendTransportIdRef.current !== incomingId) {
               try {
                 sendTransportRef.current.close?.();
               } catch {}
               sendTransportRef.current = null;
               producedRef.current = false;
+              sendConnectCalledRef.current = false;
+              sendTransportIdRef.current = null;
             }
 
             if (!routerCapsRef.current || !turnConfigRef.current) {
@@ -255,12 +270,19 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }
 
           if (msg.type === "RECV_TRANSPORT_CREATED") {
+            const incomingId = msg.params?.id;
+            if (recvTransportRef.current && recvTransportIdRef.current === incomingId) {
+              console.log("[useHostCallMedia] recv transport already active for id", incomingId, "skipping duplicate");
+              return;
+            }
             // Guard: close existing recv transport before recreating
-            if (recvTransportRef.current) {
+            if (recvTransportRef.current && recvTransportIdRef.current !== incomingId) {
               try {
                 recvTransportRef.current.close?.();
               } catch {}
               recvTransportRef.current = null;
+              recvConnectCalledRef.current = false;
+              recvTransportIdRef.current = null;
             }
 
             // Wait for TURN + router caps before creating recv transport (mobile often needs TURN)
@@ -511,9 +533,16 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         iceServers: turnConfigRef.current?.iceServers,
       });
       recvTransportRef.current = transport;
+      recvTransportIdRef.current = params.id;
+      recvConnectCalledRef.current = false;
 
       transport.on("connect", ({ dtlsParameters }, callback, errback) => {
         try {
+          if (recvConnectCalledRef.current) {
+            callback();
+            return;
+          }
+          recvConnectCalledRef.current = true;
           socket.emit("CONNECT_RECV_TRANSPORT", { type: "CONNECT_RECV_TRANSPORT", dtlsParameters, roomId });
           callback();
         } catch (err) {
@@ -599,14 +628,21 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         iceTransportPolicy: undefined,
       });
       sendTransportRef.current = transport;
+      sendTransportIdRef.current = transportParams.id;
+      sendConnectCalledRef.current = false;
 
       transport.on("connect", ({ dtlsParameters }, callback, errback) => {
         console.log("[useHostCallMedia] CONNECT_SEND_TRANSPORT", { roomId });
         try {
+          if (sendConnectCalledRef.current) {
+            callback();
+            return;
+          }
+          sendConnectCalledRef.current = true;
           socket.emit("CONNECT_SEND_TRANSPORT", {
-              type: "CONNECT_SEND_TRANSPORT",
-              dtlsParameters,
-              roomId,
+            type: "CONNECT_SEND_TRANSPORT",
+            dtlsParameters,
+            roomId,
           });
           callback();
         } catch (err) {
