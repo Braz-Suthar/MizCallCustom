@@ -1,7 +1,7 @@
 import { AppDispatch, RootState } from "./store";
 import { CredentialsPayload, setCredentials, setHydrated, setStatus, logout } from "./authSlice";
 import { clearSession, loadSession, saveSession } from "./sessionStorage";
-import { apiFetch, apiFetchWithRefresh } from "./api";
+import { apiFetch, apiFetchWithRefresh, API_BASE } from "./api";
 import { socketManager } from "../services/socketManager";
 import { Platform } from "react-native";
 import * as Device from "expo-device";

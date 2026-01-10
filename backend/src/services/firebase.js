@@ -202,6 +202,14 @@ export async function notifyUser(userId, { title, body, data = {} }) {
  */
 export async function registerDeviceToken(userId, hostId, token, platform, deviceName = null) {
   try {
+    // Ensure only one ID is set (database constraint)
+    const finalUserId = userId || null;
+    const finalHostId = userId ? null : (hostId || null);
+    
+    if (!finalUserId && !finalHostId) {
+      throw new Error("Either userId or hostId must be provided");
+    }
+
     // Check if token already exists
     const existing = await query(
       `SELECT id FROM device_tokens WHERE token = $1`,
@@ -216,18 +224,18 @@ export async function registerDeviceToken(userId, hostId, token, platform, devic
          WHERE token = $3`,
         [deviceName, platform, token]
       );
-      console.log("[Firebase] Updated existing token for:", userId || hostId);
+      console.log("[Firebase] Updated existing token for:", finalUserId || finalHostId);
       return { success: true, updated: true };
     }
 
-    // Insert new token
+    // Insert new token (only one of user_id or host_id)
     await query(
       `INSERT INTO device_tokens (user_id, host_id, token, platform, device_name)
        VALUES ($1, $2, $3, $4, $5)`,
-      [userId, hostId, token, platform, deviceName]
+      [finalUserId, finalHostId, token, platform, deviceName]
     );
 
-    console.log("[Firebase] ✅ Registered new device token for:", userId || hostId, "platform:", platform);
+    console.log("[Firebase] ✅ Registered new device token for:", finalUserId || finalHostId, "platform:", platform);
     return { success: true, updated: false };
   } catch (error) {
     console.error("[Firebase] ❌ Failed to register token:", error.message);
