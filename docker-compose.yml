@@ -28,6 +28,7 @@ services:
     environment:
       MEDIASOUP_HOST: mediasoup
       MEDIASOUP_PORT: 4000
+      FIREBASE_SERVICE_ACCOUNT_PATH: /app/firebase-serviceAccountKey.json
     ports:
       - "127.0.0.1:3100:3100"
     extra_hosts:
@@ -39,6 +40,7 @@ services:
     volumes:
       - recordings:/var/app/recordings
       - /opt/docker-data/recordings:/var/app/recordings
+      - ./backend/firebase-serviceAccountKey.json:/app/firebase-serviceAccountKey.json:ro
     restart: always
 
   # ========================
