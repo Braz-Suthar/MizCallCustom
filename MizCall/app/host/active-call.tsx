@@ -1,10 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Dimensions, FlatList, Platform, Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { usePreventRemove } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { io, Socket } from "socket.io-client";
 import { RTCView } from "react-native-webrtc";
 
 import { AppButton } from "../../components/ui/AppButton";
@@ -45,17 +44,10 @@ export default function ActiveCallScreen() {
     // This will prevent all back navigation when activeCall exists and not ending
   });
 
-  const { state: mediaState, error: mediaError, micEnabled, setMicEnabled, remoteStream } = useHostCallMedia({
-    token,
-    role,
-    call: activeCall,
-  });
-  
   const [muted, setMuted] = useState(false);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [participantStates, setParticipantStates] = useState<Record<string, { speaking: boolean; lastSpoke: number }>>({});
-  const statusSocketRef = React.useRef<Socket | null>(null);
 
   const upsertSpeakingState = (userKey: string | undefined, speaking: boolean) => {
     if (!userKey) return;
@@ -74,6 +66,20 @@ export default function ActiveCallScreen() {
     });
   };
 
+  const handleSpeakingStatus = useCallback((userId: string | undefined, speaking: boolean) => {
+    // Fall back to string form to avoid key mismatches
+    const key = userId ?? "";
+    if (!key) return;
+    upsertSpeakingState(key, speaking);
+  }, []);
+
+  const { state: mediaState, error: mediaError, micEnabled, setMicEnabled, remoteStream, emitHostMicStatus } = useHostCallMedia({
+    token,
+    role,
+    call: activeCall,
+    onSpeakingStatus: handleSpeakingStatus,
+  });
+  
   // Fetch participants from backend
   const fetchParticipants = async () => {
     if (!activeCall?.roomId || !token) return;
@@ -112,75 +118,6 @@ export default function ActiveCallScreen() {
     return () => clearInterval(interval);
   }, [activeCall?.roomId, token]);
 
-  // Listen for real-time speaking status updates via Socket.IO
-  useEffect(() => {
-    if (!token || !activeCall?.roomId) return;
-
-    console.log("[host-active-call] Setting up Socket.IO for speaking status...");
-
-    const socket = io(API_BASE, {
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      auth: { token }
-    });
-
-    statusSocketRef.current = socket;
-
-    socket.on("connect", () => {
-      console.log("[host-active-call] Socket.IO connected for speaking status");
-      socket.emit("auth", { type: "auth", token });
-      
-      // Important: JOIN the room to receive events
-      socket.emit("JOIN", { type: "JOIN", token, roomId: activeCall.roomId });
-      console.log("[host-active-call] Sent JOIN for room:", activeCall.roomId);
-    });
-
-    // Debug: Log ALL events
-    socket.onAny((eventName, ...args) => {
-      console.log(`[host-active-call] 🔍 Socket event: ${eventName}`, args);
-    });
-
-    // Listen for generic message event too
-    socket.on("message", (msg) => {
-      console.log("[host-active-call] Received message event:", msg.type, msg);
-      if (msg.type === "USER_SPEAKING_STATUS") {
-        console.log("[host-active-call] ✅ USER_SPEAKING_STATUS from message:", {
-          userId: msg.userId,
-          speaking: msg.speaking,
-          timestamp: Date.now()
-        });
-        upsertSpeakingState(msg.userId, msg.speaking);
-      }
-    });
-
-    socket.on("USER_SPEAKING_STATUS", (data) => {
-      console.log("[host-active-call] ✅ USER_SPEAKING_STATUS direct event:", {
-        userId: data.userId,
-        speaking: data.speaking,
-        timestamp: Date.now()
-      });
-      upsertSpeakingState(data.userId, data.speaking);
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("[host-active-call] Socket.IO disconnected:", reason);
-    });
-
-    return () => {
-      console.log("[host-active-call] Cleaning up speaking status socket...");
-      const socketToCleanup = statusSocketRef.current;
-      if (socketToCleanup) {
-        // Remove all listeners
-        socketToCleanup.offAny();
-        socketToCleanup.removeAllListeners();
-        // Disconnect
-        socketToCleanup.disconnect();
-        console.log("[host-active-call] ✅ Speaking status socket disconnected and cleaned up");
-      }
-      statusSocketRef.current = null;
-    };
-  }, [token, activeCall?.roomId]);
-
   const participantData: Participant[] = useMemo(() => {
     const data = participants.map((p) => {
       const keyId = p.id;
@@ -188,12 +125,10 @@ export default function ActiveCallScreen() {
       const state = participantStates[keyUser] ?? participantStates[keyId];
       const speakingState = state?.speaking ?? false;
       const lastSpokeState = state?.lastSpoke ?? 0;
-      // Linger green for up to 500ms after speaking ends
-      const endedAt = state?.endedAt ?? 0;
-      const linger = endedAt > 0 && Date.now() - endedAt < 500;
       return {
         ...p,
-        speaking: speakingState || linger,
+        // Show green border only while actively speaking
+        speaking: speakingState,
         lastSpoke: lastSpokeState,
       };
     });
@@ -250,14 +185,8 @@ export default function ActiveCallScreen() {
     setMuted(newMutedState);
     setMicEnabled(!newMutedState);
     
-    // Notify users about host mute status
-    if (statusSocketRef.current) {
-      statusSocketRef.current.emit("HOST_MIC_STATUS", {
-        type: "HOST_MIC_STATUS",
-        muted: newMutedState,
-        roomId: activeCall?.roomId,
-      });
-    }
+    // Notify users about host mute status via the media socket
+    emitHostMicStatus(newMutedState);
     
     console.log("[host-active-call] Mic", newMutedState ? "muted" : "unmuted");
   };

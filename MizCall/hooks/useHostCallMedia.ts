@@ -11,8 +11,8 @@ const SOCKET_URL = "https://custom.mizcall.com";
 
 type MediaState = "idle" | "connecting" | "connected" | "error";
 
-export function useHostCallMedia(opts: { token: string | null; role: string | null; call: ActiveCall | null }) {
-  const { token, role, call } = opts;
+export function useHostCallMedia(opts: { token: string | null; role: string | null; call: ActiveCall | null; onSpeakingStatus?: (userId: string, speaking: boolean) => void }) {
+  const { token, role, call, onSpeakingStatus } = opts;
 
   const [state, setState] = useState<MediaState>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -29,10 +29,19 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   const pendingProduceResolve = useRef<((id: string) => void) | null>(null);
   const routerCapsRef = useRef<any>(null);
   const pendingSendParamsRef = useRef<any>(null);
+  const pendingRecvParamsRef = useRef<any>(null);
   const producedRef = useRef(false);
   const turnConfigRef = useRef<any>(null);
   const pendingConsumeRef = useRef<Array<{ producerId: string; userId?: string }>>([]);
   const processedConsumerIdsRef = useRef<Set<string>>(new Set());
+
+  const createDevice = useCallback(() => {
+    // React Native needs the explicit handler; desktop/web can use default
+    if (Platform.OS === "ios" || Platform.OS === "android") {
+      return new Device({ handlerName: "ReactNative106" as any });
+    }
+    return new Device();
+  }, []);
 
   const cleanup = useCallback(() => {
     console.log("[useHostCallMedia] Starting cleanup...");
@@ -116,7 +125,9 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
   useEffect(() => cleanup, [cleanup]);
 
   useEffect(() => {
-    if (!token || role !== "host" || !call) {
+    const roomId = call?.roomId ?? null;
+
+    if (!token || role !== "host" || !roomId) {
       console.log("[useHostCallMedia] No call or not authorized, cleaning up");
       cleanup();
       setState("idle");
@@ -155,9 +166,9 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       socket.on("connect", () => {
         console.log("[useHostCallMedia] Socket.IO connected:", socket.id);
         socket.emit("auth", { type: "auth", token });
-        socket.emit("JOIN", { type: "JOIN", token, roomId: call.roomId });
-        socket.emit("CALL_STARTED", { type: "CALL_STARTED", roomId: call.roomId });
-        socket.emit("GET_ROUTER_CAPS", { type: "GET_ROUTER_CAPS", roomId: call.roomId });
+        socket.emit("JOIN", { type: "JOIN", token, roomId });
+        socket.emit("CALL_STARTED", { type: "CALL_STARTED", roomId });
+        socket.emit("GET_ROUTER_CAPS", { type: "GET_ROUTER_CAPS", roomId });
       });
 
       socket.on("disconnect", (reason) => {
@@ -188,6 +199,12 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
               pendingSendParamsRef.current = null;
               await createSendTransport(socket, cached);
             }
+            if (pendingRecvParamsRef.current && routerCapsRef.current) {
+              console.log("[useHostCallMedia] TURN arrived, creating recv transport now");
+              const cachedRecv = pendingRecvParamsRef.current;
+              pendingRecvParamsRef.current = null;
+              await createRecvTransport(socket, cachedRecv);
+            }
           }
 
           if (msg.type === "ROUTER_CAPS") {
@@ -201,13 +218,18 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
                 await createSendTransport(socket, cached);
               }
             }
+            if (pendingRecvParamsRef.current && turnConfigRef.current) {
+              const cachedRecv = pendingRecvParamsRef.current;
+              pendingRecvParamsRef.current = null;
+              await createRecvTransport(socket, cachedRecv);
+            }
           }
 
           if (msg.type === "SEND_TRANSPORT_CREATED") {
             if (!routerCapsRef.current || !turnConfigRef.current) {
               pendingSendParamsRef.current = msg.params;
               if (!routerCapsRef.current) {
-                socket.emit("GET_ROUTER_CAPS", { type: "GET_ROUTER_CAPS", roomId: call.roomId });
+                socket.emit("GET_ROUTER_CAPS", { type: "GET_ROUTER_CAPS", roomId });
               }
               console.log("[useHostCallMedia] deferring send transport until caps/turn ready");
               return;
@@ -217,38 +239,16 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }
 
           if (msg.type === "RECV_TRANSPORT_CREATED") {
-            const device = deviceRef.current || new Device();
-            if (!deviceRef.current) {
-              await device.load({ routerRtpCapabilities: routerCapsRef.current });
-              deviceRef.current = device;
-            }
-            const transport = device.createRecvTransport({
-              ...msg.params,
-              iceServers: turnConfigRef.current?.iceServers,
-            });
-            recvTransportRef.current = transport;
-            transport.on("connect", ({ dtlsParameters }, callback, errback) => {
-              try {
-                socket.emit("CONNECT_RECV_TRANSPORT", { type: "CONNECT_RECV_TRANSPORT", dtlsParameters, roomId: call.roomId });
-                callback();
-              } catch (err) {
-                console.warn("[useHostCallMedia] connect recv failed", err);
-                errback?.(err as any);
+            // Wait for TURN + router caps before creating recv transport (mobile often needs TURN)
+            if (!routerCapsRef.current || !turnConfigRef.current) {
+              pendingRecvParamsRef.current = msg.params;
+              if (!routerCapsRef.current) {
+                socket.emit("GET_ROUTER_CAPS", { type: "GET_ROUTER_CAPS", roomId });
               }
-            });
-            transport.on("connectionstatechange", (state: any) => {
-              console.log("[useHostCallMedia] recv transport state", state);
-            });
-            const pending = [...pendingConsumeRef.current];
-            pendingConsumeRef.current = [];
-            pending.forEach(({ producerId }) => {
-              socket.emit("CONSUME", {
-                  type: "CONSUME",
-                  producerId,
-                  rtpCapabilities: device.rtpCapabilities,
-                  roomId: call.roomId,
-              });
-            });
+              console.log("[useHostCallMedia] deferring recv transport until caps/turn ready");
+              return;
+            }
+            await createRecvTransport(socket, msg.params);
           }
 
           if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "user") {
@@ -285,7 +285,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
                   type: "CONSUME",
                   producerId: msg.producerId,
                   rtpCapabilities: deviceRef.current.rtpCapabilities,
-                  roomId: call.roomId,
+                  roomId,
               });
             } else {
               pendingConsumeRef.current.push({ producerId: msg.producerId, userId: msg.userId });
@@ -379,6 +379,13 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
             }
           }
 
+          if (msg.type === "USER_SPEAKING_STATUS") {
+            const key = msg.userId || msg.id;
+            if (key) {
+              onSpeakingStatus?.(key, !!msg.speaking);
+            }
+          }
+
           if ((msg.type === "PRODUCER_CREATED" || msg.type === "PRODUCED") && pendingProduceResolve.current) {
             const producerId = msg.producerId || msg.id;
             pendingProduceResolve.current(producerId);
@@ -401,6 +408,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       socket.on("CONSUMED", handleMessage);
       socket.on("PRODUCER_CREATED", handleMessage);
       socket.on("PRODUCED", handleMessage);
+      socket.on("USER_SPEAKING_STATUS", handleMessage);
     };
 
     start();
@@ -409,7 +417,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       cancelled = true;
       cleanup();
     };
-  }, [token, role, call, cleanup]);
+  }, [token, role, call?.roomId, cleanup, onSpeakingStatus]);
 
   const doProduce = useCallback(
     async (socket: Socket, transport: any, device: Device, roomId: string) => {
@@ -456,6 +464,49 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
     [micEnabled],
   );
 
+  const createRecvTransport = useCallback(
+    async (socket: Socket, params: any) => {
+      const roomId = call?.roomId ?? "main-room";
+
+      const device = deviceRef.current || createDevice();
+      if (!deviceRef.current) {
+        await device.load({ routerRtpCapabilities: routerCapsRef.current });
+        deviceRef.current = device;
+      }
+
+      const transport = device.createRecvTransport({
+        ...params,
+        iceServers: turnConfigRef.current?.iceServers,
+      });
+      recvTransportRef.current = transport;
+
+      transport.on("connect", ({ dtlsParameters }, callback, errback) => {
+        try {
+          socket.emit("CONNECT_RECV_TRANSPORT", { type: "CONNECT_RECV_TRANSPORT", dtlsParameters, roomId });
+          callback();
+        } catch (err) {
+          console.warn("[useHostCallMedia] connect recv failed", err);
+          errback?.(err as any);
+        }
+      });
+      transport.on("connectionstatechange", (state: any) => {
+        console.log("[useHostCallMedia] recv transport state", state);
+      });
+
+      const pending = [...pendingConsumeRef.current];
+      pendingConsumeRef.current = [];
+      pending.forEach(({ producerId }) => {
+        socket.emit("CONSUME", {
+            type: "CONSUME",
+            producerId,
+            rtpCapabilities: device.rtpCapabilities,
+            roomId,
+        });
+      });
+    },
+    [call?.roomId, createDevice],
+  );
+
   const createSendTransport = useCallback(
     async (socket: Socket, params: any) => {
       const roomId = call?.roomId ?? "main-room";
@@ -468,7 +519,7 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         hasTurn: !!turnConfigRef.current,
       });
 
-      const device = new Device();
+      const device = createDevice();
       try {
         await device.load({
           routerRtpCapabilities: routerCapsRef.current,
@@ -565,6 +616,16 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
     });
   }, []);
 
-  return { state, error, micEnabled, setMicEnabled: toggleMic, remoteStream };
+  const emitHostMicStatus = useCallback((muted: boolean) => {
+    if (socketRef.current && call?.roomId) {
+      socketRef.current.emit("HOST_MIC_STATUS", {
+        type: "HOST_MIC_STATUS",
+        muted,
+        roomId: call.roomId,
+      });
+    }
+  }, [call?.roomId]);
+
+  return { state, error, micEnabled, setMicEnabled: toggleMic, remoteStream, emitHostMicStatus };
 }
 
