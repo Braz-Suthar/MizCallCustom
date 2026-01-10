@@ -44,10 +44,14 @@ CREATE TABLE IF NOT EXISTS user_session_requests (
   status TEXT NOT NULL DEFAULT 'pending', -- 'pending', 'approved', 'rejected'
   approved_at TIMESTAMP WITH TIME ZONE,
   rejected_at TIMESTAMP WITH TIME ZONE,
-  approved_by TEXT REFERENCES hosts(id),
-  CONSTRAINT user_session_requests_unique_pending UNIQUE (user_id, status) WHERE status = 'pending'
+  approved_by TEXT REFERENCES hosts(id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_session_requests_user ON user_session_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_session_requests_host ON user_session_requests(host_id);
 CREATE INDEX IF NOT EXISTS idx_user_session_requests_status ON user_session_requests(status);
+
+-- Create partial unique index to ensure only one pending request per user
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_session_requests_unique_pending 
+  ON user_session_requests(user_id) 
+  WHERE status = 'pending';
