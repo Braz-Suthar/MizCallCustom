@@ -31,6 +31,7 @@ export function useHostCallMedia(opts: {
   const micStreamRef = useRef<MediaStream | null>(null);
   const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
+  const routerCapsRef = useRef<any>(null);
 
   const cleanup = useCallback(() => {
     console.log("[useHostCallMedia] Starting cleanup...");
@@ -71,6 +72,7 @@ export function useHostCallMedia(opts: {
     sendTransportRef.current = null;
     
     deviceRef.current = null;
+    routerCapsRef.current = null;
     
     if (micStreamRef.current) {
       console.log("[useHostCallMedia] Stopping microphone tracks");
@@ -153,7 +155,8 @@ export function useHostCallMedia(opts: {
           console.log("[useHostCallMedia] message", msg.type);
 
           if (msg.type === "ROUTER_CAPS") {
-            // Just store, no action needed
+            routerCapsRef.current = msg.routerRtpCapabilities;
+            console.log("[useHostCallMedia] Router caps received");
           }
 
           if (msg.type === "SEND_TRANSPORT_CREATED") {
@@ -164,13 +167,13 @@ export function useHostCallMedia(opts: {
 
             const device = new Device({ handlerName: Platform.OS === "ios" || Platform.OS === "android" ? "ReactNative106" as any : undefined });
             
-            // Load device with router caps from call state
-            if (!call.routerRtpCapabilities) {
+            // Load device with router caps from ref (populated by ROUTER_CAPS message)
+            if (!routerCapsRef.current) {
               console.error("[useHostCallMedia] Missing router caps for device load");
               return;
             }
             
-            await device.load({ routerRtpCapabilities: call.routerRtpCapabilities });
+            await device.load({ routerRtpCapabilities: routerCapsRef.current });
             deviceRef.current = device;
             
             const transport = device.createSendTransport(msg.params);
@@ -223,11 +226,11 @@ export function useHostCallMedia(opts: {
             const device = deviceRef.current || new Device({ handlerName: Platform.OS === "ios" || Platform.OS === "android" ? "ReactNative106" as any : undefined });
             
             if (!device.loaded) {
-              if (!call.routerRtpCapabilities) {
+              if (!routerCapsRef.current) {
                 console.error("[useHostCallMedia] Missing router caps for recv device load");
                 return;
               }
-              await device.load({ routerRtpCapabilities: call.routerRtpCapabilities });
+              await device.load({ routerRtpCapabilities: routerCapsRef.current });
               deviceRef.current = device;
             }
 

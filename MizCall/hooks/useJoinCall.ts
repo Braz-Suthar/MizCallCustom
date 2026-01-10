@@ -33,6 +33,7 @@ export function useJoinCall() {
   const producerRef = useRef<any>(null);
   const consumerRef = useRef<any>(null);
   const hostProducerIdRef = useRef<string | null>(null);
+  const routerCapsRef = useRef<any>(null);
   const meterIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const zeroLevelCountRef = useRef(0);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -85,6 +86,7 @@ export function useJoinCall() {
     
     deviceRef.current = null;
     hostProducerIdRef.current = null;
+    routerCapsRef.current = null;
     
     if (meterIntervalRef.current) {
       clearInterval(meterIntervalRef.current);
@@ -145,6 +147,7 @@ export function useJoinCall() {
     }
 
     socketRef.current = socket;
+    routerCapsRef.current = activeCall.routerRtpCapabilities || null;
     hostProducerIdRef.current = activeCall.hostProducerId || null;
 
     if (socket.connected) {
@@ -154,6 +157,7 @@ export function useJoinCall() {
         enableSpeakerphone();
       } catch {}
       socket.emit("JOIN", { type: "JOIN", token, roomId });
+      socket.emit("REQUEST_HOST_PRODUCER", { roomId });
     }
 
     const handleConnect = () => {
@@ -163,6 +167,7 @@ export function useJoinCall() {
         enableSpeakerphone();
       } catch {}
       socket.emit("JOIN", { type: "JOIN", token, roomId });
+      socket.emit("REQUEST_HOST_PRODUCER", { roomId });
     };
 
     const handleDisconnect = (reason: string) => {
@@ -184,6 +189,14 @@ export function useJoinCall() {
         const msg = msgRaw || {};
         console.log("[useJoinCall] message", msg.type);
 
+        if (msg.type === "ROUTER_CAPS") {
+          routerCapsRef.current = msg.routerRtpCapabilities;
+          console.log("[useJoinCall] Router caps received");
+          if (msg.hostProducerId) {
+            hostProducerIdRef.current = msg.hostProducerId;
+          }
+        }
+
         if (msg.type === "SEND_TRANSPORT_CREATED") {
           if (sendTransportRef.current) {
             console.log("[useJoinCall] Send transport already exists, skipping");
@@ -191,7 +204,13 @@ export function useJoinCall() {
           }
 
           const device = new Device({ handlerName: "ReactNative106" as any });
-          await device.load({ routerRtpCapabilities: activeCall.routerRtpCapabilities as RtpCapabilities });
+          
+          if (!routerCapsRef.current) {
+            console.error("[useJoinCall] Missing router caps for send device load");
+            return;
+          }
+          
+          await device.load({ routerRtpCapabilities: routerCapsRef.current as RtpCapabilities });
           deviceRef.current = device;
           
           const transport = device.createSendTransport(msg.params);
@@ -219,7 +238,11 @@ export function useJoinCall() {
           const device = deviceRef.current || new Device({ handlerName: "ReactNative106" as any });
           
           if (!device.loaded) {
-            await device.load({ routerRtpCapabilities: activeCall.routerRtpCapabilities as RtpCapabilities });
+            if (!routerCapsRef.current) {
+              console.error("[useJoinCall] Missing router caps for recv device load");
+              return;
+            }
+            await device.load({ routerRtpCapabilities: routerCapsRef.current as RtpCapabilities });
             deviceRef.current = device;
           }
 
@@ -261,6 +284,10 @@ export function useJoinCall() {
           console.log("[useJoinCall] NEW_PRODUCER from host:", msg.producerId);
           hostProducerIdRef.current = msg.producerId;
           
+          if (msg.routerRtpCapabilities) {
+            routerCapsRef.current = msg.routerRtpCapabilities;
+          }
+          
           if (recvTransportRef.current && deviceRef.current) {
             socket.emit("CONSUME", {
               type: "CONSUME",
@@ -274,6 +301,10 @@ export function useJoinCall() {
         if (msg.type === "HOST_PRODUCER") {
           console.log("[useJoinCall] HOST_PRODUCER received:", msg.producerId);
           hostProducerIdRef.current = msg.producerId;
+          
+          if (msg.routerRtpCapabilities) {
+            routerCapsRef.current = msg.routerRtpCapabilities;
+          }
           
           if (recvTransportRef.current && deviceRef.current) {
             socket.emit("CONSUME", {
@@ -382,6 +413,7 @@ export function useJoinCall() {
 
     socket.on("message", handleMsg);
     [
+      "ROUTER_CAPS",
       "SEND_TRANSPORT_CREATED",
       "RECV_TRANSPORT_CREATED",
       "NEW_PRODUCER",
@@ -400,6 +432,7 @@ export function useJoinCall() {
       socket.off("disconnect", handleDisconnect);
       socket.off("connect_error", handleConnectError);
       socket.off("message");
+      socket.off("ROUTER_CAPS");
       socket.off("SEND_TRANSPORT_CREATED");
       socket.off("RECV_TRANSPORT_CREATED");
       socket.off("NEW_PRODUCER");
