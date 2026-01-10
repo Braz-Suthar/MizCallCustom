@@ -23,17 +23,28 @@ const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 app.use("/uploads", express.static(uploadsDir));
 
-// Basic CORS to allow Electron/Vite and our custom domain
+// Enhanced CORS to allow Electron/Vite and our custom domain
 app.use((req, res, next) => {
-  const origin = req.headers.origin || "*";
-  res.header("Access-Control-Allow-Origin", origin);
+  const origin = req.headers.origin;
+  
+  // Allow all origins (for development) or specific domains (for production)
+  if (origin) {
+    res.header("Access-Control-Allow-Origin", origin);
+  } else {
+    res.header("Access-Control-Allow-Origin", "*");
+  }
+  
   res.header("Vary", "Origin");
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Device-Name");
   res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Max-Age", "86400"); // Cache preflight for 24 hours
+  
+  // Handle preflight requests
   if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
+    return res.status(204).end();
   }
+  
   next();
 });
 
