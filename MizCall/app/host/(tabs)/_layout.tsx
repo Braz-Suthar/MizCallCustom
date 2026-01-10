@@ -3,11 +3,13 @@ import { Redirect, Tabs } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet, useColorScheme } from "react-native";
 import { useTheme } from "@react-navigation/native";
+import Toast from "react-native-toast-message";
 
 import { Image } from "expo-image";
 
 import { useAppSelector } from "../../../state/store";
 import { socketManager } from "../../../services/socketManager";
+import { NotificationService } from "../../../services/notificationService";
 
 export default function HostTabsLayout() {
   const token = useAppSelector((s) => s.auth.token);
@@ -29,10 +31,38 @@ export default function HostTabsLayout() {
     [token, role, email],
   );
 
-  // Initialize socket manager for host
+  // Initialize socket manager and notifications for host
   useEffect(() => {
     if (token && role === "host") {
       socketManager.initialize(token);
+      
+      // Setup push notifications
+      const setupNotifications = async () => {
+        const hasPermission = await NotificationService.requestPermissions();
+        if (hasPermission) {
+          await NotificationService.registerDevice(token);
+        }
+      };
+      setupNotifications();
+      
+      // Setup notification listeners
+      const cleanupNotifications = NotificationService.setupListeners(
+        // On notification received (foreground)
+        (notification) => {
+          Toast.show({
+            type: "info",
+            text1: notification.request.content.title || "Notification",
+            text2: notification.request.content.body || "",
+            position: "top",
+            visibilityTime: 4000,
+            topOffset: 48,
+          });
+        }
+      );
+      
+      return () => {
+        cleanupNotifications();
+      };
     }
   }, [token, role]);
 

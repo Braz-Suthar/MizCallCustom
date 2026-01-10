@@ -5,6 +5,7 @@ import { requireAuth, requireHost } from "../../middleware/auth.js";
 import { signRefreshToken, verifyRefreshToken } from "../../services/auth.js";
 import { generateUserId } from "../../services/id.js";
 import { broadcastCallEvent, ensureMediasoupRoom, peers } from "../../signaling/socket-io.js";
+import { notifyHostUsers } from "../../services/firebase.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -559,6 +560,7 @@ router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
 
   res.json({ roomId, routerRtpCapabilities: room?.routerRtpCapabilities ?? {} });
 
+  // Broadcast to connected clients via Socket.IO
   broadcastCallEvent(
     req.hostId,
     {
@@ -569,6 +571,37 @@ router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
     },
     roomId
   );
+
+  // Send push notifications to all users (async, don't wait)
+  notifyHostUsers(req.hostId, {
+    title: "📞 New Call Started",
+    body: "Your host has started a new call. Tap to join.",
+    data: {
+      type: "call_started",
+      roomId,
+      hostId: req.hostId,
+    },
+  }).then((result) => {
+    console.log("[Call Start] Notifications sent:", result);
+    
+    // Log the notification
+    query(
+      `INSERT INTO notifications (sender_id, recipient_type, title, body, data, notification_type, success_count, failure_count)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        req.hostId,
+        "all_users",
+        "📞 New Call Started",
+        "Your host has started a new call. Tap to join.",
+        JSON.stringify({ type: "call_started", roomId, hostId: req.hostId }),
+        "call_started",
+        result.successCount || 0,
+        result.failureCount || 0,
+      ]
+    ).catch((err) => console.error("[Call Start] Failed to log notification:", err));
+  }).catch((err) => {
+    console.error("[Call Start] Failed to send notifications:", err);
+  });
 });
 
 /* LIST CALLS FOR HOST */

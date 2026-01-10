@@ -1,0 +1,208 @@
+import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
+import { Platform } from "react-native";
+import { apiFetch } from "../state/api";
+
+// Configure notification behavior
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+export class NotificationService {
+  private static token: string | null = null;
+  private static authToken: string | null = null;
+
+  /**
+   * Request notification permissions and get FCM token
+   */
+  static async requestPermissions(): Promise<boolean> {
+    try {
+      // Only request on physical devices
+      if (!Device.isDevice) {
+        console.log("[Notifications] Skipping on simulator/emulator");
+        return false;
+      }
+
+      // Request permissions
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== "granted") {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== "granted") {
+        console.log("[Notifications] Permission denied");
+        return false;
+      }
+
+      console.log("[Notifications] ✅ Permission granted");
+      return true;
+    } catch (error) {
+      console.error("[Notifications] Permission request failed:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Get FCM token and register with backend
+   */
+  static async registerDevice(authToken: string): Promise<boolean> {
+    try {
+      if (!Device.isDevice) {
+        console.log("[Notifications] Skipping registration on simulator/emulator");
+        return false;
+      }
+
+      // Get FCM token
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: "0aa170c5-60bd-47c2-8015-cebd6a3717b6", // Your EAS project ID
+      });
+
+      const fcmToken = tokenData.data;
+      this.token = fcmToken;
+      this.authToken = authToken;
+
+      console.log("[Notifications] FCM Token:", fcmToken.substring(0, 20) + "...");
+
+      // Register with backend
+      const result = await apiFetch<{ ok: boolean; firebaseAvailable: boolean }>(
+        "/notifications/register-token",
+        authToken,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            token: fcmToken,
+            platform: Platform.OS,
+            deviceName: Device.deviceName || undefined,
+          }),
+        }
+      );
+
+      if (result.ok) {
+        console.log("[Notifications] ✅ Registered with backend. Firebase available:", result.firebaseAvailable);
+        if (!result.firebaseAvailable) {
+          console.warn("[Notifications] ⚠️ Backend Firebase not configured. Notifications disabled.");
+        }
+      }
+
+      return result.ok;
+    } catch (error) {
+      console.error("[Notifications] Registration failed:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Unregister device token from backend
+   */
+  static async unregisterDevice(): Promise<void> {
+    try {
+      if (!this.token || !this.authToken) {
+        return;
+      }
+
+      await apiFetch(
+        "/notifications/unregister-token",
+        this.authToken,
+        {
+          method: "POST",
+          body: JSON.stringify({ token: this.token }),
+        }
+      );
+
+      console.log("[Notifications] ✅ Unregistered from backend");
+      this.token = null;
+      this.authToken = null;
+    } catch (error) {
+      console.error("[Notifications] Unregister failed:", error);
+    }
+  }
+
+  /**
+   * Setup notification listeners
+   * Returns cleanup function
+   */
+  static setupListeners(
+    onNotificationReceived?: (notification: Notifications.Notification) => void,
+    onNotificationTapped?: (response: Notifications.NotificationResponse) => void
+  ): () => void {
+    // Listener for notifications received while app is in foreground
+    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+      console.log("[Notifications] Received:", notification);
+      onNotificationReceived?.(notification);
+    });
+
+    // Listener for notifications tapped (app was in background/killed)
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      console.log("[Notifications] Tapped:", response);
+      onNotificationTapped?.(response);
+    });
+
+    // Android notification channel (required)
+    if (Platform.OS === "android") {
+      Notifications.setNotificationChannelAsync("default", {
+        name: "Default",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#3c82f6",
+        sound: "default",
+      });
+
+      // Channel for calls (high priority)
+      Notifications.setNotificationChannelAsync("calls", {
+        name: "Calls",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 500, 200, 500],
+        lightColor: "#22c55e",
+        sound: "default",
+        enableVibrate: true,
+      });
+    }
+
+    // Return cleanup function
+    return () => {
+      receivedSubscription.remove();
+      responseSubscription.remove();
+    };
+  }
+
+  /**
+   * Show local notification (for testing)
+   */
+  static async showLocalNotification(title: string, body: string, data: any = {}) {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data,
+          sound: true,
+        },
+        trigger: null, // Show immediately
+      });
+    } catch (error) {
+      console.error("[Notifications] Show local failed:", error);
+    }
+  }
+
+  /**
+   * Check notification status
+   */
+  static async getStatus(): Promise<{ enabled: boolean; token: string | null }> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      return {
+        enabled: status === "granted",
+        token: this.token,
+      };
+    } catch (error) {
+      return { enabled: false, token: null };
+    }
+  }
+}

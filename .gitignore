@@ -17,6 +17,16 @@ Thumbs.db
 !.env.example
 
 ########################################
+# Firebase / Push Notifications
+########################################
+firebase-serviceAccountKey.json
+**/firebase-serviceAccountKey.json
+google-services.json
+GoogleService-Info.plist
+**/google-services.json
+**/GoogleService-Info.plist
+
+########################################
 # Logs
 ########################################
 logs/

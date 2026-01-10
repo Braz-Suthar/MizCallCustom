@@ -7,6 +7,7 @@ import authRoutes from "./api/auth/index.js";
 import hostRoutes from "./api/host/index.js";
 import userRoutes from "./api/user/index.js";
 import recordingRoutes from "./api/recordings/index.js";
+import notificationsRoutes from "./api/notifications/index.js";
 import recordingsRoutes from "./routes/recordings.js";
 import { requireAuth } from "./middleware/auth.js";
 
@@ -14,6 +15,7 @@ import { startWebSocketServer } from "./signaling/socket-io.js";
 import { connectMediasoup } from "./mediasoup/client.js";
 import { connectRecorder } from "./recorder/client.js";
 import { runMigrations } from "./db/migrate.js";
+import { initializeFirebase } from "./services/firebase.js";
 
 const app = express();
 app.use(express.json());
@@ -54,6 +56,7 @@ app.use(requireAuth, recordingsRoutes);
 app.use("/host", hostRoutes);
 app.use("/user", userRoutes);
 app.use("/recordings", recordingRoutes);
+app.use("/notifications", notificationsRoutes);
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
@@ -64,6 +67,7 @@ const server = http.createServer(app);
 
 // Boot sequence (ensure mediasoup first, then WS)
 await runMigrations();
+initializeFirebase(); // Initialize FCM (optional, won't crash if not configured)
 await connectMediasoup();
 connectRecorder();
 // Start WS signaling (requires mediasoup connection ready)

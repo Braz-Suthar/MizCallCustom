@@ -10,6 +10,7 @@ import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
 import { DeleteConfirmationModal } from "../../../components/ui/DeleteConfirmationModal";
 import { UserSessionsModal } from "../../../components/ui/UserSessionsModal";
+import { SendNotificationModal } from "../../../components/ui/SendNotificationModal";
 import { authApiFetch } from "../../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 
@@ -54,6 +55,7 @@ export default function HostUsers() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [sessionsModalVisible, setSessionsModalVisible] = useState(false);
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
   const [selectedUser, setSelectedUser] = useState<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string; avatar_url?: string | null; enforce_single_device?: boolean | null } | null>(null);
   
   // Edit form states
@@ -271,8 +273,18 @@ export default function HostUsers() {
   return (
     <>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Users</Text>
-        <Text style={[styles.subtitle, { color: colors.text }]}>Manage and view all registered users.</Text>
+        <View style={styles.titleRow}>
+          <View>
+            <Text style={[styles.title, { color: colors.text }]}>Users</Text>
+            <Text style={[styles.subtitle, { color: colors.text }]}>Manage and view all registered users.</Text>
+          </View>
+          <Pressable
+            style={[styles.notifyButton, { backgroundColor: colors.primary }]}
+            onPress={() => setNotificationModalVisible(true)}
+          >
+            <Ionicons name="notifications" size={20} color="#fff" />
+          </Pressable>
+        </View>
 
         {/* Search and Filter Row */}
         <View style={styles.searchFilterRow}>
@@ -726,6 +738,13 @@ export default function HostUsers() {
           setSelectedUser(null);
         }}
       />
+
+      {/* Send Notification Modal */}
+      <SendNotificationModal
+        visible={notificationModalVisible}
+        onClose={() => setNotificationModalVisible(false)}
+        users={users}
+      />
     </>
   );
 }
@@ -737,13 +756,30 @@ const styles = StyleSheet.create({
     paddingTop: 28,
     paddingBottom: 20,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
   title: {
     fontSize: 20,
     fontWeight: "700",
   },
   subtitle: {
     marginTop: 6,
-    marginBottom: 16,
+  },
+  notifyButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   searchFilterRow: {
     flexDirection: "row",
