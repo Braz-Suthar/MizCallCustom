@@ -231,6 +231,15 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }
 
           if (msg.type === "SEND_TRANSPORT_CREATED") {
+            // Guard: if we already have a send transport, close it before using new params
+            if (sendTransportRef.current) {
+              try {
+                sendTransportRef.current.close?.();
+              } catch {}
+              sendTransportRef.current = null;
+              producedRef.current = false;
+            }
+
             if (!routerCapsRef.current || !turnConfigRef.current) {
               pendingSendParamsRef.current = msg.params;
               if (!routerCapsRef.current) {
@@ -244,6 +253,14 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
           }
 
           if (msg.type === "RECV_TRANSPORT_CREATED") {
+            // Guard: close existing recv transport before recreating
+            if (recvTransportRef.current) {
+              try {
+                recvTransportRef.current.close?.();
+              } catch {}
+              recvTransportRef.current = null;
+            }
+
             // Wait for TURN + router caps before creating recv transport (mobile often needs TURN)
             if (!routerCapsRef.current || !turnConfigRef.current) {
               pendingRecvParamsRef.current = msg.params;
@@ -474,6 +491,14 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
     async (socket: Socket, params: any) => {
       const roomId = call?.roomId ?? "main-room";
 
+      // If a recv transport already exists, close it before recreating (prevents duplicate mids)
+      if (recvTransportRef.current) {
+        try {
+          recvTransportRef.current.close?.();
+        } catch {}
+        recvTransportRef.current = null;
+      }
+
       const device = deviceRef.current || createDevice();
       if (!deviceRef.current) {
         await device.load({ routerRtpCapabilities: routerCapsRef.current });
@@ -536,6 +561,15 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
         iceCount: (transportParams.iceCandidates || []).length,
         hasTurn: !!turnConfigRef.current,
       });
+
+      // If a send transport already exists, close it before recreating (avoids duplicate produce MID)
+      if (sendTransportRef.current) {
+        try {
+          sendTransportRef.current.close?.();
+        } catch {}
+        sendTransportRef.current = null;
+        producedRef.current = false;
+      }
 
       const device = createDevice();
       try {
