@@ -45,9 +45,9 @@ router.patch("/profile", requireAuth, requireHost, async (req, res) => {
 
 /* HOST SECURITY SETTINGS */
 router.patch("/security", requireAuth, requireHost, async (req, res) => {
-  const { twoFactorEnabled, allowMultipleSessions, refreshToken } = req.body;
-  if (twoFactorEnabled === undefined && allowMultipleSessions === undefined) {
-    return res.status(400).json({ error: "twoFactorEnabled or allowMultipleSessions is required" });
+  const { twoFactorEnabled, allowMultipleSessions, enforceUserSingleSession, refreshToken } = req.body;
+  if (twoFactorEnabled === undefined && allowMultipleSessions === undefined && enforceUserSingleSession === undefined) {
+    return res.status(400).json({ error: "At least one setting is required" });
   }
 
   const updates = [];
@@ -97,6 +97,10 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
       }
     }
   }
+  if (enforceUserSingleSession !== undefined) {
+    updates.push(`enforce_user_single_session = $${idx++}`);
+    values.push(!!enforceUserSingleSession);
+  }
 
   if (!updates.length) {
     return res.status(400).json({ error: "no updates" });
@@ -107,6 +111,7 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
   res.json({
     twoFactorEnabled: twoFactorEnabled !== undefined ? !!twoFactorEnabled : undefined,
     allowMultipleSessions: allowMultipleSessions !== undefined ? !!allowMultipleSessions : undefined,
+    enforceUserSingleSession: enforceUserSingleSession !== undefined ? !!enforceUserSingleSession : undefined,
     refreshToken: req.activeSessionRefreshToken,
   });
 });
@@ -318,6 +323,181 @@ router.get("/users", requireAuth, requireHost, async (req, res) => {
   );
   console.log("[host/users] returning", result.rows.length, "users");
   res.json({ users: result.rows });
+});
+
+/* GET USER SESSIONS AND PENDING REQUESTS */
+router.get("/users/:userId/sessions", requireAuth, requireHost, async (req, res) => {
+  const { userId } = req.params;
+  
+  // Verify user belongs to this host
+  const userCheck = await query(
+    `SELECT id FROM users WHERE id = $1 AND host_id = $2`,
+    [userId, req.hostId]
+  );
+  
+  if (userCheck.rowCount === 0) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  // Get active sessions
+  const sessionsResult = await query(
+    `SELECT id, device_label, device_name, model_name, platform, os_name, os_version, 
+            created_at, last_seen_at
+     FROM user_sessions
+     WHERE user_id = $1 AND revoked_at IS NULL
+     ORDER BY last_seen_at DESC NULLS LAST, created_at DESC`,
+    [userId]
+  );
+
+  // Get pending requests
+  const requestsResult = await query(
+    `SELECT id, device_label, device_name, model_name, platform, os_name, os_version,
+            requested_at
+     FROM user_session_requests
+     WHERE user_id = $1 AND status = 'pending'
+     ORDER BY requested_at DESC`,
+    [userId]
+  );
+
+  res.json({
+    sessions: sessionsResult.rows,
+    pendingRequests: requestsResult.rows,
+  });
+});
+
+/* APPROVE USER SESSION REQUEST */
+router.post("/users/:userId/sessions/approve", requireAuth, requireHost, async (req, res) => {
+  const { userId } = req.params;
+  const { requestId } = req.body;
+  
+  if (!requestId) {
+    return res.status(400).json({ error: "requestId required" });
+  }
+
+  // Verify user belongs to this host
+  const userCheck = await query(
+    `SELECT id FROM users WHERE id = $1 AND host_id = $2`,
+    [userId, req.hostId]
+  );
+  
+  if (userCheck.rowCount === 0) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  // Get the request
+  const requestResult = await query(
+    `SELECT id, user_id, host_id, device_label, device_name, model_name, platform, 
+            os_name, os_version, user_agent
+     FROM user_session_requests
+     WHERE id = $1 AND user_id = $2 AND status = 'pending'`,
+    [requestId, userId]
+  );
+
+  if (requestResult.rowCount === 0) {
+    return res.status(404).json({ error: "Request not found or already processed" });
+  }
+
+  const request = requestResult.rows[0];
+
+  // Revoke all existing sessions for this user
+  await query(
+    `UPDATE user_sessions 
+     SET revoked_at = NOW() 
+     WHERE user_id = $1 AND revoked_at IS NULL`,
+    [userId]
+  );
+
+  // Mark request as approved
+  await query(
+    `UPDATE user_session_requests 
+     SET status = 'approved', approved_at = NOW(), approved_by = $1 
+     WHERE id = $2`,
+    [req.hostId, requestId]
+  );
+
+  // Reject any other pending requests for this user
+  await query(
+    `UPDATE user_session_requests 
+     SET status = 'rejected', rejected_at = NOW() 
+     WHERE user_id = $1 AND status = 'pending' AND id != $2`,
+    [userId, requestId]
+  );
+
+  res.json({ 
+    ok: true, 
+    message: "Session request approved. Old sessions have been revoked.",
+    requestId 
+  });
+});
+
+/* REJECT USER SESSION REQUEST */
+router.post("/users/:userId/sessions/reject", requireAuth, requireHost, async (req, res) => {
+  const { userId } = req.params;
+  const { requestId } = req.body;
+  
+  if (!requestId) {
+    return res.status(400).json({ error: "requestId required" });
+  }
+
+  // Verify user belongs to this host
+  const userCheck = await query(
+    `SELECT id FROM users WHERE id = $1 AND host_id = $2`,
+    [userId, req.hostId]
+  );
+  
+  if (userCheck.rowCount === 0) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  // Mark request as rejected
+  const result = await query(
+    `UPDATE user_session_requests 
+     SET status = 'rejected', rejected_at = NOW() 
+     WHERE id = $1 AND user_id = $2 AND status = 'pending'
+     RETURNING id`,
+    [requestId, userId]
+  );
+
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: "Request not found or already processed" });
+  }
+
+  res.json({ ok: true, message: "Session request rejected.", requestId });
+});
+
+/* REVOKE USER SESSION */
+router.post("/users/:userId/sessions/revoke", requireAuth, requireHost, async (req, res) => {
+  const { userId } = req.params;
+  const { sessionId } = req.body;
+  
+  if (!sessionId) {
+    return res.status(400).json({ error: "sessionId required" });
+  }
+
+  // Verify user belongs to this host
+  const userCheck = await query(
+    `SELECT id FROM users WHERE id = $1 AND host_id = $2`,
+    [userId, req.hostId]
+  );
+  
+  if (userCheck.rowCount === 0) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  // Revoke the session
+  const result = await query(
+    `UPDATE user_sessions 
+     SET revoked_at = NOW() 
+     WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL
+     RETURNING id`,
+    [sessionId, userId]
+  );
+
+  if (result.rowCount === 0) {
+    return res.status(404).json({ error: "Session not found or already revoked" });
+  }
+
+  res.json({ ok: true, message: "Session revoked.", sessionId });
 });
 
 /* START CALL (LOGICAL ONLY FOR NOW) */

@@ -38,7 +38,7 @@ async function handleProduce(room, transportId, rtpParameters) {
 
 async function handleConsume(room, transportId, producer, rtpCapabilities) {
     const transport = room.transports.get(transportId);
-    
+
     console.log("[Mediasoup handleConsume] Input:", {
         transportId,
         producerId: producer.id,
@@ -66,10 +66,10 @@ async function handleConsume(room, transportId, producer, rtpCapabilities) {
 
     try {
         const consumer = await transport.consume({
-            producerId: producer.id,
-            rtpCapabilities,
-            paused: false
-        });
+        producerId: producer.id,
+        rtpCapabilities,
+        paused: false
+    });
         
         console.log("[Mediasoup handleConsume] Consumer created successfully:", {
             consumerId: consumer.id,
@@ -141,7 +141,7 @@ wss.on("connection", async (socket) => {
             }
             
             try {
-                await transport.connect({ dtlsParameters: msg.dtlsParameters });
+            await transport.connect({ dtlsParameters: msg.dtlsParameters });
                 console.log("[Mediasoup] Transport connected successfully");
                 socket.send(JSON.stringify({
                     requestId: msg.requestId,
@@ -151,10 +151,10 @@ wss.on("connection", async (socket) => {
                 // If already connected, that's OK
                 if (error.message?.includes("already called")) {
                     console.log("[Mediasoup] Transport already connected (race condition)");
-                    socket.send(JSON.stringify({
-                        requestId: msg.requestId,
-                        ok: true
-                    }));
+            socket.send(JSON.stringify({
+                requestId: msg.requestId,
+                ok: true
+            }));
                 } else {
                     console.error("[Mediasoup] Transport connect error:", error.message);
                     socket.send(JSON.stringify({

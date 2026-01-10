@@ -95,7 +95,7 @@ router.post("/host/login", async (req, res) => {
 
   const result = await query(
     `SELECT id, name, display_name, password, avatar_url, two_factor_enabled,
-            enforce_single_session, active_session_refresh_token, active_session_expires_at
+            enforce_single_session, enforce_user_single_session, active_session_refresh_token, active_session_expires_at
        FROM hosts WHERE id = $1 OR lower(name) = $2`,
     [identifier, normalizedEmail]
   );
@@ -111,6 +111,7 @@ router.post("/host/login", async (req, res) => {
     avatar_url,
     two_factor_enabled,
     enforce_single_session,
+    enforce_user_single_session,
     active_session_refresh_token,
     active_session_expires_at,
   } = result.rows[0];
@@ -249,16 +250,20 @@ router.post("/host/register", async (req, res) => {
 
 /* USER LOGIN (by id or username, plain text password) */
 router.post("/user/login", async (req, res) => {
-  const { userId, password } = req.body;
+  const { userId, password, deviceName, deviceModel, platform, osName, osVersion } = req.body;
   if (!userId || !password)
     return res.status(400).json({ error: "Missing credentials" });
 
   const identifier = String(userId).trim();
   const normalizedId = identifier.toUpperCase(); // accept lower/upper U123456
 
+  // Get user and host info, including enforce_user_single_session setting
   const result = await query(
-    `SELECT id, host_id, username, password, enabled, avatar_url FROM users 
-     WHERE (id = $1 OR username = $2) AND password = $3`,
+    `SELECT u.id, u.host_id, u.username, u.password, u.enabled, u.avatar_url,
+            h.enforce_user_single_session
+     FROM users u
+     JOIN hosts h ON u.host_id = h.id
+     WHERE (u.id = $1 OR u.username = $2) AND u.password = $3`,
     [normalizedId, identifier, password]
   );
 
@@ -268,17 +273,112 @@ router.post("/user/login", async (req, res) => {
   if (!result.rows[0].enabled)
     return res.status(403).json({ error: "User disabled by host" });
 
-  const { id: resolvedId, host_id: hostId, username, password: plainPassword, avatar_url } = result.rows[0];
-  const token = signToken({ role: "user", userId: resolvedId, hostId });
-  const refreshToken = signRefreshToken({ role: "user", userId: resolvedId, hostId });
+  const { 
+    id: resolvedId, 
+    host_id: hostId, 
+    username, 
+    password: plainPassword, 
+    avatar_url,
+    enforce_user_single_session 
+  } = result.rows[0];
+
+  // Check if host has "one user one device" enabled
+  if (enforce_user_single_session) {
+    // Check for existing active sessions
+    const existingSession = await query(
+      `SELECT id, device_label, device_name, platform, created_at 
+       FROM user_sessions 
+       WHERE user_id = $1 AND revoked_at IS NULL 
+       ORDER BY last_seen_at DESC NULLS LAST, created_at DESC 
+       LIMIT 1`,
+      [resolvedId]
+    );
+
+    if (existingSession.rowCount > 0) {
+      // Check if there's already a pending request
+      const pendingRequest = await query(
+        `SELECT id FROM user_session_requests 
+         WHERE user_id = $1 AND status = 'pending'`,
+        [resolvedId]
+      );
+
+      if (pendingRequest.rowCount === 0) {
+        // Create a new pending session request
+        const userAgent = req.get("user-agent") || null;
+        const headerDevice = req.get("x-device-name") || null;
+        const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
+
+        await query(
+          `INSERT INTO user_session_requests 
+           (user_id, host_id, device_label, device_name, model_name, platform, os_name, os_version, user_agent, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')`,
+          [
+            resolvedId,
+            hostId,
+            deviceLabel,
+            deviceName || headerDevice || null,
+            deviceModel || null,
+            platform || null,
+            osName || null,
+            osVersion || null,
+            userAgent
+          ]
+        );
+      }
+
+      // Return pending status
+      return res.status(202).json({
+        pending: true,
+        message: "Session approval pending. Please wait for host approval.",
+        existingDevice: existingSession.rows[0].device_label || existingSession.rows[0].device_name || "Unknown device",
+        existingPlatform: existingSession.rows[0].platform || "Unknown",
+        existingLoginTime: existingSession.rows[0].created_at,
+      });
+    }
+  }
+
+  // No existing session or setting disabled - proceed with login
+  const accessJti = generateJti();
+  const refreshJti = generateJti();
+  const token = signToken({ role: "user", userId: resolvedId, hostId }, accessJti);
+  const refreshToken = signRefreshToken({ role: "user", userId: resolvedId, hostId }, refreshJti);
+  
+  // Create session record
+  const userAgent = req.get("user-agent") || null;
+  const headerDevice = req.get("x-device-name") || null;
+  const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
+  
+  const sessionResult = await query(
+    `INSERT INTO user_sessions 
+     (user_id, host_id, device_label, device_name, model_name, platform, os_name, os_version, access_jti, refresh_token, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) 
+     RETURNING id, created_at`,
+    [
+      resolvedId,
+      hostId,
+      deviceLabel,
+      deviceName || headerDevice || null,
+      deviceModel || null,
+      platform || null,
+      osName || null,
+      osVersion || null,
+      accessJti,
+      refreshToken,
+      userAgent
+    ]
+  );
+
   res.json({
     token,
     refreshToken,
+    accessJti,
+    sessionId: sessionResult.rows[0].id,
     hostId,
     userId: resolvedId,
     name: username || resolvedId,
     password: plainPassword,
     avatarUrl: avatar_url ?? null,
+    pending: false,
   });
 });
 
@@ -289,13 +389,13 @@ router.post("/host/login/otp", async (req, res) => {
 
   const result = await query(
     `SELECT id, name, display_name, avatar_url, two_factor_enabled,
-            enforce_single_session, active_session_refresh_token, active_session_expires_at
+            enforce_single_session, enforce_user_single_session, active_session_refresh_token, active_session_expires_at
        FROM hosts WHERE id = $1`,
     [normalizedId]
   );
   if (result.rowCount === 0) return res.status(401).json({ error: "Invalid host" });
 
-  const { id, name, display_name, avatar_url, two_factor_enabled, enforce_single_session, active_session_refresh_token, active_session_expires_at } = result.rows[0];
+  const { id, name, display_name, avatar_url, two_factor_enabled, enforce_single_session, enforce_user_single_session, active_session_refresh_token, active_session_expires_at } = result.rows[0];
   const ok = verifyOtp(`host-login:${id}`, String(otp).trim());
   if (!ok) return res.status(400).json({ error: "Invalid or expired code" });
 
@@ -373,6 +473,36 @@ router.post("/host/login/otp", async (req, res) => {
     avatarUrl: avatar_url,
     twoFactorEnabled: !!two_factor_enabled,
     allowMultipleSessions: !enforce_single_session,
+    enforceUserSingleSession: !!enforce_user_single_session,
+  });
+});
+
+/* CHECK USER SESSION REQUEST STATUS */
+router.get("/user/session-request", requireAuth, async (req, res) => {
+  if (req.auth?.role !== "user" || !req.auth?.userId) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const pendingRequest = await query(
+    `SELECT id, device_label, device_name, platform, requested_at, status
+     FROM user_session_requests
+     WHERE user_id = $1 AND status = 'pending'
+     ORDER BY requested_at DESC
+     LIMIT 1`,
+    [req.auth.userId]
+  );
+
+  if (pendingRequest.rowCount === 0) {
+    return res.json({ pending: false });
+  }
+
+  res.json({
+    pending: true,
+    requestId: pendingRequest.rows[0].id,
+    deviceLabel: pendingRequest.rows[0].device_label,
+    deviceName: pendingRequest.rows[0].device_name,
+    platform: pendingRequest.rows[0].platform,
+    requestedAt: pendingRequest.rows[0].requested_at,
   });
 });
 

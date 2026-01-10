@@ -120,17 +120,28 @@ export default function HostSettings() {
   };
 
   const handleToggleOneDevice = async () => {
+    if (!auth.role) return;
     const next = !oneDeviceOnly;
     setOneDeviceOnly(next);
-    savePreference("oneDeviceOnly", next);
-    if (next) {
+    try {
+      await dispatch<any>(authApiFetch("/host/security", {
+        method: "PATCH",
+        body: JSON.stringify({ enforceUserSingleSession: next }),
+      }));
+      savePreference("oneDeviceOnly", next);
       Toast.show({
-        type: "info",
-        text1: "One Device mode enabled",
-        text2: "Users will be restricted to the first device they log in on.",
+        type: "success",
+        text1: next ? "One User, One Device enabled" : "One User, One Device disabled",
+        text2: next
+          ? "Users will be restricted to one device. New device logins require approval."
+          : "Users can now login on multiple devices.",
         position: "top",
-        visibilityTime: 2000,
+        visibilityTime: 3000,
       });
+    } catch (e: any) {
+      setOneDeviceOnly(!next);
+      const message = e?.message || e?.error || "Failed to update one device setting.";
+      Alert.alert("Error", message);
     }
   };
 
