@@ -420,7 +420,6 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       };
 
       // Listen for all message types
-      socket.on("message", handleMessage);
       socket.on("TURN_CONFIG", handleMessage);
       socket.on("ROUTER_CAPS", handleMessage);
       socket.on("SEND_TRANSPORT_CREATED", handleMessage);

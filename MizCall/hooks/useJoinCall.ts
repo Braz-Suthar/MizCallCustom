@@ -582,12 +582,6 @@ export function useJoinCall() {
       }
     };
 
-    // Listen for all message types
-    socket.on("message", (msg) => {
-      console.log("[useJoinCall] Received 'message' event:", msg.type);
-      handleMessage(msg);
-    });
-    
     socket.on("SEND_TRANSPORT_CREATED", (msg) => {
       console.log("[useJoinCall] Received 'SEND_TRANSPORT_CREATED' event");
       handleMessage({ type: "SEND_TRANSPORT_CREATED", ...msg });
@@ -634,7 +628,6 @@ export function useJoinCall() {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
       socket.off("connect_error", handleConnectError);
-      socket.off("message", (msg) => handleMessage(msg));
       socket.off("SEND_TRANSPORT_CREATED");
       socket.off("RECV_TRANSPORT_CREATED");
       socket.off("NEW_PRODUCER");
