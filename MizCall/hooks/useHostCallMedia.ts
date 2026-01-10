@@ -552,11 +552,11 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
       });
       transport.on("connectionstatechange", (state: any) => {
           console.log("[useHostCallMedia] recv transport state", state);
-          if (state === "failed" && !restartingRef.current) {
+          if ((state === "failed" || state === "disconnected") && !restartingRef.current) {
             setError("Recv transport failed");
             setState("error");
             restartingRef.current = true;
-            cleanup(false);
+            cleanup(true);
             setTimeout(() => {
               restartingRef.current = false;
               if (!cancelledRef.current && token && role === "host" && call?.roomId) {
@@ -653,11 +653,11 @@ export function useHostCallMedia(opts: { token: string | null; role: string | nu
 
       transport.on("connectionstatechange", (state: any) => {
         console.log("[useHostCallMedia] send transport state", state);
-        if (state === "failed" && !restartingRef.current) {
+        if ((state === "failed" || state === "disconnected") && !restartingRef.current) {
           setError("Send transport failed");
           setState("error");
           restartingRef.current = true;
-          cleanup(false);
+          cleanup(true);
           setTimeout(() => {
             restartingRef.current = false;
             if (!cancelledRef.current && token && role === "host" && call?.roomId) {
