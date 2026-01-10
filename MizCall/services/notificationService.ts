@@ -68,7 +68,10 @@ export class NotificationService {
       this.token = fcmToken;
       this.authToken = authToken;
 
-      console.log("[Notifications] FCM Token:", fcmToken.substring(0, 20) + "...");
+      console.log("[Notifications] ========================================");
+      console.log("[Notifications] FCM Device Token (Full):");
+      console.log(fcmToken);
+      console.log("[Notifications] ========================================");
 
       // Register with backend
       const result = await apiFetch<{ ok: boolean; firebaseAvailable: boolean }>(
