@@ -277,6 +277,10 @@ export function useJoinCall() {
               rtpCapabilities: device.rtpCapabilities,
               roomId,
             });
+          } else {
+            // No host producer yet, request it
+            console.log("[useJoinCall] No host producer ID, requesting it");
+            socket.emit("REQUEST_HOST_PRODUCER", { roomId });
           }
         }
 
