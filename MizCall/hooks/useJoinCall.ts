@@ -41,6 +41,7 @@ export function useJoinCall() {
   const cleanup = () => {
     console.log("[useJoinCall] Starting cleanup...");
     
+    // Stop call audio
     try {
       stopCallAudio();
       disableSpeakerphone();
@@ -48,55 +49,78 @@ export function useJoinCall() {
       console.warn("[useJoinCall] Error stopping call audio:", e);
     }
     
+    // Close consumer first (before transport)
     try {
-      consumerRef.current?.close?.();
+      if (consumerRef.current) {
+        console.log("[useJoinCall] Closing consumer:", consumerRef.current.id);
+        consumerRef.current.close?.();
+      }
     } catch (e) {
       console.warn("[useJoinCall] Error closing consumer:", e);
     }
     consumerRef.current = null;
     
+    // Close producer when leaving call
     try {
-      producerRef.current?.close?.();
+      if (producerRef.current) {
+        console.log("[useJoinCall] Closing producer on cleanup");
+        producerRef.current.close?.();
+      }
     } catch (e) {
       console.warn("[useJoinCall] Error closing producer:", e);
     }
     producerRef.current = null;
+    producerIdRef.current = null;
     
+    // Close transports
     try {
-      recvTransportRef.current?.close?.();
+      if (recvTransportRef.current) {
+        console.log("[useJoinCall] Closing recv transport");
+        recvTransportRef.current.close?.();
+      }
     } catch (e) {
       console.warn("[useJoinCall] Error closing recv transport:", e);
     }
     recvTransportRef.current = null;
     
     try {
-      sendTransportRef.current?.close?.();
+      if (sendTransportRef.current) {
+        console.log("[useJoinCall] Closing send transport");
+        sendTransportRef.current.close?.();
+      }
     } catch (e) {
       console.warn("[useJoinCall] Error closing send transport:", e);
     }
     sendTransportRef.current = null;
     
+    // Stop all media tracks
     if (localStreamRef.current) {
       console.log("[useJoinCall] Stopping local media tracks");
       localStreamRef.current.getTracks().forEach((t) => {
+        console.log("[useJoinCall] Stopping track:", t.id, t.label);
         t.stop();
       });
       localStreamRef.current = null;
     }
     
+    // Clear device
     deviceRef.current = null;
     hostProducerIdRef.current = null;
     routerCapsRef.current = null;
     
+    // Clear meter interval
     if (meterIntervalRef.current) {
       clearInterval(meterIntervalRef.current);
       meterIntervalRef.current = null;
     }
     
+    // Clear remote stream
     setRemoteStream(null);
     setAudioLevel(0);
     zeroLevelCountRef.current = 0;
     
+    // DON'T disconnect the socket - it's managed by socketManager
+    // But clear the ref so we know we're not in a call
     socketRef.current = null;
     
     console.log("[useJoinCall] ✅ Cleanup complete");
@@ -321,78 +345,119 @@ export function useJoinCall() {
         }
 
         if (msg.type === "CONSUMER_CREATED" || msg.type === "CONSUMED") {
-          if (!recvTransportRef.current) return;
-          
           const params = msg.params || msg;
-          console.log("[useJoinCall] CONSUMED", params.id);
-          
-          try {
-            consumerRef.current?.close?.();
-          } catch {}
-          
-          const consumer = await recvTransportRef.current.consume({
-            id: params.id,
+          console.log("[useJoinCall] CONSUMED event received:", {
+            consumerId: params.id,
             producerId: params.producerId,
-            kind: params.kind ?? "audio",
-            rtpParameters: params.rtpParameters,
+            hasRecvTransport: !!recvTransportRef.current,
+            currentConsumer: consumerRef.current?.id
           });
           
-          consumerRef.current = consumer;
-          await consumer.resume?.();
-          consumer.track.enabled = true;
-          
-          const stream = new MediaStream([consumer.track]);
-          setRemoteStream(stream);
-          
-          console.log("[useJoinCall] Host audio consumed", {
-            consumerId: consumer.id,
-            trackState: consumer.track.readyState,
-            trackEnabled: consumer.track.enabled,
-          });
-          
-          try {
-            startCallAudio();
-            enableSpeakerphone();
-            if (isMobilePlatform) {
-              await (mediaDevices as any).setSpeakerphoneOn?.(true);
-            }
-          } catch {}
-          
-          if (!meterIntervalRef.current) {
-            meterIntervalRef.current = setInterval(async () => {
-              try {
-                const stats = await consumerRef.current?.getStats?.();
-                if (!stats) return;
-                let level = 0;
-                stats.forEach((report: any) => {
-                  if (report.type === "inbound-rtp" || report.type === "track" || report.type === "remote-inbound-rtp") {
-                    if (typeof report.audioLevel === "number") {
-                      level = Math.max(level, report.audioLevel);
-                    }
-                    if (
-                      typeof report.totalAudioEnergy === "number" &&
-                      typeof report.totalSamplesDuration === "number" &&
-                      report.totalSamplesDuration > 0
-                    ) {
-                      const energy = report.totalAudioEnergy / report.totalSamplesDuration;
-                      level = Math.max(level, Math.sqrt(energy));
-                    }
-                  }
-                });
-                if (level === 0) {
-                  zeroLevelCountRef.current += 1;
-                  if (zeroLevelCountRef.current === 4) {
-                    console.log("[useJoinCall] inbound stats sample", Array.from(stats.values?.() ?? stats));
-                  }
-                } else {
-                  zeroLevelCountRef.current = 0;
-                }
-                setAudioLevel(level);
-              } catch {}
-            }, 700);
+          // Skip if we already have a consumer for this ID (duplicate event)
+          if (consumerRef.current && consumerRef.current.id === params.id) {
+            console.log("[useJoinCall] Skipping duplicate CONSUMED event for consumer:", params.id);
+            return;
           }
           
-          setState("connected");
+          if (!recvTransportRef.current) {
+            console.warn("[useJoinCall] No recv transport, cannot create consumer");
+            return;
+          }
+          
+          try {
+            // Close old consumer if exists
+            if (consumerRef.current) {
+              console.log("[useJoinCall] Closing previous consumer:", consumerRef.current.id);
+              try {
+                consumerRef.current.close?.();
+              } catch (e) {
+                console.warn("[useJoinCall] Error closing old consumer:", e);
+              }
+              consumerRef.current = null;
+            }
+            
+            console.log("[useJoinCall] Creating new consumer:", params.id);
+            const consumer = await recvTransportRef.current.consume({
+              id: params.id,
+              producerId: params.producerId,
+              kind: params.kind ?? "audio",
+              rtpParameters: params.rtpParameters,
+            });
+            
+            consumerRef.current = consumer;
+            console.log("[useJoinCall] Consumer created successfully, resuming...");
+            await consumer.resume?.();
+            consumer.track.enabled = true;
+            
+            const stream = new MediaStream([consumer.track]);
+            setRemoteStream(stream);
+            
+            console.log("[useJoinCall] Host audio consumed", {
+              consumerId: consumer.id,
+              trackState: consumer.track.readyState,
+              trackEnabled: consumer.track.enabled,
+            });
+            
+            try {
+              startCallAudio();
+              enableSpeakerphone();
+              if (isMobilePlatform) {
+                await (mediaDevices as any).setSpeakerphoneOn?.(true);
+              }
+            } catch (e) {
+              console.warn("[useJoinCall] Error enabling audio:", e);
+            }
+            
+            // Start audio level meter if not already running
+            if (!meterIntervalRef.current) {
+              meterIntervalRef.current = setInterval(async () => {
+                try {
+                  const stats = await consumerRef.current?.getStats?.();
+                  if (!stats) return;
+                  let level = 0;
+                  stats.forEach((report: any) => {
+                    if (report.type === "inbound-rtp" || report.type === "track" || report.type === "remote-inbound-rtp") {
+                      if (typeof report.audioLevel === "number") {
+                        level = Math.max(level, report.audioLevel);
+                      }
+                      if (
+                        typeof report.totalAudioEnergy === "number" &&
+                        typeof report.totalSamplesDuration === "number" &&
+                        report.totalSamplesDuration > 0
+                      ) {
+                        const energy = report.totalAudioEnergy / report.totalSamplesDuration;
+                        level = Math.max(level, Math.sqrt(energy));
+                      }
+                    }
+                  });
+                  if (level === 0) {
+                    zeroLevelCountRef.current += 1;
+                    if (zeroLevelCountRef.current === 4) {
+                      console.log("[useJoinCall] inbound stats sample", Array.from(stats.values?.() ?? stats));
+                    }
+                  } else {
+                    zeroLevelCountRef.current = 0;
+                  }
+                  setAudioLevel(level);
+                } catch (e) {
+                  // ignore meter errors
+                }
+              }, 700);
+            }
+            
+            setState("connected");
+            console.log("[useJoinCall] ✅ Consumer setup complete, state set to connected");
+          } catch (e: any) {
+            // Ignore SessionDescription NULL errors (transient)
+            if (e?.message?.includes("SessionDescription is NULL")) {
+              console.log("[useJoinCall] Ignoring SessionDescription NULL error (transient)");
+              return;
+            }
+            
+            console.error("[useJoinCall] Error creating consumer:", e);
+            setError(e?.message ?? "Failed to consume audio");
+            setState("error");
+          }
         }
 
         if (msg.type === "CALL_STOPPED" || msg.type === "call-stopped") {

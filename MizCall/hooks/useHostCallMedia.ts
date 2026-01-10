@@ -263,43 +263,85 @@ export function useHostCallMedia(opts: {
           }
 
           if (msg.type === "CONSUMER_CREATED" || msg.type === "CONSUMED") {
-            if (!recvTransportRef.current) return;
-            
             const params = msg.params || msg;
-            console.log("[useHostCallMedia] CONSUMED", params.id);
-            
-            try {
-              consumerRef.current?.close?.();
-            } catch {}
-            
-            const consumer = await recvTransportRef.current.consume({
-              id: params.id,
+            console.log("[useHostCallMedia] CONSUMED event received:", {
+              consumerId: params.id,
               producerId: params.producerId,
-              kind: params.kind ?? "audio",
-              rtpParameters: params.rtpParameters,
+              hasRecvTransport: !!recvTransportRef.current,
+              currentConsumer: consumerRef.current?.id,
+              currentProducerId: currentProducerIdRef.current
             });
             
-            consumerRef.current = consumer;
-            await consumer.resume?.();
-            consumer.track.enabled = true;
+            // Skip if we already have a consumer for this ID (duplicate event)
+            if (consumerRef.current && consumerRef.current.id === params.id) {
+              console.log("[useHostCallMedia] Skipping duplicate CONSUMED event for consumer:", params.id);
+              return;
+            }
             
-            const stream = new MediaStream([consumer.track]);
-            setRemoteStream(stream);
-            
-            console.log("[useHostCallMedia] User audio consumed", {
-              consumerId: consumer.id,
-              trackState: consumer.track.readyState,
-              trackEnabled: consumer.track.enabled,
-            });
+            if (!recvTransportRef.current) {
+              console.warn("[useHostCallMedia] No recv transport, cannot create consumer");
+              return;
+            }
             
             try {
-              startCallAudio();
-              enableSpeakerphone();
-              if (isMobilePlatform) {
-                await (mediaDevices as any).setSpeakerphoneOn?.(true);
+              // Close old consumer if exists
+              if (consumerRef.current) {
+                console.log("[useHostCallMedia] Closing previous consumer:", consumerRef.current.id);
+                try {
+                  consumerRef.current.close?.();
+                } catch (e) {
+                  console.warn("[useHostCallMedia] Error closing old consumer:", e);
+                }
+                consumerRef.current = null;
               }
-            } catch (e) {
-              console.warn("[useHostCallMedia] Audio routing error:", e);
+              
+              console.log("[useHostCallMedia] Creating new consumer:", params.id);
+              const consumer = await recvTransportRef.current.consume({
+                id: params.id,
+                producerId: params.producerId,
+                kind: params.kind ?? "audio",
+                rtpParameters: params.rtpParameters,
+              });
+              
+              consumerRef.current = consumer;
+              currentProducerIdRef.current = params.producerId;
+              
+              console.log("[useHostCallMedia] Consumer created successfully, resuming...");
+              await consumer.resume?.();
+              consumer.track.enabled = true;
+              
+              const stream = new MediaStream([consumer.track]);
+              setRemoteStream(stream);
+              
+              console.log("[useHostCallMedia] User audio consumed", {
+                consumerId: consumer.id,
+                producerId: params.producerId,
+                trackState: consumer.track.readyState,
+                trackEnabled: consumer.track.enabled,
+              });
+              
+              try {
+                startCallAudio();
+                enableSpeakerphone();
+                if (isMobilePlatform) {
+                  await (mediaDevices as any).setSpeakerphoneOn?.(true);
+                }
+              } catch (e) {
+                console.warn("[useHostCallMedia] Error enabling audio:", e);
+              }
+              
+              setState("connected");
+              console.log("[useHostCallMedia] ✅ Consumer setup complete, state set to connected");
+            } catch (e: any) {
+              // Ignore SessionDescription NULL errors (transient)
+              if (e?.message?.includes("SessionDescription is NULL")) {
+                console.log("[useHostCallMedia] Ignoring SessionDescription NULL error (transient)");
+                return;
+              }
+              
+              console.error("[useHostCallMedia] Error creating consumer:", e);
+              setError(e?.message ?? "Failed to consume audio");
+              setState("error");
             }
           }
 
