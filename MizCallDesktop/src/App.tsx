@@ -515,19 +515,25 @@ function App() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [notifText, setNotifText] = useState("");
-  const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string | null }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string | null; enforce_single_device?: boolean | null }>>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [createUsername, setCreateUsername] = useState("");
   const [createPassword, setCreatePassword] = useState("");
+  const [createEnforceSingleDevice, setCreateEnforceSingleDevice] = useState<boolean | null>(null);
   const [createLoading, setCreateLoading] = useState(false);
   const [showEditUser, setShowEditUser] = useState(false);
-  const [editUser, setEditUser] = useState<{ id: string; username: string; enabled: boolean; password?: string | null } | null>(null);
+  const [editUser, setEditUser] = useState<{ id: string; username: string; enabled: boolean; password?: string | null; enforce_single_device?: boolean | null } | null>(null);
   const [editEnabled, setEditEnabled] = useState(true);
   const [editPassword, setEditPassword] = useState("");
+  const [editEnforceSingleDevice, setEditEnforceSingleDevice] = useState<boolean | null>(null);
   const [showViewUser, setShowViewUser] = useState(false);
   const [viewUser, setViewUser] = useState<{ id: string; username: string; enabled: boolean; password?: string | null } | null>(null);
+  const [showUserSessions, setShowUserSessions] = useState(false);
+  const [userSessions, setUserSessions] = useState<Array<{ id: string; deviceLabel?: string; deviceName?: string; platform?: string; createdAt?: string; lastSeenAt?: string }>>([]);
+  const [userSessionRequests, setUserSessionRequests] = useState<Array<{ id: string; deviceLabel: string; platform?: string; requestedAt: string }>>([]);
+  const [userSessionsLoading, setUserSessionsLoading] = useState(false);
   const [calls, setCalls] = useState<Array<{ id: string; status: string; started_at: string; ended_at: string | null }>>([]);
   const [callsLoading, setCallsLoading] = useState(false);
   const [callsError, setCallsError] = useState<string | null>(null);
@@ -719,6 +725,54 @@ function App() {
         if (!data) throw new Error("Bridge unavailable");
         console.log("[desktop] user login response:", data);
         const userData = data as any;
+        
+        // Check if session approval is pending
+        if (userData.pending) {
+          setError(`Session approval pending. ${userData.message || ""}\n\nExisting device: ${userData.existingDevice || "Unknown"}\nPlatform: ${userData.existingPlatform || "Unknown"}`);
+          showToast("Session approval pending. Please wait for host approval.", "info");
+          setLoading(false);
+          
+          // Start polling for approval
+          const pollInterval = setInterval(async () => {
+            try {
+              const retryData = await window.mizcall?.loginUser?.(payload.identifier, payload.password);
+              if (retryData && !retryData.pending && retryData.token) {
+                // Approved! Login successful
+                clearInterval(pollInterval);
+                setSession({
+                  role: "user",
+                  token: retryData.token,
+                  refreshToken: retryData.refreshToken,
+                  userId: retryData.userId ?? payload.identifier,
+                  hostId: retryData.hostId,
+                  name: retryData.name ?? payload.identifier,
+                  avatarUrl: retryData.avatarUrl,
+                  password: retryData.password ?? payload.password,
+                  twoFactorEnabled: false,
+                  allowMultipleSessions: true,
+                });
+                
+                let message = "Session approved! You are now logged in.";
+                if (retryData.revokedSessions && retryData.revokedSessions > 0) {
+                  message += ` (Logged out from ${retryData.revokedSessions} other device(s))`;
+                }
+                showToast(message, "success");
+                setError(null);
+                setScreen("login");
+              }
+            } catch (e) {
+              // Still pending or rejected - stop polling
+              clearInterval(pollInterval);
+              setError("Session request was rejected or expired");
+              showToast("Session request was rejected by the host", "error");
+            }
+          }, 3000);
+          
+          // Stop polling after 5 minutes
+          setTimeout(() => clearInterval(pollInterval), 300000);
+          return;
+        }
+        
         setSession({
           role: "user",
           token: userData.token,
@@ -731,6 +785,12 @@ function App() {
           twoFactorEnabled: false,
           allowMultipleSessions: true,
         });
+        
+        // Show notification if old sessions were revoked
+        if (userData.revokedSessions && userData.revokedSessions > 0) {
+          showToast(`Logged in. You were logged out from ${userData.revokedSessions} other device(s).`, "info");
+        }
+        
         setScreen("login");
       }
     } catch (e) {
@@ -1047,6 +1107,7 @@ function App() {
           username: u.username,
           enabled: u.enabled,
           password: null,
+          enforce_single_device: u.enforce_single_device ?? null,
         }))
       );
     } catch (e) {
@@ -1086,6 +1147,7 @@ function App() {
         body: JSON.stringify({
           username: createUsername.trim(),
           password: createPassword.trim() || undefined,
+          enforceSingleDevice: createEnforceSingleDevice,
         }),
       });
       if (!res.ok) {
@@ -1105,6 +1167,7 @@ function App() {
       showToast(`User created (ID ${data.userId})`, "success");
       setCreateUsername("");
       setCreatePassword("");
+      setCreateEnforceSingleDevice(null);
       setShowCreateUser(false);
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Create failed", "error");
@@ -1124,6 +1187,7 @@ function App() {
         body: JSON.stringify({
           enabled: editEnabled,
           password: editPassword.trim() || undefined,
+          enforceSingleDevice: editEnforceSingleDevice,
         }),
       });
       if (!res.ok) throw new Error(`Update failed (${res.status})`);
@@ -1138,6 +1202,70 @@ function App() {
       setEditPassword("");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Update failed", "error");
+    }
+  };
+
+  const loadUserSessions = async (userId: string) => {
+    if (!session?.token) return;
+    setUserSessionsLoading(true);
+    try {
+      const res = await authFetch(`${API_BASE}/host/users/${userId}/sessions`);
+      if (!res.ok) throw new Error("Failed to load sessions");
+      const data = await res.json();
+      setUserSessions(data.sessions || []);
+      setUserSessionRequests(data.pendingRequests || []);
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to load sessions", "error");
+    } finally {
+      setUserSessionsLoading(false);
+    }
+  };
+
+  const approveUserSession = async (userId: string, requestId: string) => {
+    if (!session?.token) return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/users/${userId}/sessions/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId }),
+      });
+      if (!res.ok) throw new Error("Failed to approve session");
+      showToast("Session approved. Old sessions have been revoked.", "success");
+      loadUserSessions(userId); // Refresh
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to approve session", "error");
+    }
+  };
+
+  const rejectUserSession = async (userId: string, requestId: string) => {
+    if (!session?.token) return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/users/${userId}/sessions/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId }),
+      });
+      if (!res.ok) throw new Error("Failed to reject session");
+      showToast("Session request rejected.", "success");
+      loadUserSessions(userId); // Refresh
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to reject session", "error");
+    }
+  };
+
+  const revokeUserSession = async (userId: string, sessionId: string) => {
+    if (!session?.token) return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/users/${userId}/sessions/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (!res.ok) throw new Error("Failed to revoke session");
+      showToast("Session revoked. User has been logged out.", "success");
+      loadUserSessions(userId); // Refresh
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Failed to revoke session", "error");
     }
   };
 
@@ -1969,6 +2097,32 @@ function App() {
     }
   };
 
+  const handleToggleUserSingleDevice = async () => {
+    if (!session || session.role !== "host") return;
+    try {
+      const next = !oneDeviceOnly;
+      setOneDeviceOnly(next);
+      const res = await authFetch(`${API_BASE}/host/security`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enforceUserSingleSession: next }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || "Failed to update security settings");
+      }
+      showToast(
+        next 
+          ? "One User, One Device enabled. Users will be restricted to one device." 
+          : "One User, One Device disabled. Users can login on multiple devices.",
+        "success"
+      );
+    } catch (err) {
+      setOneDeviceOnly((prev) => !prev);
+      showToast(err instanceof Error ? err.message : "Update failed", "error");
+    }
+  };
+
   const loadSessions = useCallback(async () => {
     if (!session || session.role !== "host") return;
     setSessionsLoading(true);
@@ -2087,6 +2241,16 @@ function App() {
     ws.on("message", (msg) => {
       try {
         console.log("[desktop:user-sio] message", msg.type, msg);
+        if (msg.type === "SESSION_REVOKED") {
+          console.log("[desktop:user-sio] Session revoked:", msg);
+          const message = msg.message || "You have been logged out.";
+          showToast(message, "error");
+          // Log out after a short delay
+          setTimeout(() => {
+            doLogout();
+          }, 2000);
+          return;
+        }
         if (msg.type === "call-started") {
           routerCapsRef.current = msg.routerRtpCapabilities ?? null;
           setActiveCall({
@@ -2134,6 +2298,16 @@ function App() {
       console.log("[desktop:user-sio] close");
       setNetworkStatus("offline");
       userWsRef.current = null;
+    });
+    
+    // Listen for session revocation as specific event
+    ws.on("SESSION_REVOKED", (data) => {
+      console.log("[desktop:user-sio] Session revoked:", data);
+      const message = data.message || "You have been logged out.";
+      showToast(message, "error");
+      setTimeout(() => {
+        doLogout();
+      }, 2000);
     });
 
     return () => {
@@ -2848,7 +3022,8 @@ function App() {
                           onClick={() => {
                             setEditUser(u);
                             setEditEnabled(u.enabled);
-                          setEditPassword("");
+                            setEditPassword("");
+                            setEditEnforceSingleDevice(u.enforce_single_device ?? null);
                             setShowEditUser(true);
                           }}
                         />
@@ -3216,9 +3391,9 @@ function App() {
                   <div className="row-inline between">
                     <div className="stack gap-xxs">
                       <strong>One User, One Device</strong>
-                      <span className="muted small">Lock users to their first device.</span>
+                      <span className="muted small">Restrict users to one device at a time. New logins require approval.</span>
                     </div>
-                    <ToggleSwitch checked={oneDeviceOnly} onToggle={() => setOneDeviceOnly((v) => !v)} />
+                    <ToggleSwitch checked={oneDeviceOnly} onToggle={handleToggleUserSingleDevice} />
                   </div>
                   <div className="row-inline between">
                     <div className="stack gap-xxs">
@@ -3569,7 +3744,7 @@ function App() {
 
       {/* Create User Modal */}
       {showCreateUser ? (
-        <div className="modal-backdrop" onClick={() => setShowCreateUser(false)}>
+        <div className="modal-backdrop" onClick={() => { setShowCreateUser(false); setCreateEnforceSingleDevice(null); }}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <p className="muted strong">Create New User</p>
@@ -3577,9 +3752,34 @@ function App() {
             <div className="modal-body stack gap-sm">
               <Input label="Username" value={createUsername} onChange={setCreateUsername} placeholder="username" />
               <Input label="Password (optional)" value={createPassword} onChange={setCreatePassword} placeholder="auto-generate if empty" />
+              
+              <div className="stack gap-xxs">
+                <label className="muted strong small">One Device Only</label>
+                <p className="muted small">Control device restriction for this user</p>
+                <div className="row-inline gap-sm">
+                  <button
+                    className={`btn ${createEnforceSingleDevice === null ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setCreateEnforceSingleDevice(null)}
+                  >
+                    Inherit
+                  </button>
+                  <button
+                    className={`btn ${createEnforceSingleDevice === true ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setCreateEnforceSingleDevice(true)}
+                  >
+                    Force
+                  </button>
+                  <button
+                    className={`btn ${createEnforceSingleDevice === false ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setCreateEnforceSingleDevice(false)}
+                  >
+                    Allow
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="modal-actions">
-              <Button label="Cancel" variant="ghost" onClick={() => setShowCreateUser(false)} />
+              <Button label="Cancel" variant="ghost" onClick={() => { setShowCreateUser(false); setCreateEnforceSingleDevice(null); }} />
               <Button label="Create" onClick={handleCreateUser} loading={createLoading} />
             </div>
           </div>
@@ -3615,6 +3815,31 @@ function App() {
               >
                 Generate new random password
               </button>
+              
+              <div className="stack gap-xxs">
+                <label className="muted strong small">One Device Only</label>
+                <p className="muted small">Control device restriction for this user</p>
+                <div className="row-inline gap-sm">
+                  <button
+                    className={`btn ${editEnforceSingleDevice === null ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setEditEnforceSingleDevice(null)}
+                  >
+                    Inherit
+                  </button>
+                  <button
+                    className={`btn ${editEnforceSingleDevice === true ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setEditEnforceSingleDevice(true)}
+                  >
+                    Force
+                  </button>
+                  <button
+                    className={`btn ${editEnforceSingleDevice === false ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setEditEnforceSingleDevice(false)}
+                  >
+                    Allow
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="modal-actions">
               <Button label="Cancel" variant="ghost" onClick={() => setShowEditUser(false)} />
@@ -3657,7 +3882,122 @@ function App() {
               </div>
             </div>
             <div className="modal-actions">
+              <Button 
+                label="Manage Sessions" 
+                variant="secondary" 
+                onClick={() => {
+                  setShowViewUser(false);
+                  setShowUserSessions(true);
+                  if (viewUser) {
+                    loadUserSessions(viewUser.id);
+                  }
+                }} 
+              />
               <Button label="Close" variant="ghost" onClick={() => setShowViewUser(false)} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* User Sessions Modal */}
+      {showUserSessions && viewUser ? (
+        <div className="modal-backdrop" onClick={() => setShowUserSessions(false)}>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <p className="muted strong">User Sessions</p>
+                <p className="muted small">{viewUser.username} ({viewUser.id})</p>
+              </div>
+              <button className="linklike" onClick={() => loadUserSessions(viewUser.id)} disabled={userSessionsLoading}>
+                Refresh
+              </button>
+            </div>
+            <div className="modal-body stack gap-sm">
+              {userSessionsLoading ? (
+                <p className="muted">Loading sessions...</p>
+              ) : (
+                <>
+                  {/* Pending Requests */}
+                  {userSessionRequests.length > 0 && (
+                    <div className="card stack gap-sm" style={{ borderColor: "#f59e0b", borderWidth: 2 }}>
+                      <p className="muted strong">⏳ Pending Requests ({userSessionRequests.length})</p>
+                      {userSessionRequests.map((req) => (
+                        <div key={req.id} className="card subtle stack gap-xxs">
+                          <div className="row-inline between">
+                            <div className="stack gap-xxs">
+                              <strong>{req.deviceLabel}</strong>
+                              <span className="muted small">{req.platform || "Unknown"}</span>
+                              <span className="muted small">Requested: {formatDateTime(req.requestedAt)}</span>
+                            </div>
+                            <div className="row-inline gap-sm">
+                              <Button 
+                                label="Approve" 
+                                variant="primary" 
+                                onClick={() => {
+                                  if (confirm("This will revoke all existing sessions. Continue?")) {
+                                    approveUserSession(viewUser.id, req.id);
+                                  }
+                                }} 
+                              />
+                              <Button 
+                                label="Reject" 
+                                variant="danger" 
+                                onClick={() => {
+                                  if (confirm("Reject this session request?")) {
+                                    rejectUserSession(viewUser.id, req.id);
+                                  }
+                                }} 
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Active Sessions */}
+                  <div className="card stack gap-sm">
+                    <p className="muted strong">📱 Active Sessions ({userSessions.length})</p>
+                    {userSessions.length === 0 ? (
+                      <p className="muted small">No active sessions</p>
+                    ) : (
+                      userSessions.map((sess) => (
+                        <div key={sess.id} className="card subtle stack gap-xxs">
+                          <div className="row-inline between">
+                            <div className="stack gap-xxs">
+                              <strong>{sess.deviceLabel || sess.deviceName || "Unknown Device"}</strong>
+                              <span className="muted small">{sess.platform || "Unknown"}</span>
+                              <span className="muted small">Created: {formatDateTime(sess.createdAt || null)}</span>
+                              {sess.lastSeenAt && (
+                                <span className="muted small">Last seen: {formatDateTime(sess.lastSeenAt)}</span>
+                              )}
+                            </div>
+                            <Button 
+                              label="Revoke" 
+                              variant="danger" 
+                              onClick={() => {
+                                if (confirm(`Log out ${sess.deviceLabel || "this device"}?`)) {
+                                  revokeUserSession(viewUser.id, sess.id);
+                                }
+                              }} 
+                            />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="card subtle stack gap-xxs">
+                    <p className="muted small">
+                      <strong>ℹ️ Note:</strong> When "One User, One Device" is enabled, users can only be logged in on one device. 
+                      New login attempts require host approval.
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-actions">
+              <Button label="Close" variant="ghost" onClick={() => setShowUserSessions(false)} />
             </div>
           </div>
         </div>

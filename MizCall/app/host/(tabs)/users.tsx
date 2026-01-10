@@ -9,6 +9,7 @@ import Toast from "react-native-toast-message";
 import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
 import { DeleteConfirmationModal } from "../../../components/ui/DeleteConfirmationModal";
+import { UserSessionsModal } from "../../../components/ui/UserSessionsModal";
 import { authApiFetch } from "../../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 
@@ -52,12 +53,14 @@ export default function HostUsers() {
   const [viewModalVisible, setViewModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-  const [selectedUser, setSelectedUser] = useState<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string; avatar_url?: string | null } | null>(null);
+  const [sessionsModalVisible, setSessionsModalVisible] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string; avatar_url?: string | null; enforce_single_device?: boolean | null } | null>(null);
   
   // Edit form states
   const [editUsername, setEditUsername] = useState("");
   const [editEnabled, setEditEnabled] = useState(true);
   const [editPassword, setEditPassword] = useState("");
+  const [editEnforceSingleDevice, setEditEnforceSingleDevice] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const handleAllowDeviceChange = () => {
@@ -158,6 +161,7 @@ export default function HostUsers() {
     setEditUsername(user.username);
     setEditEnabled(user.enabled);
     setEditPassword(""); // Empty means don't change
+    setEditEnforceSingleDevice(user.enforce_single_device ?? null);
     setEditModalVisible(true);
   };
 
@@ -234,6 +238,7 @@ export default function HostUsers() {
       const updateData: any = {
         username: editUsername.trim(),
         enabled: editEnabled,
+        enforceSingleDevice: editEnforceSingleDevice,
       };
       
       // Only include password if it was changed
@@ -493,6 +498,18 @@ export default function HostUsers() {
                   </Pressable>
                 </View>
 
+                {/* Manage Sessions Button */}
+                <Pressable
+                  style={[styles.manageSessionsButton, { backgroundColor: colors.background, borderColor: colors.border }]}
+                  onPress={() => {
+                    setViewModalVisible(false);
+                    setTimeout(() => setSessionsModalVisible(true), 300);
+                  }}
+                >
+                  <Ionicons name="phone-portrait-outline" size={20} color={primaryColor} />
+                  <Text style={[styles.manageSessionsText, { color: primaryColor }]}>Manage Sessions</Text>
+                </Pressable>
+
                 <AppButton
                   label="Close"
                   onPress={() => setViewModalVisible(false)}
@@ -596,6 +613,60 @@ export default function HostUsers() {
                 </View>
               </View>
 
+              <View style={styles.formGroup}>
+                <Text style={[styles.label, { color: colors.text }]}>One Device Only</Text>
+                <Text style={[styles.helperText, { color: colors.text }]}>
+                  Control device restriction for this user
+                </Text>
+                <View style={styles.deviceToggleRow}>
+                  <Pressable
+                    style={[
+                      styles.deviceToggleButton,
+                      editEnforceSingleDevice === null && { backgroundColor: primaryColor, borderColor: primaryColor },
+                      editEnforceSingleDevice !== null && { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }
+                    ]}
+                    onPress={() => setEditEnforceSingleDevice(null)}
+                  >
+                    <Text style={[
+                      styles.deviceToggleText, 
+                      { color: editEnforceSingleDevice === null ? "#fff" : colors.text }
+                    ]}>
+                      Inherit
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.deviceToggleButton,
+                      editEnforceSingleDevice === true && { backgroundColor: primaryColor, borderColor: primaryColor },
+                      editEnforceSingleDevice !== true && { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }
+                    ]}
+                    onPress={() => setEditEnforceSingleDevice(true)}
+                  >
+                    <Text style={[
+                      styles.deviceToggleText, 
+                      { color: editEnforceSingleDevice === true ? "#fff" : colors.text }
+                    ]}>
+                      Force
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      styles.deviceToggleButton,
+                      editEnforceSingleDevice === false && { backgroundColor: primaryColor, borderColor: primaryColor },
+                      editEnforceSingleDevice !== false && { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1 }
+                    ]}
+                    onPress={() => setEditEnforceSingleDevice(false)}
+                  >
+                    <Text style={[
+                      styles.deviceToggleText, 
+                      { color: editEnforceSingleDevice === false ? "#fff" : colors.text }
+                    ]}>
+                      Allow
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
               <View style={styles.modalActions}>
                 <View style={{ flex: 1 }}>
                   <AppButton
@@ -643,6 +714,17 @@ export default function HostUsers() {
           setSelectedUser(null);
         }}
         loading={deleting}
+      />
+
+      {/* User Sessions Modal */}
+      <UserSessionsModal
+        visible={sessionsModalVisible}
+        userId={selectedUser?.id || null}
+        username={selectedUser?.username || null}
+        onClose={() => {
+          setSessionsModalVisible(false);
+          setSelectedUser(null);
+        }}
       />
     </>
   );
@@ -941,6 +1023,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginTop: 8,
+  },
+  manageSessionsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  manageSessionsText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  deviceToggleRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  deviceToggleButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deviceToggleText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
 });
 

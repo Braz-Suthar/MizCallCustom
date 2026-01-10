@@ -99,18 +99,40 @@ export const loginHost =
   };
 
 export const loginUser =
-  (userId: string, password: string) => async (dispatch: AppDispatch) => {
+  (userId: string, password: string, deviceInfo?: { deviceName?: string; deviceModel?: string; platform?: string; osName?: string; osVersion?: string }) => async (dispatch: AppDispatch) => {
     dispatch(setStatus("loading"));
     try {
-      const res = await apiFetch<{ token: string; hostId?: string; name?: string; avatarUrl?: string }>(
-        "/auth/user/login",
-        "",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: userId.trim(), password }),
-        },
-      );
+      const response = await fetch(`${API_BASE}/auth/user/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          userId: userId.trim(), 
+          password,
+          ...deviceInfo
+        }),
+      });
+      
+      // Check for pending approval (202 status)
+      if (response.status === 202) {
+        const data = await response.json();
+        dispatch(setStatus("idle"));
+        return { 
+          ok: false, 
+          pending: true,
+          message: data.message || "Session approval pending",
+          existingDevice: data.existingDevice,
+          existingPlatform: data.existingPlatform,
+          existingLoginTime: data.existingLoginTime,
+        };
+      }
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Login failed (${response.status})`);
+      }
+      
+      const res = await response.json();
+      
       const session: CredentialsPayload = {
         userId,
         hostId: res.hostId,
@@ -125,7 +147,11 @@ export const loginUser =
       };
       dispatch(setCredentials(session));
       await saveSession(session);
-      return { ok: true };
+      return { 
+        ok: true, 
+        pending: false,
+        revokedSessions: res.revokedSessions || 0 
+      };
     } catch (e) {
       dispatch(setStatus("idle"));
       throw e;

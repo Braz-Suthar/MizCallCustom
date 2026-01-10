@@ -83,6 +83,19 @@ const bridge = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: userId?.trim?.(), password }),
     });
+    
+    // Handle pending approval (202 status)
+    if (res.status === 202) {
+      const data = await res.json();
+      return {
+        pending: true,
+        message: data.message || "Session approval pending",
+        existingDevice: data.existingDevice,
+        existingPlatform: data.existingPlatform,
+        existingLoginTime: data.existingLoginTime,
+      };
+    }
+    
     if (!res.ok) {
       const text = await res.text();
       throw new Error(text || `User login failed (${res.status})`);

@@ -4,7 +4,7 @@ import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
 import { signRefreshToken, verifyRefreshToken } from "../../services/auth.js";
 import { generateUserId } from "../../services/id.js";
-import { broadcastCallEvent, ensureMediasoupRoom } from "../../signaling/socket-io.js";
+import { broadcastCallEvent, ensureMediasoupRoom, peers } from "../../signaling/socket-io.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -224,17 +224,23 @@ router.post("/users", requireAuth, requireHost, async (req, res) => {
   const id = await generateUserId();
   const username = req.body.username;
   const password = req.body.password || Math.random().toString(36).slice(2, 10);
+  const enforceSingleDevice = req.body.enforceSingleDevice;
 
   if (!username)
     return res.status(400).json({ error: "username required" });
 
+  // enforceSingleDevice can be: null (inherit from host), true (force single device), false (allow multiple)
+  const enforceSingleDeviceValue = enforceSingleDevice === null || enforceSingleDevice === undefined 
+    ? null 
+    : !!enforceSingleDevice;
+
   await query(
-    `INSERT INTO users (id, host_id, username, password)
-     VALUES ($1, $2, $3, $4)`,
-    [id, req.hostId, username, password]
+    `INSERT INTO users (id, host_id, username, password, enforce_single_device)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [id, req.hostId, username, password, enforceSingleDeviceValue]
   );
 
-  res.json({ userId: id, password });
+  res.json({ userId: id, password, enforceSingleDevice: enforceSingleDeviceValue });
 });
 
 /* ENABLE / DISABLE USER */
@@ -243,7 +249,7 @@ router.patch(
   requireAuth,
   requireHost,
   async (req, res) => {
-    const { enabled, password } = req.body;
+    const { enabled, password, enforceSingleDevice } = req.body;
     const updates = [];
     const values = [];
     let idx = 1;
@@ -256,6 +262,12 @@ router.patch(
     if (password) {
       updates.push(`password = $${idx++}`);
       values.push(password);
+    }
+
+    if (enforceSingleDevice !== undefined) {
+      updates.push(`enforce_single_device = $${idx++}`);
+      // Allow null (inherit), true (enforce), or false (allow multiple)
+      values.push(enforceSingleDevice === null ? null : !!enforceSingleDevice);
     }
 
     if (updates.length === 0) {
@@ -283,7 +295,7 @@ router.get(
   async (req, res) => {
     const { userId } = req.params;
     const result = await query(
-      `SELECT id, username, password, enabled, device_info, avatar_url
+      `SELECT id, username, password, enabled, device_info, avatar_url, enforce_single_device
        FROM users
        WHERE id = $1 AND host_id = $2`,
       [userId, req.hostId]
@@ -315,7 +327,7 @@ router.delete(
 /* LIST USERS FOR HOST */
 router.get("/users", requireAuth, requireHost, async (req, res) => {
   const result = await query(
-    `SELECT id, username, enabled, last_speaking, avatar_url
+    `SELECT id, username, enabled, last_speaking, avatar_url, enforce_single_device
      FROM users
      WHERE host_id = $1
      ORDER BY username`,
@@ -407,6 +419,21 @@ router.post("/users/:userId/sessions/approve", requireAuth, requireHost, async (
     [userId]
   );
 
+  // Notify user via Socket.IO that their session was revoked
+  const peer = peers.get(userId);
+  if (peer?.socket) {
+    console.log("[HOST] Notifying user", userId, "of session revocation (new device approved)");
+    peer.socket.emit("SESSION_REVOKED", {
+      type: "SESSION_REVOKED",
+      reason: "new_device_approved",
+      message: "You have been logged out because a new device was approved by the host.",
+    });
+    // Disconnect their socket
+    setTimeout(() => {
+      peer.socket?.disconnect?.(true);
+    }, 1000);
+  }
+
   // Mark request as approved
   await query(
     `UPDATE user_session_requests 
@@ -495,6 +522,21 @@ router.post("/users/:userId/sessions/revoke", requireAuth, requireHost, async (r
 
   if (result.rowCount === 0) {
     return res.status(404).json({ error: "Session not found or already revoked" });
+  }
+
+  // Notify user via Socket.IO that their session was revoked by host
+  const peer = peers.get(userId);
+  if (peer?.socket) {
+    console.log("[HOST] Notifying user", userId, "of session revocation by host");
+    peer.socket.emit("SESSION_REVOKED", {
+      type: "SESSION_REVOKED",
+      reason: "revoked_by_host",
+      message: "You have been logged out by the host.",
+    });
+    // Disconnect their socket
+    setTimeout(() => {
+      peer.socket?.disconnect?.(true);
+    }, 1000);
   }
 
   res.json({ ok: true, message: "Session revoked.", sessionId });

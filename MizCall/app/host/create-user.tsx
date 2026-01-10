@@ -1,7 +1,8 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { AppButton } from "../../components/ui/AppButton";
 import { AppTextInput } from "../../components/ui/AppTextInput";
@@ -16,6 +17,7 @@ export default function CreateUser() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [enforceSingleDevice, setEnforceSingleDevice] = useState<boolean | null>(null); // null = inherit from host
   
   // Success modal state
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -48,6 +50,7 @@ export default function CreateUser() {
           body: JSON.stringify({
             username: name.trim(),
             password: password.trim(),
+            enforceSingleDevice,
           }),
         },
       );
@@ -97,6 +100,70 @@ export default function CreateUser() {
           placeholder="Enter password (no spaces)"
         />
 
+        {/* One Device Only Setting */}
+        <View style={[styles.settingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.settingHeader}>
+            <Ionicons name="phone-portrait" size={20} color={colors.primary} />
+            <Text style={[styles.settingTitle, { color: colors.text }]}>One Device Only</Text>
+          </View>
+          <Text style={[styles.settingDescription, { color: colors.text }]}>
+            Restrict this user to one device at a time. New device logins require host approval.
+          </Text>
+          
+          <View style={styles.toggleGroup}>
+            <Pressable
+              style={[
+                styles.toggleOption,
+                { borderColor: colors.border },
+                enforceSingleDevice === null && [styles.toggleOptionActive, { backgroundColor: colors.primary }]
+              ]}
+              onPress={() => setEnforceSingleDevice(null)}
+            >
+              <Text style={[
+                styles.toggleOptionText,
+                { color: colors.text },
+                enforceSingleDevice === null && styles.toggleOptionTextActive
+              ]}>
+                Inherit from Host
+              </Text>
+            </Pressable>
+            
+            <Pressable
+              style={[
+                styles.toggleOption,
+                { borderColor: colors.border },
+                enforceSingleDevice === true && [styles.toggleOptionActive, { backgroundColor: colors.primary }]
+              ]}
+              onPress={() => setEnforceSingleDevice(true)}
+            >
+              <Text style={[
+                styles.toggleOptionText,
+                { color: colors.text },
+                enforceSingleDevice === true && styles.toggleOptionTextActive
+              ]}>
+                Force Single Device
+              </Text>
+            </Pressable>
+            
+            <Pressable
+              style={[
+                styles.toggleOption,
+                { borderColor: colors.border },
+                enforceSingleDevice === false && [styles.toggleOptionActive, { backgroundColor: colors.primary }]
+              ]}
+              onPress={() => setEnforceSingleDevice(false)}
+            >
+              <Text style={[
+                styles.toggleOptionText,
+                { color: colors.text },
+                enforceSingleDevice === false && styles.toggleOptionTextActive
+              ]}>
+                Allow Multiple
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
         <AppButton label="Create user" onPress={onSubmit} disabled={!valid || loading} loading={loading} fullWidth />
         <AppButton label="Cancel" variant="ghost" onPress={() => router.back()} fullWidth />
       </ScrollView>
@@ -130,6 +197,50 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     opacity: 0.8,
+  },
+  settingCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  settingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  settingTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  settingDescription: {
+    fontSize: 13,
+    opacity: 0.7,
+    lineHeight: 18,
+  },
+  toggleGroup: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  toggleOption: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toggleOptionActive: {
+    borderWidth: 0,
+  },
+  toggleOptionText: {
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  toggleOptionTextActive: {
+    color: "#fff",
   },
 });
 

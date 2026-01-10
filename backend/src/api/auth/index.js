@@ -4,6 +4,7 @@ import { signToken, signRefreshToken, verifyRefreshToken, generateJti } from "..
 import { generateHostId } from "../../services/id.js";
 import nodemailer from "nodemailer";
 import { setOtp, verifyOtp } from "../../services/otpStore.js";
+import { peers } from "../../signaling/socket-io.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
@@ -257,9 +258,10 @@ router.post("/user/login", async (req, res) => {
   const identifier = String(userId).trim();
   const normalizedId = identifier.toUpperCase(); // accept lower/upper U123456
 
-  // Get user and host info, including enforce_user_single_session setting
+  // Get user and host info, including both host-level and user-level single device settings
   const result = await query(
     `SELECT u.id, u.host_id, u.username, u.password, u.enabled, u.avatar_url,
+            u.enforce_single_device,
             h.enforce_user_single_session
      FROM users u
      JOIN hosts h ON u.host_id = h.id
@@ -279,11 +281,17 @@ router.post("/user/login", async (req, res) => {
     username, 
     password: plainPassword, 
     avatar_url,
+    enforce_single_device,
     enforce_user_single_session 
   } = result.rows[0];
 
-  // Check if host has "one user one device" enabled
-  if (enforce_user_single_session) {
+  // Check if "one device" is enforced (user-level overrides host-level)
+  // NULL = inherit from host setting, TRUE/FALSE = override
+  const shouldEnforceSingleDevice = enforce_single_device !== null 
+    ? enforce_single_device  // User-specific setting overrides
+    : enforce_user_single_session;  // Fall back to host-level setting
+
+  if (shouldEnforceSingleDevice) {
     // Check for existing active sessions
     const existingSession = await query(
       `SELECT id, device_label, device_name, platform, created_at 
@@ -338,12 +346,42 @@ router.post("/user/login", async (req, res) => {
   }
 
   // No existing session or setting disabled - proceed with login
+  // ALWAYS enforce single session per user: revoke all existing sessions before creating new one
+  console.log("[AUTH] Revoking any existing sessions for user:", resolvedId);
+  const revokeResult = await query(
+    `UPDATE user_sessions 
+     SET revoked_at = NOW() 
+     WHERE user_id = $1 AND revoked_at IS NULL
+     RETURNING id, device_label`,
+    [resolvedId]
+  );
+  
+  if (revokeResult.rowCount > 0) {
+    console.log("[AUTH] Revoked", revokeResult.rowCount, "existing session(s):", 
+      revokeResult.rows.map(r => r.device_label || r.id).join(", "));
+    
+    // Notify user via Socket.IO that their session was revoked
+    const peer = peers.get(resolvedId);
+    if (peer?.socket) {
+      console.log("[AUTH] Notifying user", resolvedId, "of session revocation");
+      peer.socket.emit("SESSION_REVOKED", {
+        type: "SESSION_REVOKED",
+        reason: "logged_in_elsewhere",
+        message: "You have been logged out because you logged in on another device.",
+      });
+      // Disconnect their socket after a short delay
+      setTimeout(() => {
+        peer.socket?.disconnect?.(true);
+      }, 1000);
+    }
+  }
+  
   const accessJti = generateJti();
   const refreshJti = generateJti();
   const token = signToken({ role: "user", userId: resolvedId, hostId }, accessJti);
   const refreshToken = signRefreshToken({ role: "user", userId: resolvedId, hostId }, refreshJti);
   
-  // Create session record
+  // Create new session record
   const userAgent = req.get("user-agent") || null;
   const headerDevice = req.get("x-device-name") || null;
   const deviceLabel = (deviceName || headerDevice || "").trim() || (userAgent || "").trim() || "Unknown device";
@@ -379,6 +417,7 @@ router.post("/user/login", async (req, res) => {
     password: plainPassword,
     avatarUrl: avatar_url ?? null,
     pending: false,
+    revokedSessions: revokeResult.rowCount, // Number of old sessions that were logged out
   });
 });
 
