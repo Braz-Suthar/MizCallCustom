@@ -2,14 +2,14 @@
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS call_background_url TEXT DEFAULT NULL;
 
--- Update custom_backgrounds table to support users
--- Remove the constraint that requires EITHER user_id OR host_id
-ALTER TABLE custom_backgrounds
-  DROP CONSTRAINT IF EXISTS custom_backgrounds_user_or_host;
-
--- Add user_id column
+-- Add user_id column to custom_backgrounds
 ALTER TABLE custom_backgrounds
   ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE CASCADE;
+
+-- Update the constraint to support both hosts and users
+-- First drop the old constraint if it exists
+ALTER TABLE custom_backgrounds
+  DROP CONSTRAINT IF EXISTS custom_backgrounds_owner_check;
 
 -- Add new constraint: must have EITHER host_id OR user_id (not both, not neither)
 ALTER TABLE custom_backgrounds

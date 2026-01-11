@@ -2269,7 +2269,8 @@ function App() {
   const loadCallBackground = useCallback(async () => {
     if (!session?.token) return;
     try {
-      const res = await authFetch(`${API_BASE}/host/call-background`);
+      const endpoint = session.role === "host" ? "/host/call-background" : "/user/call-background";
+      const res = await authFetch(`${API_BASE}${endpoint}`);
       if (res.ok) {
         const data = await res.json();
         setCallBackgroundUrl(data.backgroundUrl || null);
@@ -2283,7 +2284,8 @@ function App() {
     if (!session?.token) return;
     try {
       console.log("[Desktop] Loading inbuilt backgrounds...");
-      const res = await authFetch(`${API_BASE}/host/call-background/inbuilt`);
+      const endpoint = session.role === "host" ? "/host/call-background/inbuilt" : "/user/call-background/inbuilt";
+      const res = await authFetch(`${API_BASE}${endpoint}`);
       if (res.ok) {
         const data = await res.json();
         console.log("[Desktop] Inbuilt backgrounds response:", data);
@@ -2298,9 +2300,10 @@ function App() {
   }, [authFetch, session]);
 
   const loadCustomBackgrounds = useCallback(async () => {
-    if (!session?.token || session.role !== "host") return;
+    if (!session?.token) return;
     try {
-      const res = await authFetch(`${API_BASE}/host/call-background/custom`);
+      const endpoint = session.role === "host" ? "/host/call-background/custom" : "/user/call-background/custom";
+      const res = await authFetch(`${API_BASE}${endpoint}`);
       if (res.ok) {
         const data = await res.json();
         setCustomBackgrounds(data.backgrounds || []);
@@ -2312,7 +2315,8 @@ function App() {
 
   const handleSelectBackground = async (backgroundUrl: string) => {
     try {
-      const res = await authFetch(`${API_BASE}/host/call-background/set-active`, {
+      const endpoint = session?.role === "host" ? "/host/call-background/set-active" : "/user/call-background/set-active";
+      const res = await authFetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ backgroundUrl }),
@@ -2336,7 +2340,8 @@ function App() {
   const handleDeleteCustomBackground = async (id: string) => {
     if (!confirm("Delete this background from your library?")) return;
     try {
-      const res = await authFetch(`${API_BASE}/host/call-background/custom/${id}`, {
+      const endpoint = session?.role === "host" ? `/host/call-background/custom/${id}` : `/user/call-background/custom/${id}`;
+      const res = await authFetch(`${API_BASE}${endpoint}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete background");
@@ -2373,7 +2378,8 @@ function App() {
       const formData = new FormData();
       formData.append("background", file);
 
-      const res = await fetch(`${API_BASE}/host/call-background`, {
+      const endpoint = session.role === "host" ? "/host/call-background" : "/user/call-background";
+      const res = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${session.token}`,
@@ -2404,7 +2410,8 @@ function App() {
   const handleRemoveBackground = async () => {
     if (!confirm("Remove call background image?")) return;
     try {
-      const res = await authFetch(`${API_BASE}/host/call-background`, {
+      const endpoint = session?.role === "host" ? "/host/call-background" : "/user/call-background";
+      const res = await authFetch(`${API_BASE}${endpoint}`, {
         method: "DELETE",
       });
       if (!res.ok) {
@@ -2494,10 +2501,12 @@ function App() {
     if (tab === "calls" && session?.role === "host") {
       fetchCalls();
     }
-    if (tab === "settings" && session?.role === "host") {
+    if (tab === "settings") {
       loadCallBackground();
       loadInbuiltBackgrounds();
-      loadCustomBackgrounds();
+      if (session?.role === "host") {
+        loadCustomBackgrounds();
+      }
     }
 
     // For users, when landing on dashboard, check if host already has an active call
@@ -3882,28 +3891,65 @@ function App() {
               </div>
 
               <div className="card stack gap-sm">
-                <p className="muted strong">Call background</p>
-                <div className="image-grid">
-                  {[
-                      logo360,
-                    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%232563eb'/></svg>",
-                    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%230f172a'/></svg>",
-                    "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='80'><rect width='120' height='80' fill='%23e5e7eb'/></svg>",
-                    ...(customBg ? [customBg] : []),
-                  ].map((src) => (
-                    <div key={src} className="bg-thumb">
-                      <img src={src} alt="background option" />
-                    </div>
-                  ))}
+                <p className="muted strong">Call Customization</p>
+                <div className="stack gap-xxs">
+                  <strong>Call Background Image</strong>
+                  <span className="muted small">Set a background image for your active call screen</span>
                 </div>
+                {callBackgroundUrl ? (
+                  <div className="stack gap-sm">
+                    <div className="background-preview" style={{ position: 'relative', width: '100%', height: '180px', borderRadius: '12px', overflow: 'hidden' }}>
+                      <img 
+                        src={`${API_BASE}${callBackgroundUrl}`} 
+                        alt="Call background" 
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    </div>
+                    <div className="row-inline gap-sm">
+                      <Button 
+                        label="Gallery" 
+                        variant="secondary" 
+                        onClick={() => setShowBackgroundGallery(true)}
+                      />
+                      <Button 
+                        label={uploadingBackground ? "Uploading..." : "Upload Custom"} 
+                        variant="secondary" 
+                        onClick={handleBackgroundClick}
+                        disabled={uploadingBackground}
+                      />
+                      <Button 
+                        label="Remove" 
+                        variant="danger" 
+                        onClick={handleRemoveBackground}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="stack gap-sm">
+                    <Button 
+                      label="Choose from Gallery" 
+                      variant="secondary" 
+                      onClick={() => setShowBackgroundGallery(true)}
+                    />
+                    <div className="divider-text">
+                      <span className="muted small">or</span>
+                    </div>
+                    <Button 
+                      label={uploadingBackground ? "Uploading..." : "Upload Custom Image"} 
+                      variant="secondary" 
+                      onClick={handleBackgroundClick}
+                      disabled={uploadingBackground}
+                    />
+                  </div>
+                )}
                 <input
-                  ref={bgInputRef}
+                  ref={backgroundInputRef}
                   type="file"
                   accept="image/*"
                   style={{ display: "none" }}
-                  onChange={handleBgFile}
+                  onChange={handleBackgroundFile}
                 />
-                <Button label="Upload custom image" variant="secondary" onClick={handleBgClick} />
+                <p className="muted small">Recommended: 16:9 aspect ratio, 1920x1080px</p>
               </div>
             </div>
 
@@ -4435,132 +4481,375 @@ function App() {
         </div>
       ) : null}
 
-      {/* Background Gallery Modal */}
+      {/* Background Gallery Modal - Full Screen */}
       {showBackgroundGallery ? (
-        <div className="modal-backdrop" onClick={() => setShowBackgroundGallery(false)}>
-          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <p className="muted strong">Choose Background</p>
-              <button className="linklike" onClick={() => setShowBackgroundGallery(false)}>
-                Close
+        <div 
+          className="modal-backdrop" 
+          onClick={() => setShowBackgroundGallery(false)}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '95vw',
+              width: '1600px',
+              maxHeight: '92vh',
+              height: 'auto',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              borderRadius: '24px',
+              boxShadow: effectiveTheme === 'dark' 
+                ? '0 25px 50px -12px rgba(0, 0, 0, 0.8)' 
+                : '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+              backgroundColor: effectiveTheme === 'dark' ? '#1f2937' : '#ffffff'
+            }}
+          >
+            <div 
+              style={{ 
+                padding: '28px 36px', 
+                borderBottom: effectiveTheme === 'dark' ? '2px solid #374151' : '2px solid #e5e7eb',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: effectiveTheme === 'dark' ? '#111827' : '#ffffff'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                <div style={{ 
+                  width: '64px', 
+                  height: '64px', 
+                  borderRadius: '16px', 
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  boxShadow: '0 8px 16px rgba(102, 126, 234, 0.3)'
+                }}>
+                  <span style={{ fontSize: '32px' }}>🖼️</span>
+                </div>
+                <div>
+                  <h2 style={{ 
+                    fontSize: '28px', 
+                    fontWeight: '700', 
+                    margin: 0, 
+                    marginBottom: '4px',
+                    color: effectiveTheme === 'dark' ? '#f9fafb' : '#0f172a'
+                  }}>
+                    Choose Background
+                  </h2>
+                  <p style={{ 
+                    margin: 0, 
+                    fontSize: '15px',
+                    color: effectiveTheme === 'dark' ? '#9ca3af' : '#6b7280'
+                  }}>
+                    {inbuiltBackgrounds.length} presets • {customBackgrounds.length} custom uploads
+                  </p>
+                </div>
+              </div>
+              <button 
+                className="btn btn-ghost" 
+                onClick={() => setShowBackgroundGallery(false)}
+                style={{ 
+                  fontSize: '24px', 
+                  width: '48px', 
+                  height: '48px',
+                  borderRadius: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                ✕
               </button>
             </div>
-            <div className="modal-body stack gap-sm">
+            
+            <div 
+              style={{ 
+                padding: '36px', 
+                overflowY: 'auto', 
+                flex: 1,
+                backgroundColor: effectiveTheme === 'dark' ? '#0f172a' : '#f9fafb'
+              }}
+            >
               {customBackgrounds.length > 0 && (
                 <>
-                  <p className="muted strong">Your Uploads ({customBackgrounds.length})</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '16px', 
+                    marginBottom: '24px',
+                    padding: '0 4px'
+                  }}>
+                    <div style={{ 
+                      width: '6px', 
+                      height: '32px', 
+                      background: 'linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)', 
+                      borderRadius: '3px' 
+                    }} />
+                    <h3 style={{ 
+                      fontSize: '24px', 
+                      fontWeight: '700', 
+                      margin: 0,
+                      color: effectiveTheme === 'dark' ? '#f9fafb' : '#0f172a'
+                    }}>
+                      Your Uploads ({customBackgrounds.length})
+                    </h3>
+                  </div>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', 
+                    gap: '24px',
+                    marginBottom: '48px'
+                  }}>
                     {customBackgrounds.map((bg) => (
                       <div
                         key={bg.id}
-                        className="card"
                         style={{
                           cursor: 'pointer',
                           padding: 0,
                           overflow: 'hidden',
-                          border: callBackgroundUrl === bg.url ? '3px solid #3c82f6' : '1px solid #e5e7eb',
-                          position: 'relative'
+                          backgroundColor: effectiveTheme === 'dark' ? '#1f2937' : '#ffffff',
+                          border: callBackgroundUrl === bg.url 
+                            ? '4px solid #3c82f6' 
+                            : effectiveTheme === 'dark' ? '2px solid #374151' : '2px solid #e5e7eb',
+                          borderRadius: '12px',
+                          position: 'relative',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow: callBackgroundUrl === bg.url 
+                            ? '0 20px 40px rgba(60, 130, 246, 0.4)' 
+                            : effectiveTheme === 'dark' 
+                              ? '0 4px 12px rgba(0,0,0,0.3)' 
+                              : '0 4px 12px rgba(0,0,0,0.08)',
+                          transform: callBackgroundUrl === bg.url ? 'scale(1.02)' : 'scale(1)'
+                        }}
+                        onClick={() => handleSelectBackground(bg.url)}
+                        onMouseEnter={(e) => {
+                          if (callBackgroundUrl !== bg.url) {
+                            e.currentTarget.style.transform = 'scale(1.02)';
+                            e.currentTarget.style.boxShadow = effectiveTheme === 'dark' 
+                              ? '0 12px 24px rgba(0,0,0,0.5)' 
+                              : '0 12px 24px rgba(0,0,0,0.15)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (callBackgroundUrl !== bg.url) {
+                            e.currentTarget.style.transform = 'scale(1)';
+                            e.currentTarget.style.boxShadow = effectiveTheme === 'dark' 
+                              ? '0 4px 12px rgba(0,0,0,0.3)' 
+                              : '0 4px 12px rgba(0,0,0,0.08)';
+                          }
                         }}
                       >
                         <img
                           src={`${API_BASE}${bg.url}`}
                           alt={bg.filename}
-                          style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }}
-                          onClick={() => handleSelectBackground(bg.url)}
+                          style={{ 
+                            width: '100%', 
+                            aspectRatio: '16/9', 
+                            objectFit: 'cover', 
+                            display: 'block',
+                            transition: 'transform 0.3s'
+                          }}
                         />
                         <button
                           className="btn btn-danger"
                           style={{
                             position: 'absolute',
-                            top: '8px',
-                            left: '8px',
-                            padding: '6px 8px',
+                            top: '16px',
+                            left: '16px',
+                            padding: '10px 16px',
                             minWidth: 'auto',
-                            fontSize: '12px'
+                            fontSize: '14px',
+                            fontWeight: '600',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteCustomBackground(bg.id);
                           }}
                         >
-                          🗑️
+                          🗑️ Delete
                         </button>
                         {callBackgroundUrl === bg.url && (
                           <div style={{
                             position: 'absolute',
-                            top: '8px',
-                            right: '8px',
-                            backgroundColor: '#fff',
+                            top: '16px',
+                            right: '16px',
+                            backgroundColor: '#22c55e',
                             borderRadius: '50%',
-                            padding: '4px',
+                            width: '48px',
+                            height: '48px',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            boxShadow: '0 8px 20px rgba(34, 197, 94, 0.5)'
                           }}>
-                            <span style={{ color: '#22c55e', fontSize: '20px' }}>✓</span>
+                            <span style={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}>✓</span>
                           </div>
                         )}
                       </div>
                     ))}
                   </div>
-                  <div className="divider-text" style={{ margin: '24px 0' }}>
-                    <span className="muted small">or choose preset</span>
-                  </div>
                 </>
               )}
               
-              <p className="muted strong">Preset Backgrounds ({inbuiltBackgrounds.length})</p>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '16px', 
+                marginBottom: '24px',
+                padding: '0 4px'
+              }}>
+                <div style={{ 
+                  width: '6px', 
+                  height: '32px', 
+                  background: 'linear-gradient(180deg, #10b981 0%, #059669 100%)', 
+                  borderRadius: '3px' 
+                }} />
+                <h3 style={{ 
+                  fontSize: '24px', 
+                  fontWeight: '700', 
+                  margin: 0,
+                  color: effectiveTheme === 'dark' ? '#f9fafb' : '#0f172a'
+                }}>
+                  Preset Backgrounds ({inbuiltBackgrounds.length})
+                </h3>
+              </div>
+              
               {inbuiltBackgrounds.length === 0 && (
-                <p className="muted small">Loading preset backgrounds...</p>
+                <div style={{ padding: '40px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
+                  <p style={{ color: effectiveTheme === 'dark' ? '#9ca3af' : '#6b7280' }}>
+                    Loading preset backgrounds...
+                  </p>
+                </div>
               )}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
+              
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', 
+                gap: '24px',
+                marginBottom: '48px'
+              }}>
                 {inbuiltBackgrounds.map((bg) => (
                   <div
                     key={bg.id}
-                    className="card"
                     style={{
                       cursor: 'pointer',
                       padding: 0,
                       overflow: 'hidden',
-                      border: callBackgroundUrl === bg.url ? '3px solid #3c82f6' : '1px solid #e5e7eb',
-                      position: 'relative'
+                      backgroundColor: effectiveTheme === 'dark' ? '#1f2937' : '#ffffff',
+                      border: callBackgroundUrl === bg.url 
+                        ? '4px solid #3c82f6' 
+                        : effectiveTheme === 'dark' ? '2px solid #374151' : '2px solid #e5e7eb',
+                      borderRadius: '12px',
+                      position: 'relative',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: callBackgroundUrl === bg.url 
+                        ? '0 20px 40px rgba(60, 130, 246, 0.4)' 
+                        : effectiveTheme === 'dark' 
+                          ? '0 4px 12px rgba(0,0,0,0.3)' 
+                          : '0 4px 12px rgba(0,0,0,0.08)',
+                      transform: callBackgroundUrl === bg.url ? 'scale(1.02)' : 'scale(1)'
                     }}
                     onClick={() => handleSelectBackground(bg.url)}
+                    onMouseEnter={(e) => {
+                      if (callBackgroundUrl !== bg.url) {
+                        e.currentTarget.style.transform = 'scale(1.02)';
+                        e.currentTarget.style.boxShadow = effectiveTheme === 'dark' 
+                          ? '0 12px 24px rgba(0,0,0,0.5)' 
+                          : '0 12px 24px rgba(0,0,0,0.15)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (callBackgroundUrl !== bg.url) {
+                        e.currentTarget.style.transform = 'scale(1)';
+                        e.currentTarget.style.boxShadow = effectiveTheme === 'dark' 
+                          ? '0 4px 12px rgba(0,0,0,0.3)' 
+                          : '0 4px 12px rgba(0,0,0,0.08)';
+                      }
+                    }}
                   >
                     <img
                       src={`${API_BASE}${bg.url}`}
-                      alt={`Background ${bg.id}`}
-                      style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }}
+                      alt={`Preset ${bg.id}`}
+                      style={{ 
+                        width: '100%', 
+                        aspectRatio: '16/9', 
+                        objectFit: 'cover', 
+                        display: 'block' 
+                      }}
                     />
                     {callBackgroundUrl === bg.url && (
                       <div style={{
                         position: 'absolute',
-                        top: '8px',
-                        right: '8px',
-                        backgroundColor: '#fff',
+                        top: '16px',
+                        right: '16px',
+                        backgroundColor: '#22c55e',
                         borderRadius: '50%',
-                        padding: '4px',
+                        width: '48px',
+                        height: '48px',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center'
+                        justifyContent: 'center',
+                        boxShadow: '0 8px 20px rgba(34, 197, 94, 0.5)'
                       }}>
-                        <span style={{ color: '#22c55e', fontSize: '20px' }}>✓</span>
+                        <span style={{ color: '#fff', fontSize: '28px', fontWeight: 'bold' }}>✓</span>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
-              <div className="divider-text" style={{ margin: '24px 0' }}>
-                <span className="muted small">or upload new</span>
-              </div>
-              <Button 
-                label="Upload New Image" 
-                variant="secondary" 
+              
+              <div style={{ 
+                padding: '32px', 
+                borderRadius: '20px', 
+                border: '3px dashed #3c82f6', 
+                background: effectiveTheme === 'dark' 
+                  ? 'linear-gradient(135deg, rgba(60, 130, 246, 0.12) 0%, rgba(37, 99, 235, 0.12) 100%)'
+                  : 'linear-gradient(135deg, rgba(60, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.08) 100%)',
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'all 0.3s'
+              }}
                 onClick={() => {
                   setShowBackgroundGallery(false);
                   setTimeout(handleBackgroundClick, 100);
                 }}
-              />
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = effectiveTheme === 'dark'
+                    ? 'linear-gradient(135deg, rgba(60, 130, 246, 0.20) 0%, rgba(37, 99, 235, 0.20) 100%)'
+                    : 'linear-gradient(135deg, rgba(60, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.15) 100%)';
+                  e.currentTarget.style.transform = 'scale(1.01)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = effectiveTheme === 'dark'
+                    ? 'linear-gradient(135deg, rgba(60, 130, 246, 0.12) 0%, rgba(37, 99, 235, 0.12) 100%)'
+                    : 'linear-gradient(135deg, rgba(60, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.08) 100%)';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                <div style={{ fontSize: '64px', marginBottom: '16px' }}>☁️</div>
+                <h4 style={{ fontSize: '22px', fontWeight: '700', color: '#3c82f6', margin: 0, marginBottom: '8px' }}>
+                  Upload New Custom Image
+                </h4>
+                <p style={{ 
+                  fontSize: '14px', 
+                  margin: 0,
+                  color: effectiveTheme === 'dark' ? '#9ca3af' : '#6b7280'
+                }}>
+                  Click to select an image from your computer • Recommended: 16:9 aspect ratio, 1920x1080px
+                </p>
+              </div>
             </div>
           </div>
         </div>
