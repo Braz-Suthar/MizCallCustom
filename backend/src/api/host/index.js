@@ -873,21 +873,15 @@ router.get(
   }
 );
 
-/* GET CALL BACKGROUND IMAGE (accessible by both host and their users) */
+/* GET HOST'S ACTIVE BACKGROUND (host only) */
 router.get(
   "/call-background",
   requireAuth,
+  requireHost,
   async (req, res) => {
-    // Get the host ID (either from host login or from user's host)
-    const hostId = req.auth.role === "host" ? req.auth.hostId : req.auth.hostId;
-    
-    if (!hostId) {
-      return res.status(400).json({ error: "Host ID not found" });
-    }
-    
     const result = await query(
       `SELECT call_background_url FROM hosts WHERE id = $1`,
-      [hostId]
+      [req.hostId]
     );
     
     if (result.rowCount === 0) {

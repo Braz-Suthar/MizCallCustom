@@ -2282,13 +2282,18 @@ function App() {
   const loadInbuiltBackgrounds = useCallback(async () => {
     if (!session?.token) return;
     try {
+      console.log("[Desktop] Loading inbuilt backgrounds...");
       const res = await authFetch(`${API_BASE}/host/call-background/inbuilt`);
       if (res.ok) {
         const data = await res.json();
+        console.log("[Desktop] Inbuilt backgrounds response:", data);
         setInbuiltBackgrounds(data.backgrounds || []);
+        console.log("[Desktop] Loaded", data.backgrounds?.length || 0, "inbuilt backgrounds");
+      } else {
+        console.error("[Desktop] Failed to fetch inbuilt backgrounds:", res.status);
       }
     } catch (error) {
-      console.warn("[Desktop] Failed to load inbuilt backgrounds:", error);
+      console.error("[Desktop] Failed to load inbuilt backgrounds:", error);
     }
   }, [authFetch, session]);
 
@@ -4504,7 +4509,10 @@ function App() {
                 </>
               )}
               
-              <p className="muted strong">Preset Backgrounds</p>
+              <p className="muted strong">Preset Backgrounds ({inbuiltBackgrounds.length})</p>
+              {inbuiltBackgrounds.length === 0 && (
+                <p className="muted small">Loading preset backgrounds...</p>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
                 {inbuiltBackgrounds.map((bg) => (
                   <div
