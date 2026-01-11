@@ -381,12 +381,19 @@ export default function ActiveCallScreen() {
       {hasCall && (
         <View style={[styles.controlBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
           <Pressable
-            style={[
+            style={({ pressed }) => [
               styles.controlButton,
               styles.muteButton,
-              { backgroundColor: muted ? DANGER_RED : colors.background, borderColor: colors.border },
+              { 
+                backgroundColor: muted ? DANGER_RED : colors.background, 
+                borderColor: colors.border,
+                opacity: pressed ? 0.7 : 1,
+              },
             ]}
-            onPress={toggleMute}
+            onPress={(e) => {
+              e.stopPropagation();
+              toggleMute();
+            }}
             disabled={mediaState === "connecting"}
           >
             <Ionicons
@@ -400,8 +407,18 @@ export default function ActiveCallScreen() {
           </Pressable>
 
           <Pressable
-            style={[styles.controlButton, styles.endCallButton, { backgroundColor: DANGER_RED }]}
-            onPress={handleEndButtonClick}
+            style={({ pressed }) => [
+              styles.controlButton, 
+              styles.endCallButton, 
+              { 
+                backgroundColor: DANGER_RED,
+                opacity: pressed ? 0.8 : 1,
+              }
+            ]}
+            onPress={(e) => {
+              e.stopPropagation();
+              handleEndButtonClick();
+            }}
             disabled={callStatus === "starting"}
           >
             <Ionicons name="call" size={24} color="#fff" />
@@ -625,7 +642,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: 20,
     paddingVertical: 16,
-    gap: 12,
+    gap: 16,
     borderTopWidth: 1,
   },
   controlButton: {
@@ -634,11 +651,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 12,
     borderRadius: 14,
     borderWidth: 1,
+    minHeight: 56,
   },
-  muteButton: {},
+  muteButton: {
+    borderWidth: 2,
+  },
   controlButtonText: {
     fontSize: 15,
     fontWeight: "700",
