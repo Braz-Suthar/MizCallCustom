@@ -720,6 +720,39 @@ router.post(
   }
 );
 
+/* GET INBUILT BACKGROUND IMAGES */
+router.get(
+  "/call-background/inbuilt",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const backgroundsDir = path.join(process.cwd(), "public", "inbuilt_call_background_images");
+      
+      console.log("[Host] Looking for inbuilt backgrounds at:", backgroundsDir);
+      
+      if (!fs.existsSync(backgroundsDir)) {
+        console.warn("[Host] Inbuilt backgrounds directory not found");
+        return res.json({ backgrounds: [] });
+      }
+      
+      const files = fs.readdirSync(backgroundsDir);
+      const imageFiles = files.filter(file => /\.(jpg|jpeg|png|webp)$/i.test(file));
+      
+      console.log("[Host] Found", imageFiles.length, "inbuilt backgrounds:", imageFiles);
+      
+      const backgrounds = imageFiles.map(file => ({
+        id: file,
+        url: `/public/inbuilt_call_background_images/${file}`,
+      }));
+      
+      res.json({ backgrounds });
+    } catch (error) {
+      console.error("[Host] Failed to list inbuilt backgrounds:", error);
+      res.json({ backgrounds: [] });
+    }
+  }
+);
+
 /* GET ALL CUSTOM UPLOADED BACKGROUNDS FOR HOST */
 router.get(
   "/call-background/custom",

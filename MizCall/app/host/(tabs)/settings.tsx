@@ -121,24 +121,30 @@ export default function HostSettings() {
   const loadInbuiltBackgrounds = async () => {
     if (!auth.token) return;
     try {
+      console.log("[Settings] Loading inbuilt backgrounds...");
       const res = await dispatch<any>(authApiFetch<{ backgrounds: Array<{ id: string; url: string }> }>("/host/call-background/inbuilt"));
+      console.log("[Settings] Inbuilt backgrounds response:", res);
       if (res.backgrounds) {
         setInbuiltBackgrounds(res.backgrounds);
+        console.log("[Settings] Loaded", res.backgrounds.length, "inbuilt backgrounds");
       }
     } catch (e) {
-      console.warn("[Settings] Failed to load inbuilt backgrounds:", e);
+      console.error("[Settings] Failed to load inbuilt backgrounds:", e);
     }
   };
 
   const loadCustomBackgrounds = async () => {
     if (!auth.token) return;
     try {
+      console.log("[Settings] Loading custom backgrounds...");
       const res = await dispatch<any>(authApiFetch<{ backgrounds: Array<{ id: string; url: string; filename: string; uploaded_at: string }> }>("/host/call-background/custom"));
+      console.log("[Settings] Custom backgrounds response:", res);
       if (res.backgrounds) {
         setCustomBackgrounds(res.backgrounds);
+        console.log("[Settings] Loaded", res.backgrounds.length, "custom backgrounds");
       }
     } catch (e) {
-      console.warn("[Settings] Failed to load custom backgrounds:", e);
+      console.error("[Settings] Failed to load custom backgrounds:", e);
     }
   };
 

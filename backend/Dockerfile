@@ -9,6 +9,7 @@ RUN npm install --production
 # Copy application source
 COPY migrations ./migrations
 COPY src ./src
+COPY public ./public
 
 ENV NODE_ENV=production
 
