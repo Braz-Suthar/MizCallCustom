@@ -3,14 +3,20 @@ import * as Device from "expo-device";
 import { Platform } from "react-native";
 import { apiFetch } from "../state/api";
 
-// Configure notification behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// Configure notification behavior (only on Android)
+if (Platform.OS === "android") {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  } catch (error) {
+    console.warn("[Notifications] Failed to set handler:", error);
+  }
+}
 
 export class NotificationService {
   private static token: string | null = null;
@@ -148,50 +154,66 @@ export class NotificationService {
     onNotificationReceived?: (notification: Notifications.Notification) => void,
     onNotificationTapped?: (response: Notifications.NotificationResponse) => void
   ): () => void {
-    // Listener for notifications received while app is in foreground
-    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
-      console.log("[Notifications] Received:", notification);
-      onNotificationReceived?.(notification);
-    });
-
-    // Listener for notifications tapped (app was in background/killed)
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      console.log("[Notifications] Tapped:", response);
-      onNotificationTapped?.(response);
-    });
-
-    // Android notification channel (required)
-    if (Platform.OS === "android") {
-      Notifications.setNotificationChannelAsync("default", {
-        name: "Default",
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#3c82f6",
-        sound: "default",
-      });
-
-      // Channel for calls (high priority)
-      Notifications.setNotificationChannelAsync("calls", {
-        name: "Calls",
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 500, 200, 500],
-        lightColor: "#22c55e",
-        sound: "default",
-        enableVibrate: true,
-      });
+    // Skip on iOS (not configured)
+    if (Platform.OS === "ios") {
+      console.log("[Notifications] Listeners skipped on iOS");
+      return () => {}; // No-op cleanup
     }
 
-    // Return cleanup function
-    return () => {
-      receivedSubscription.remove();
-      responseSubscription.remove();
-    };
+    try {
+      // Listener for notifications received while app is in foreground
+      const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+        console.log("[Notifications] Received:", notification);
+        onNotificationReceived?.(notification);
+      });
+
+      // Listener for notifications tapped (app was in background/killed)
+      const responseSubscription = Notifications.addNotificationResponseReceivedListener((response) => {
+        console.log("[Notifications] Tapped:", response);
+        onNotificationTapped?.(response);
+      });
+
+      // Android notification channel (required)
+      if (Platform.OS === "android") {
+        Notifications.setNotificationChannelAsync("default", {
+          name: "Default",
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#3c82f6",
+          sound: "default",
+        });
+
+        // Channel for calls (high priority)
+        Notifications.setNotificationChannelAsync("calls", {
+          name: "Calls",
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 500, 200, 500],
+          lightColor: "#22c55e",
+          sound: "default",
+          enableVibrate: true,
+        });
+      }
+
+      // Return cleanup function
+      return () => {
+        receivedSubscription.remove();
+        responseSubscription.remove();
+      };
+    } catch (error) {
+      console.error("[Notifications] Failed to setup listeners:", error);
+      return () => {}; // No-op cleanup
+    }
   }
 
   /**
    * Show local notification (for testing)
    */
   static async showLocalNotification(title: string, body: string, data: any = {}) {
+    if (Platform.OS === "ios") {
+      console.log("[Notifications] Local notifications disabled on iOS");
+      return;
+    }
+
     try {
       await Notifications.scheduleNotificationAsync({
         content: {
@@ -211,6 +233,10 @@ export class NotificationService {
    * Check notification status
    */
   static async getStatus(): Promise<{ enabled: boolean; token: string | null }> {
+    if (Platform.OS === "ios") {
+      return { enabled: false, token: null };
+    }
+
     try {
       const { status } = await Notifications.getPermissionsAsync();
       return {
