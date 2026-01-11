@@ -104,9 +104,7 @@ export function useHostCallMedia(opts: {
     // Cleanup socket - DISCONNECT IT (like desktop does)
     if (socketRef.current) {
       console.log("[useHostCallMedia] Cleaning up socket");
-      if (call?.roomId) {
-        socketRef.current.emit?.("CALL_STOPPED", { roomId: call.roomId });
-      }
+      // Don't emit CALL_STOPPED during cleanup - that's handled by endCall action
       socketRef.current.removeAllListeners();
       socketRef.current.disconnect?.();
     }
@@ -123,7 +121,7 @@ export function useHostCallMedia(opts: {
     setError(null);
     
     console.log("[useHostCallMedia] ✅ Cleanup complete");
-  }, [call?.roomId]);
+  }, []);
 
   useEffect(() => cleanupCallMedia, [cleanupCallMedia]);
 
@@ -526,7 +524,8 @@ export function useHostCallMedia(opts: {
     return () => {
       cleanupCallMedia();
     };
-  }, [token, role, call?.roomId, call?.routerRtpCapabilities, cleanupCallMedia, onSpeakingStatus, micEnabled, call]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, role, call?.roomId]); // Only reconnect when these core values change
 
   const toggleMic = useCallback((enabled: boolean) => {
     setMicEnabled(enabled);

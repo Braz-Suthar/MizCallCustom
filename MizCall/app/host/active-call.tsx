@@ -70,8 +70,20 @@ export default function ActiveCallScreen() {
     // Fall back to string form to avoid key mismatches
     const key = userId ?? "";
     if (!key) return;
-    upsertSpeakingState(key, speaking);
-  }, []);
+    
+    setParticipantStates((prev) => {
+      const lastSpokePrev = prev[key]?.lastSpoke || Date.now();
+      const now = Date.now();
+      return {
+        ...prev,
+        [key]: {
+          speaking,
+          lastSpoke: speaking ? now : lastSpokePrev,
+          endedAt: speaking ? undefined : now,
+        },
+      };
+    });
+  }, []); // Empty deps is fine now since we use setParticipantStates directly
 
   const { state: mediaState, error: mediaError, micEnabled, setMicEnabled, remoteStream, emitHostMicStatus } = useHostCallMedia({
     token,
@@ -159,11 +171,25 @@ export default function ActiveCallScreen() {
     }
   };
 
+  const toggleMute = () => {
+    console.log("[host-active-call] toggleMute called - MUTE BUTTON PRESSED");
+    const newMutedState = !muted;
+    setMuted(newMutedState);
+    setMicEnabled(!newMutedState);
+    
+    // Notify users about host mute status via the media socket
+    emitHostMicStatus(newMutedState);
+    
+    console.log("[host-active-call] Mic", newMutedState ? "muted" : "unmuted");
+  };
+
   const handleEndButtonClick = () => {
+    console.log("[host-active-call] handleEndButtonClick called - END CALL BUTTON PRESSED");
     setShowEndModal(true);
   };
 
   const handleConfirmEnd = async () => {
+    console.log("[host-active-call] handleConfirmEnd called - CONFIRMING END CALL");
     setShowEndModal(false);
     setIsEnding(true);
     
@@ -177,18 +203,8 @@ export default function ActiveCallScreen() {
   };
 
   const handleCancelEnd = () => {
+    console.log("[host-active-call] handleCancelEnd called - CANCELLED END CALL");
     setShowEndModal(false);
-  };
-
-  const toggleMute = () => {
-    const newMutedState = !muted;
-    setMuted(newMutedState);
-    setMicEnabled(!newMutedState);
-    
-    // Notify users about host mute status via the media socket
-    emitHostMicStatus(newMutedState);
-    
-    console.log("[host-active-call] Mic", newMutedState ? "muted" : "unmuted");
   };
 
   const hasCall = !!activeCall || callStatus === "starting";
@@ -381,6 +397,7 @@ export default function ActiveCallScreen() {
       {hasCall && (
         <View style={[styles.controlBar, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
           <Pressable
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={({ pressed }) => [
               styles.controlButton,
               styles.muteButton,
@@ -391,9 +408,13 @@ export default function ActiveCallScreen() {
               },
             ]}
             onPress={(e) => {
-              e.stopPropagation();
+              e?.stopPropagation?.();
+              e?.preventDefault?.();
+              console.log("[host-active-call] MUTE BUTTON onPress triggered");
               toggleMute();
             }}
+            onPressIn={() => console.log("[host-active-call] MUTE BUTTON press started")}
+            onPressOut={() => console.log("[host-active-call] MUTE BUTTON press ended")}
             disabled={mediaState === "connecting"}
           >
             <Ionicons
@@ -407,6 +428,7 @@ export default function ActiveCallScreen() {
           </Pressable>
 
           <Pressable
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             style={({ pressed }) => [
               styles.controlButton, 
               styles.endCallButton, 
@@ -416,9 +438,13 @@ export default function ActiveCallScreen() {
               }
             ]}
             onPress={(e) => {
-              e.stopPropagation();
+              e?.stopPropagation?.();
+              e?.preventDefault?.();
+              console.log("[host-active-call] END CALL BUTTON onPress triggered");
               handleEndButtonClick();
             }}
+            onPressIn={() => console.log("[host-active-call] END CALL BUTTON press started")}
+            onPressOut={() => console.log("[host-active-call] END CALL BUTTON press ended")}
             disabled={callStatus === "starting"}
           >
             <Ionicons name="call" size={24} color="#fff" />
