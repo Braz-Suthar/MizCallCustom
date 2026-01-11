@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { Dimensions, FlatList, Platform, Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
+import { Dimensions, FlatList, Platform, Pressable, StyleSheet, Text, View, ActivityIndicator, ImageBackground } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { usePreventRemove } from "@react-navigation/native";
@@ -48,6 +48,7 @@ export default function ActiveCallScreen() {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [participantStates, setParticipantStates] = useState<Record<string, { speaking: boolean; lastSpoke: number }>>({});
+  const [callBackgroundUrl, setCallBackgroundUrl] = useState<string | null>(null);
 
   const upsertSpeakingState = (userKey: string | undefined, speaking: boolean) => {
     if (!userKey) return;
@@ -129,6 +130,25 @@ export default function ActiveCallScreen() {
     
     return () => clearInterval(interval);
   }, [activeCall?.roomId, token]);
+
+  // Fetch call background on mount
+  useEffect(() => {
+    const loadBackground = async () => {
+      if (!token) return;
+      try {
+        const res = await apiFetch<{ backgroundUrl: string | null }>(
+          "/host/call-background",
+          token
+        );
+        if (res.backgroundUrl) {
+          setCallBackgroundUrl(res.backgroundUrl);
+        }
+      } catch (e) {
+        console.warn("[host-active-call] Failed to load background:", e);
+      }
+    };
+    loadBackground();
+  }, [token]);
 
   const participantData: Participant[] = useMemo(() => {
     const data = participants.map((p) => {
@@ -226,8 +246,8 @@ export default function ActiveCallScreen() {
     return colors[index];
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+  const contentView = (
+    <>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerInfo}>
@@ -460,12 +480,48 @@ export default function ActiveCallScreen() {
         onConfirm={handleConfirmEnd}
         isHost={true}
       />
+    </>
+  );
+
+  return (
+    <View style={styles.container}>
+      {callBackgroundUrl ? (
+        <ImageBackground
+          source={{ uri: `${API_BASE}${callBackgroundUrl}` }}
+          style={styles.backgroundImage}
+          blurRadius={2}
+          imageStyle={styles.backgroundImageStyle}
+        >
+          <View style={styles.backgroundOverlay}>
+            {contentView}
+          </View>
+        </ImageBackground>
+      ) : (
+        <View style={[styles.backgroundFallback, { backgroundColor: colors.background }]}>
+          {contentView}
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  backgroundImage: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+  backgroundImageStyle: {
+    opacity: 0.9,
+  },
+  backgroundOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.35)", // Dark overlay for readability
+  },
+  backgroundFallback: {
     flex: 1,
   },
   header: {

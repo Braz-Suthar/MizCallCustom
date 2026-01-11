@@ -13,6 +13,11 @@ import fs from "fs";
 const router = Router();
 const uploadDir = path.join(process.cwd(), "uploads", "avatars");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+// Call background upload directory
+const backgroundsDir = path.join(process.cwd(), "uploads", "backgrounds");
+if (!fs.existsSync(backgroundsDir)) fs.mkdirSync(backgroundsDir, { recursive: true });
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadDir),
   filename: (req, file, cb) => {
@@ -21,6 +26,15 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage });
+
+const backgroundStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, backgroundsDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "") || ".jpg";
+    cb(null, `bg_${req.hostId || "host"}_${Date.now()}${ext}`);
+  },
+});
+const uploadBackground = multer({ storage: backgroundStorage });
 
 /* HOST PROFILE - UPDATE NAME/EMAIL */
 router.patch("/profile", requireAuth, requireHost, async (req, res) => {
@@ -703,6 +717,92 @@ router.post(
       [relativePath, req.hostId]
     );
     res.json({ avatarUrl: relativePath });
+  }
+);
+
+/* UPLOAD CALL BACKGROUND IMAGE */
+router.post(
+  "/call-background",
+  requireAuth,
+  requireHost,
+  uploadBackground.single("background"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const relativePath = `/uploads/backgrounds/${req.file.filename}`;
+    
+    // Delete old background file if exists
+    const oldBg = await query(
+      `SELECT call_background_url FROM hosts WHERE id = $1`,
+      [req.hostId]
+    );
+    if (oldBg.rowCount > 0 && oldBg.rows[0].call_background_url) {
+      const oldPath = path.join(process.cwd(), oldBg.rows[0].call_background_url);
+      if (fs.existsSync(oldPath)) {
+        try {
+          fs.unlinkSync(oldPath);
+        } catch (e) {
+          console.warn("[Host] Failed to delete old background:", e.message);
+        }
+      }
+    }
+    
+    await query(
+      `UPDATE hosts SET call_background_url = $1 WHERE id = $2`,
+      [relativePath, req.hostId]
+    );
+    res.json({ backgroundUrl: relativePath });
+  }
+);
+
+/* GET CALL BACKGROUND IMAGE */
+router.get(
+  "/call-background",
+  requireAuth,
+  requireHost,
+  async (req, res) => {
+    const result = await query(
+      `SELECT call_background_url FROM hosts WHERE id = $1`,
+      [req.hostId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Host not found" });
+    }
+    
+    res.json({ backgroundUrl: result.rows[0].call_background_url || null });
+  }
+);
+
+/* DELETE CALL BACKGROUND IMAGE */
+router.delete(
+  "/call-background",
+  requireAuth,
+  requireHost,
+  async (req, res) => {
+    // Get current background
+    const result = await query(
+      `SELECT call_background_url FROM hosts WHERE id = $1`,
+      [req.hostId]
+    );
+    
+    if (result.rowCount > 0 && result.rows[0].call_background_url) {
+      const bgPath = path.join(process.cwd(), result.rows[0].call_background_url);
+      if (fs.existsSync(bgPath)) {
+        try {
+          fs.unlinkSync(bgPath);
+        } catch (e) {
+          console.warn("[Host] Failed to delete background file:", e.message);
+        }
+      }
+    }
+    
+    // Clear from database
+    await query(
+      `UPDATE hosts SET call_background_url = NULL WHERE id = $1`,
+      [req.hostId]
+    );
+    
+    res.json({ ok: true, message: "Background removed" });
   }
 );
 

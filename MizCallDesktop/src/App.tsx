@@ -498,12 +498,15 @@ function App() {
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [callBackgroundUrl, setCallBackgroundUrl] = useState<string | null>(null);
+  const [uploadingBackground, setUploadingBackground] = useState(false);
   const [showDeviceLockPrompt, setShowDeviceLockPrompt] = useState(false);
   const [deviceLockPassword, setDeviceLockPassword] = useState("");
   const [deviceLockError, setDeviceLockError] = useState<string | null>(null);
   const [showDeviceLockAuth, setShowDeviceLockAuth] = useState(false);
   const [deviceLockAuthPassword, setDeviceLockAuthPassword] = useState("");
   const [biometricSupport, setBiometricSupport] = useState<{ available: boolean; type: string } | null>(null);
+  const backgroundInputRef = useRef<HTMLInputElement | null>(null);
   const [sessionsVisible, setSessionsVisible] = useState(false);
   const [sessions, setSessions] = useState<
     Array<{
@@ -2260,6 +2263,82 @@ function App() {
     }
   };
 
+  const loadCallBackground = useCallback(async () => {
+    if (!session?.token || session.role !== "host") return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/call-background`);
+      if (res.ok) {
+        const data = await res.json();
+        setCallBackgroundUrl(data.backgroundUrl || null);
+      }
+    } catch (error) {
+      console.warn("[Desktop] Failed to load call background:", error);
+    }
+  }, [authFetch, session]);
+
+  const handleBackgroundClick = () => {
+    backgroundInputRef.current?.click();
+  };
+
+  const handleBackgroundFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      showToast("Please select an image", "error");
+      e.target.value = "";
+      return;
+    }
+    if (!session?.token) {
+      showToast("Not authenticated", "error");
+      e.target.value = "";
+      return;
+    }
+
+    try {
+      setUploadingBackground(true);
+      const formData = new FormData();
+      formData.append("background", file);
+
+      const res = await fetch(`${API_BASE}/host/call-background`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || "Upload failed");
+      }
+
+      const data = await res.json();
+      setCallBackgroundUrl(data.backgroundUrl);
+      showToast("Call background updated", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Upload failed", "error");
+    } finally {
+      setUploadingBackground(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleRemoveBackground = async () => {
+    if (!confirm("Remove call background image?")) return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/call-background`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        throw new Error("Failed to remove background");
+      }
+      setCallBackgroundUrl(null);
+      showToast("Background removed", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Failed to remove background", "error");
+    }
+  };
+
   // Auto-trigger biometric auth on device lock screen mount
   useEffect(() => {
     if (showDeviceLockAuth && biometricSupport?.available) {
@@ -2336,6 +2415,9 @@ function App() {
     }
     if (tab === "calls" && session?.role === "host") {
       fetchCalls();
+    }
+    if (tab === "settings" && session?.role === "host") {
+      loadCallBackground();
     }
 
     // For users, when landing on dashboard, check if host already has an active call
@@ -3262,7 +3344,19 @@ function App() {
       }
 
       if (tab === "call-active") {
-        return renderActiveCall();
+        const backgroundStyle = callBackgroundUrl 
+          ? { 
+              backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url(${API_BASE}${callBackgroundUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat'
+            } 
+          : {};
+        return (
+          <div style={backgroundStyle}>
+            {renderActiveCall()}
+          </div>
+        );
       }
 
       if (tab === "recordings") {
@@ -3479,6 +3573,56 @@ function App() {
                       icon={<FiMoon />}
                     />
                   </div>
+                </div>
+
+                <div className="card stack gap-sm">
+                  <div className="row-inline gap-xxs align-center">
+                    <FiPhoneCall />
+                    <p className="muted strong">Call Customization</p>
+                  </div>
+                  <div className="stack gap-xxs">
+                    <strong>Call Background Image</strong>
+                    <span className="muted small">Set a background image for your active call screen</span>
+                  </div>
+                  {callBackgroundUrl ? (
+                    <div className="stack gap-sm">
+                      <div className="background-preview" style={{ position: 'relative', width: '100%', height: '180px', borderRadius: '12px', overflow: 'hidden' }}>
+                        <img 
+                          src={`${API_BASE}${callBackgroundUrl}`} 
+                          alt="Call background" 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        />
+                      </div>
+                      <div className="row-inline gap-sm">
+                        <Button 
+                          label={uploadingBackground ? "Uploading..." : "Change Background"} 
+                          variant="secondary" 
+                          onClick={handleBackgroundClick}
+                          disabled={uploadingBackground}
+                        />
+                        <Button 
+                          label="Remove" 
+                          variant="danger" 
+                          onClick={handleRemoveBackground}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <Button 
+                      label={uploadingBackground ? "Uploading..." : "Upload Background Image"} 
+                      variant="secondary" 
+                      onClick={handleBackgroundClick}
+                      disabled={uploadingBackground}
+                    />
+                  )}
+                  <input
+                    ref={backgroundInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={handleBackgroundFile}
+                  />
+                  <p className="muted small">Recommended: 16:9 aspect ratio, 1920x1080px</p>
                 </div>
 
                 <div className="card stack gap-sm">

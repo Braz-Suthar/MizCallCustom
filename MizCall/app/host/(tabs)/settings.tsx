@@ -5,6 +5,7 @@ import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as ImagePicker from "expo-image-picker";
 
 import { AppButton } from "../../../components/ui/AppButton";
 import { EditProfileModal } from "../../../components/ui/EditProfileModal";
@@ -52,6 +53,8 @@ export default function HostSettings() {
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(!!auth.twoFactorEnabled);
+  const [callBackgroundUrl, setCallBackgroundUrl] = useState<string | null>(null);
+  const [uploadingBackground, setUploadingBackground] = useState(false);
   const [sessionsVisible, setSessionsVisible] = useState(false);
   const [sessions, setSessions] = useState<
     Array<{
@@ -95,7 +98,111 @@ export default function HostSettings() {
 
   useEffect(() => {
     loadPreferences();
+    loadCallBackground();
   }, []);
+
+  const loadCallBackground = async () => {
+    if (!auth.token) return;
+    try {
+      const res = await dispatch<any>(authApiFetch<{ backgroundUrl: string | null }>("/host/call-background"));
+      if (res.backgroundUrl) {
+        setCallBackgroundUrl(res.backgroundUrl);
+      }
+    } catch (e) {
+      console.warn("[Settings] Failed to load call background:", e);
+    }
+  };
+
+  const handleUploadCallBackground = async () => {
+    try {
+      // Request permission
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert("Permission needed", "Please allow access to your photos to upload a background image.");
+        return;
+      }
+
+      // Pick image
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images" as any,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+
+      if (result.canceled) return;
+
+      const uri = result.assets[0].uri;
+      setUploadingBackground(true);
+
+      // Create form data
+      const formData = new FormData();
+      formData.append("background", {
+        uri,
+        type: "image/jpeg",
+        name: "background.jpg",
+      } as any);
+
+      // Upload
+      const response = await fetch(`${API_BASE}/host/call-background`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const data = await response.json();
+      setCallBackgroundUrl(data.backgroundUrl);
+
+      Toast.show({
+        type: "success",
+        text1: "Background Updated",
+        text2: "Your call background has been updated",
+        position: "top",
+        visibilityTime: 3000,
+        topOffset: 48,
+      });
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Failed to upload background image");
+    } finally {
+      setUploadingBackground(false);
+    }
+  };
+
+  const handleRemoveCallBackground = async () => {
+    Alert.alert(
+      "Remove Background",
+      "Are you sure you want to remove the call background image?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await dispatch<any>(authApiFetch("/host/call-background", { method: "DELETE" }));
+              setCallBackgroundUrl(null);
+              Toast.show({
+                type: "success",
+                text1: "Background Removed",
+                text2: "Call background has been removed",
+                position: "top",
+                visibilityTime: 3000,
+                topOffset: 48,
+              });
+            } catch (e: any) {
+              Alert.alert("Error", e?.message || "Failed to remove background");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   useEffect(() => {
     setTwoFactorEnabled(!!auth.twoFactorEnabled);
@@ -860,6 +967,63 @@ export default function HostSettings() {
         </View>
       </View> */}
 
+      {/* Call Customization Section */}
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="image-outline" size={22} color={colors.text} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Call Customization</Text>
+        </View>
+        
+        <View style={styles.backgroundSection}>
+          <Text style={[styles.label, { color: colors.text }]}>Call Background Image</Text>
+          <Text style={[styles.helperText, { color: colors.text }]}>
+            Set a background image for your active call screen
+          </Text>
+          
+          {callBackgroundUrl ? (
+            <View style={styles.backgroundPreview}>
+              <Image
+                source={{ uri: `${API_BASE}${callBackgroundUrl}` }}
+                style={styles.backgroundImage}
+                contentFit="cover"
+              />
+              <View style={styles.backgroundActions}>
+                <Pressable
+                  style={[styles.backgroundActionButton, { backgroundColor: PRIMARY_BLUE }]}
+                  onPress={handleUploadCallBackground}
+                  disabled={uploadingBackground}
+                >
+                  <Ionicons name="images" size={18} color="#fff" />
+                  <Text style={styles.backgroundActionText}>Change</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.backgroundActionButton, { backgroundColor: DANGER_RED }]}
+                  onPress={handleRemoveCallBackground}
+                  disabled={uploadingBackground}
+                >
+                  <Ionicons name="trash" size={18} color="#fff" />
+                  <Text style={styles.backgroundActionText}>Remove</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : (
+            <Pressable
+              style={[styles.uploadBackgroundButton, { borderColor: colors.border }]}
+              onPress={handleUploadCallBackground}
+              disabled={uploadingBackground}
+            >
+              <Ionicons name="cloud-upload-outline" size={32} color={PRIMARY_BLUE} />
+              <Text style={[styles.uploadText, { color: PRIMARY_BLUE }]}>
+                {uploadingBackground ? "Uploading..." : "Upload Background Image"}
+              </Text>
+              <Text style={[styles.uploadHint, { color: colors.text }]}>
+                Recommended: 16:9 aspect ratio, 1920x1080px
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+
       {/* Account Section */}
       <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <View style={styles.sectionHeader}>
@@ -1363,6 +1527,63 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     opacity: 0.3,
+  },
+  backgroundSection: {
+    gap: 12,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  helperText: {
+    fontSize: 13,
+    opacity: 0.7,
+    lineHeight: 18,
+  },
+  backgroundPreview: {
+    marginTop: 8,
+    gap: 12,
+  },
+  backgroundImage: {
+    width: "100%",
+    height: 180,
+    borderRadius: 12,
+  },
+  backgroundActions: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  backgroundActionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  backgroundActionText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  uploadBackgroundButton: {
+    marginTop: 8,
+    padding: 32,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    alignItems: "center",
+    gap: 8,
+  },
+  uploadText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  uploadHint: {
+    fontSize: 12,
+    opacity: 0.6,
   },
 });
 

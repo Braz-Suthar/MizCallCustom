@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { Dimensions, Platform, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
+import { Dimensions, Platform, ScrollView, StyleSheet, Text, View, Pressable, ImageBackground } from "react-native";
 import { RTCView } from "react-native-webrtc";
 import { useTheme } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -10,6 +10,7 @@ import { AppButton } from "../../components/ui/AppButton";
 import { LeaveCallModal } from "../../components/ui/LeaveCallModal";
 import { useAppSelector } from "../../state/store";
 import { useJoinCall } from "../../hooks/useJoinCall";
+import { apiFetch, API_BASE } from "../../state/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const SUCCESS_GREEN = "#22c55e";
@@ -21,12 +22,14 @@ export default function UserActiveCallScreen() {
   const primaryTint = primaryColor.startsWith("#") ? `${primaryColor}15` : primaryColor;
   const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
+  const token = useAppSelector((s) => s.auth.token);
   const { join, leave, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket, callEnded } = useJoinCall();
   const hasJoinedRef = useRef(false);
   const [isPressing, setIsPressing] = React.useState(false);
   const [hostMuted, setHostMuted] = React.useState(false);
   const [isLeaving, setIsLeaving] = React.useState(false);
   const [showLeaveModal, setShowLeaveModal] = React.useState(false);
+  const [callBackgroundUrl, setCallBackgroundUrl] = React.useState<string | null>(null);
   
   // Prevent back navigation during active call (unless explicitly leaving)
   usePreventRemove(!!activeCall && !isLeaving, ({ data }) => {
@@ -83,6 +86,25 @@ export default function UserActiveCallScreen() {
     }
   }, [activeCall?.routerRtpCapabilities, join, activeCall]);
 
+  // Fetch host's call background (users see the same background as host)
+  useEffect(() => {
+    const loadBackground = async () => {
+      if (!token) return;
+      try {
+        const res = await apiFetch<{ backgroundUrl: string | null }>(
+          "/host/call-background",
+          token
+        );
+        if (res.backgroundUrl) {
+          setCallBackgroundUrl(res.backgroundUrl);
+        }
+      } catch (e) {
+        console.warn("[user-active-call] Failed to load background:", e);
+      }
+    };
+    loadBackground();
+  }, [token]);
+
   const handleLeaveButtonClick = () => {
     setShowLeaveModal(true);
   };
@@ -119,8 +141,8 @@ export default function UserActiveCallScreen() {
     // This will be implemented in useJoinCall hook
   };
 
-  return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+  const contentView = (
+    <>
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
@@ -263,11 +285,50 @@ export default function UserActiveCallScreen() {
         onConfirm={handleConfirmLeave}
         isHost={false}
       />
+    </>
+  );
+
+  return (
+    <View style={styles.container}>
+      {callBackgroundUrl ? (
+        <ImageBackground
+          source={{ uri: `${API_BASE}${callBackgroundUrl}` }}
+          style={styles.backgroundImage}
+          blurRadius={2}
+          imageStyle={styles.backgroundImageStyle}
+        >
+          <View style={styles.backgroundOverlay}>
+            {contentView}
+          </View>
+        </ImageBackground>
+      ) : (
+        <View style={[styles.backgroundFallback, { backgroundColor: colors.background }]}>
+          {contentView}
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  backgroundImage: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+  },
+  backgroundImageStyle: {
+    opacity: 0.9,
+  },
+  backgroundOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.35)",
+  },
+  backgroundFallback: {
+    flex: 1,
+  },
   header: {
     alignItems: "center",
     paddingHorizontal: 20,
