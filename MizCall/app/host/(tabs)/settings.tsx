@@ -54,7 +54,10 @@ export default function HostSettings() {
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(!!auth.twoFactorEnabled);
   const [callBackgroundUrl, setCallBackgroundUrl] = useState<string | null>(null);
+  const [inbuiltBackgrounds, setInbuiltBackgrounds] = useState<Array<{ id: string; url: string }>>([]);
+  const [customBackgrounds, setCustomBackgrounds] = useState<Array<{ id: string; url: string; filename: string; uploaded_at: string }>>([]);
   const [uploadingBackground, setUploadingBackground] = useState(false);
+  const [showBackgroundGallery, setShowBackgroundGallery] = useState(false);
   const [sessionsVisible, setSessionsVisible] = useState(false);
   const [sessions, setSessions] = useState<
     Array<{
@@ -99,6 +102,8 @@ export default function HostSettings() {
   useEffect(() => {
     loadPreferences();
     loadCallBackground();
+    loadInbuiltBackgrounds();
+    loadCustomBackgrounds();
   }, []);
 
   const loadCallBackground = async () => {
@@ -111,6 +116,93 @@ export default function HostSettings() {
     } catch (e) {
       console.warn("[Settings] Failed to load call background:", e);
     }
+  };
+
+  const loadInbuiltBackgrounds = async () => {
+    if (!auth.token) return;
+    try {
+      const res = await dispatch<any>(authApiFetch<{ backgrounds: Array<{ id: string; url: string }> }>("/host/call-background/inbuilt"));
+      if (res.backgrounds) {
+        setInbuiltBackgrounds(res.backgrounds);
+      }
+    } catch (e) {
+      console.warn("[Settings] Failed to load inbuilt backgrounds:", e);
+    }
+  };
+
+  const loadCustomBackgrounds = async () => {
+    if (!auth.token) return;
+    try {
+      const res = await dispatch<any>(authApiFetch<{ backgrounds: Array<{ id: string; url: string; filename: string; uploaded_at: string }> }>("/host/call-background/custom"));
+      if (res.backgrounds) {
+        setCustomBackgrounds(res.backgrounds);
+      }
+    } catch (e) {
+      console.warn("[Settings] Failed to load custom backgrounds:", e);
+    }
+  };
+
+  const handleSelectBackground = async (backgroundUrl: string) => {
+    try {
+      const res = await dispatch<any>(authApiFetch("/host/call-background/set-active", {
+        method: "POST",
+        body: JSON.stringify({ backgroundUrl }),
+      }));
+      
+      setCallBackgroundUrl(res.backgroundUrl || backgroundUrl);
+      setShowBackgroundGallery(false);
+      
+      Toast.show({
+        type: "success",
+        text1: "Background Updated",
+        text2: "Your call background has been updated",
+        position: "top",
+        visibilityTime: 3000,
+        topOffset: 48,
+      });
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Failed to set background");
+    }
+  };
+
+  const handleSelectInbuiltBackground = async (backgroundId: string, backgroundUrl: string) => {
+    await handleSelectBackground(backgroundUrl);
+  };
+
+  const handleDeleteCustomBackground = async (id: string) => {
+    Alert.alert(
+      "Delete Background",
+      "Are you sure you want to delete this background from your library?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await dispatch<any>(authApiFetch(`/host/call-background/custom/${id}`, {
+                method: "DELETE",
+              }));
+              
+              // Refresh custom backgrounds
+              loadCustomBackgrounds();
+              loadCallBackground();
+              
+              Toast.show({
+                type: "success",
+                text1: "Deleted",
+                text2: "Background removed from your library",
+                position: "top",
+                visibilityTime: 2000,
+                topOffset: 48,
+              });
+            } catch (e: any) {
+              Alert.alert("Error", e?.message || "Failed to delete background");
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleUploadCallBackground = async () => {
@@ -159,10 +251,13 @@ export default function HostSettings() {
       const data = await response.json();
       setCallBackgroundUrl(data.backgroundUrl);
 
+      // Reload custom backgrounds to include the new upload
+      loadCustomBackgrounds();
+
       Toast.show({
         type: "success",
-        text1: "Background Updated",
-        text2: "Your call background has been updated",
+        text1: "Background Uploaded",
+        text2: "Image saved to your library and set as active",
         position: "top",
         visibilityTime: 3000,
         topOffset: 48,
@@ -990,11 +1085,19 @@ export default function HostSettings() {
               <View style={styles.backgroundActions}>
                 <Pressable
                   style={[styles.backgroundActionButton, { backgroundColor: PRIMARY_BLUE }]}
-                  onPress={handleUploadCallBackground}
+                  onPress={() => setShowBackgroundGallery(true)}
                   disabled={uploadingBackground}
                 >
                   <Ionicons name="images" size={18} color="#fff" />
-                  <Text style={styles.backgroundActionText}>Change</Text>
+                  <Text style={styles.backgroundActionText}>Gallery</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.backgroundActionButton, { backgroundColor: PRIMARY_BLUE }]}
+                  onPress={handleUploadCallBackground}
+                  disabled={uploadingBackground}
+                >
+                  <Ionicons name="cloud-upload" size={18} color="#fff" />
+                  <Text style={styles.backgroundActionText}>Upload</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.backgroundActionButton, { backgroundColor: DANGER_RED }]}
@@ -1007,19 +1110,40 @@ export default function HostSettings() {
               </View>
             </View>
           ) : (
-            <Pressable
-              style={[styles.uploadBackgroundButton, { borderColor: colors.border }]}
-              onPress={handleUploadCallBackground}
-              disabled={uploadingBackground}
-            >
-              <Ionicons name="cloud-upload-outline" size={32} color={PRIMARY_BLUE} />
-              <Text style={[styles.uploadText, { color: PRIMARY_BLUE }]}>
-                {uploadingBackground ? "Uploading..." : "Upload Background Image"}
-              </Text>
-              <Text style={[styles.uploadHint, { color: colors.text }]}>
-                Recommended: 16:9 aspect ratio, 1920x1080px
-              </Text>
-            </Pressable>
+            <View style={{ gap: 12 }}>
+              <Pressable
+                style={[styles.galleryButton, { borderColor: PRIMARY_BLUE, backgroundColor: PRIMARY_BLUE + "20" }]}
+                onPress={() => setShowBackgroundGallery(true)}
+              >
+                <Ionicons name="images-outline" size={28} color={PRIMARY_BLUE} />
+                <Text style={[styles.uploadText, { color: PRIMARY_BLUE }]}>
+                  Choose from Gallery
+                </Text>
+                <Text style={[styles.uploadHint, { color: colors.text }]}>
+                  {inbuiltBackgrounds.length} preset backgrounds available
+                </Text>
+              </Pressable>
+              
+              <View style={styles.orDivider}>
+                <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+                <Text style={[styles.orText, { color: colors.text }]}>or</Text>
+                <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+              </View>
+              
+              <Pressable
+                style={[styles.uploadBackgroundButton, { borderColor: colors.border }]}
+                onPress={handleUploadCallBackground}
+                disabled={uploadingBackground}
+              >
+                <Ionicons name="cloud-upload-outline" size={28} color={PRIMARY_BLUE} />
+                <Text style={[styles.uploadText, { color: PRIMARY_BLUE }]}>
+                  {uploadingBackground ? "Uploading..." : "Upload Custom Image"}
+                </Text>
+                <Text style={[styles.uploadHint, { color: colors.text }]}>
+                  Recommended: 16:9 aspect ratio, 1920x1080px
+                </Text>
+              </Pressable>
+            </View>
           )}
         </View>
       </View>
@@ -1061,6 +1185,111 @@ export default function HostSettings() {
           </View>
       </View>
     </View>
+
+      {/* Background Gallery Modal */}
+      <Modal visible={showBackgroundGallery} animationType="slide" onRequestClose={() => setShowBackgroundGallery(false)}>
+        <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Pressable onPress={() => setShowBackgroundGallery(false)} style={styles.modalBackButton}>
+              <Ionicons name="arrow-back" size={24} color={colors.text} />
+            </Pressable>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Choose Background</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          
+          <ScrollView style={styles.modalContent}>
+            {/* Custom Uploaded Backgrounds */}
+            {customBackgrounds.length > 0 && (
+              <>
+                <Text style={[styles.gallerySection, { color: colors.text }]}>Your Uploads ({customBackgrounds.length})</Text>
+                <View style={styles.gallery}>
+                  {customBackgrounds.map((bg) => (
+                    <View key={bg.id} style={styles.galleryItemWrapper}>
+                      <Pressable
+                        style={[
+                          styles.galleryItem,
+                          { borderColor: colors.border },
+                          callBackgroundUrl === bg.url && { borderColor: PRIMARY_BLUE, borderWidth: 3 }
+                        ]}
+                        onPress={() => handleSelectBackground(bg.url)}
+                      >
+                        <Image
+                          source={{ uri: `${API_BASE}${bg.url}` }}
+                          style={styles.galleryImage}
+                          contentFit="cover"
+                        />
+                        {callBackgroundUrl === bg.url && (
+                          <View style={styles.selectedBadge}>
+                            <Ionicons name="checkmark-circle" size={24} color={PRIMARY_BLUE} />
+                          </View>
+                        )}
+                      </Pressable>
+                      <Pressable
+                        style={[styles.deleteButton, { backgroundColor: DANGER_RED }]}
+                        onPress={() => handleDeleteCustomBackground(bg.id)}
+                      >
+                        <Ionicons name="trash" size={16} color="#fff" />
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+                
+                <View style={[styles.orDivider, { marginVertical: 24 }]}>
+                  <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+                  <Text style={[styles.orText, { color: colors.text }]}>or choose preset</Text>
+                  <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+                </View>
+              </>
+            )}
+            
+            <Text style={[styles.gallerySection, { color: colors.text }]}>Preset Backgrounds</Text>
+            <View style={styles.gallery}>
+              {inbuiltBackgrounds.map((bg) => (
+                <Pressable
+                  key={bg.id}
+                  style={[
+                    styles.galleryItem,
+                    { borderColor: colors.border },
+                    callBackgroundUrl === bg.url && { borderColor: PRIMARY_BLUE, borderWidth: 3 }
+                  ]}
+                  onPress={() => handleSelectBackground(bg.url)}
+                >
+                  <Image
+                    source={{ uri: `${API_BASE}${bg.url}` }}
+                    style={styles.galleryImage}
+                    contentFit="cover"
+                  />
+                  {callBackgroundUrl === bg.url && (
+                    <View style={styles.selectedBadge}>
+                      <Ionicons name="checkmark-circle" size={24} color={PRIMARY_BLUE} />
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+            
+            <View style={[styles.orDivider, { marginVertical: 24 }]}>
+              <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+              <Text style={[styles.orText, { color: colors.text }]}>or upload new</Text>
+              <View style={[styles.orLine, { backgroundColor: colors.border }]} />
+            </View>
+            
+            <Pressable
+              style={[styles.uploadInGallery, { borderColor: colors.border }]}
+              onPress={() => {
+                setShowBackgroundGallery(false);
+                setTimeout(handleUploadCallBackground, 300);
+              }}
+              disabled={uploadingBackground}
+            >
+              <Ionicons name="cloud-upload-outline" size={32} color={PRIMARY_BLUE} />
+              <Text style={[styles.uploadText, { color: PRIMARY_BLUE }]}>
+                Upload New Image
+              </Text>
+            </Pressable>
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* Edit Profile Modal */}
       <EditProfileModal
@@ -1584,6 +1813,107 @@ const styles = StyleSheet.create({
   uploadHint: {
     fontSize: 12,
     opacity: 0.6,
+  },
+  galleryButton: {
+    padding: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: "center",
+    gap: 8,
+  },
+  orDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  orLine: {
+    flex: 1,
+    height: 1,
+  },
+  orText: {
+    fontSize: 13,
+    opacity: 0.6,
+  },
+  modalContainer: {
+    flex: 1,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 48,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+  },
+  modalBackButton: {
+    padding: 4,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  modalContent: {
+    flex: 1,
+    padding: 20,
+  },
+  gallerySection: {
+    fontSize: 17,
+    fontWeight: "700",
+    marginBottom: 16,
+  },
+  gallery: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  galleryItemWrapper: {
+    width: "48%",
+    position: "relative",
+  },
+  galleryItem: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    borderRadius: 12,
+    borderWidth: 2,
+    overflow: "hidden",
+    position: "relative",
+  },
+  deleteButton: {
+    position: "absolute",
+    top: 8,
+    left: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  galleryImage: {
+    width: "100%",
+    height: "100%",
+  },
+  selectedBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 2,
+  },
+  uploadInGallery: {
+    padding: 32,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 40,
   },
 });
 

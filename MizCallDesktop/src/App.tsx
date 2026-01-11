@@ -499,7 +499,10 @@ function App() {
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [callBackgroundUrl, setCallBackgroundUrl] = useState<string | null>(null);
+  const [inbuiltBackgrounds, setInbuiltBackgrounds] = useState<Array<{ id: string; url: string }>>([]);
+  const [customBackgrounds, setCustomBackgrounds] = useState<Array<{ id: string; url: string; filename: string }>>([]);
   const [uploadingBackground, setUploadingBackground] = useState(false);
+  const [showBackgroundGallery, setShowBackgroundGallery] = useState(false);
   const [showDeviceLockPrompt, setShowDeviceLockPrompt] = useState(false);
   const [deviceLockPassword, setDeviceLockPassword] = useState("");
   const [deviceLockError, setDeviceLockError] = useState<string | null>(null);
@@ -2264,7 +2267,7 @@ function App() {
   };
 
   const loadCallBackground = useCallback(async () => {
-    if (!session?.token || session.role !== "host") return;
+    if (!session?.token) return;
     try {
       const res = await authFetch(`${API_BASE}/host/call-background`);
       if (res.ok) {
@@ -2275,6 +2278,72 @@ function App() {
       console.warn("[Desktop] Failed to load call background:", error);
     }
   }, [authFetch, session]);
+
+  const loadInbuiltBackgrounds = useCallback(async () => {
+    if (!session?.token) return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/call-background/inbuilt`);
+      if (res.ok) {
+        const data = await res.json();
+        setInbuiltBackgrounds(data.backgrounds || []);
+      }
+    } catch (error) {
+      console.warn("[Desktop] Failed to load inbuilt backgrounds:", error);
+    }
+  }, [authFetch, session]);
+
+  const loadCustomBackgrounds = useCallback(async () => {
+    if (!session?.token || session.role !== "host") return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/call-background/custom`);
+      if (res.ok) {
+        const data = await res.json();
+        setCustomBackgrounds(data.backgrounds || []);
+      }
+    } catch (error) {
+      console.warn("[Desktop] Failed to load custom backgrounds:", error);
+    }
+  }, [authFetch, session]);
+
+  const handleSelectBackground = async (backgroundUrl: string) => {
+    try {
+      const res = await authFetch(`${API_BASE}/host/call-background/set-active`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backgroundUrl }),
+      });
+      
+      if (!res.ok) throw new Error("Failed to set background");
+      
+      const data = await res.json();
+      setCallBackgroundUrl(data.backgroundUrl || backgroundUrl);
+      setShowBackgroundGallery(false);
+      showToast("Call background updated", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Failed to set background", "error");
+    }
+  };
+
+  const handleSelectInbuiltBackground = async (backgroundId: string, backgroundUrl: string) => {
+    await handleSelectBackground(backgroundUrl);
+  };
+
+  const handleDeleteCustomBackground = async (id: string) => {
+    if (!confirm("Delete this background from your library?")) return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/call-background/custom/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete background");
+      
+      // Refresh lists
+      loadCustomBackgrounds();
+      loadCallBackground();
+      showToast("Background deleted from library", "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Failed to delete background", "error");
+    }
+  };
 
   const handleBackgroundClick = () => {
     backgroundInputRef.current?.click();
@@ -2314,7 +2383,11 @@ function App() {
 
       const data = await res.json();
       setCallBackgroundUrl(data.backgroundUrl);
-      showToast("Call background updated", "success");
+      
+      // Reload custom backgrounds to include the new upload
+      loadCustomBackgrounds();
+      
+      showToast("Background uploaded and saved to library", "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Upload failed", "error");
     } finally {
@@ -2418,11 +2491,18 @@ function App() {
     }
     if (tab === "settings" && session?.role === "host") {
       loadCallBackground();
+      loadInbuiltBackgrounds();
+      loadCustomBackgrounds();
     }
 
     // For users, when landing on dashboard, check if host already has an active call
     if (tab === "dashboard" && session?.role === "user") {
       fetchUserActiveCall();
+    }
+    
+    // Load call background when entering call screen (for both host and user)
+    if (tab === "call-active" && session?.token) {
+      loadCallBackground();
     }
 
     if (!activeCallListenerRef.current && window.mizcall?.onActiveCallContext) {
@@ -3595,7 +3675,12 @@ function App() {
                       </div>
                       <div className="row-inline gap-sm">
                         <Button 
-                          label={uploadingBackground ? "Uploading..." : "Change Background"} 
+                          label="Gallery" 
+                          variant="secondary" 
+                          onClick={() => setShowBackgroundGallery(true)}
+                        />
+                        <Button 
+                          label={uploadingBackground ? "Uploading..." : "Upload Custom"} 
                           variant="secondary" 
                           onClick={handleBackgroundClick}
                           disabled={uploadingBackground}
@@ -3608,12 +3693,22 @@ function App() {
                       </div>
                     </div>
                   ) : (
-                    <Button 
-                      label={uploadingBackground ? "Uploading..." : "Upload Background Image"} 
-                      variant="secondary" 
-                      onClick={handleBackgroundClick}
-                      disabled={uploadingBackground}
-                    />
+                    <div className="stack gap-sm">
+                      <Button 
+                        label="Choose from Gallery" 
+                        variant="secondary" 
+                        onClick={() => setShowBackgroundGallery(true)}
+                      />
+                      <div className="divider-text">
+                        <span className="muted small">or</span>
+                      </div>
+                      <Button 
+                        label={uploadingBackground ? "Uploading..." : "Upload Custom Image"} 
+                        variant="secondary" 
+                        onClick={handleBackgroundClick}
+                        disabled={uploadingBackground}
+                      />
+                    </div>
                   )}
                   <input
                     ref={backgroundInputRef}
@@ -4330,6 +4425,134 @@ function App() {
                 }}
               />
               <Button label={pwLoading ? "Updating..." : "Save"} onClick={handleChangePasswordSubmit} disabled={pwLoading} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Background Gallery Modal */}
+      {showBackgroundGallery ? (
+        <div className="modal-backdrop" onClick={() => setShowBackgroundGallery(false)}>
+          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <p className="muted strong">Choose Background</p>
+              <button className="linklike" onClick={() => setShowBackgroundGallery(false)}>
+                Close
+              </button>
+            </div>
+            <div className="modal-body stack gap-sm">
+              {customBackgrounds.length > 0 && (
+                <>
+                  <p className="muted strong">Your Uploads ({customBackgrounds.length})</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
+                    {customBackgrounds.map((bg) => (
+                      <div
+                        key={bg.id}
+                        className="card"
+                        style={{
+                          cursor: 'pointer',
+                          padding: 0,
+                          overflow: 'hidden',
+                          border: callBackgroundUrl === bg.url ? '3px solid #3c82f6' : '1px solid #e5e7eb',
+                          position: 'relative'
+                        }}
+                      >
+                        <img
+                          src={`${API_BASE}${bg.url}`}
+                          alt={bg.filename}
+                          style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }}
+                          onClick={() => handleSelectBackground(bg.url)}
+                        />
+                        <button
+                          className="btn btn-danger"
+                          style={{
+                            position: 'absolute',
+                            top: '8px',
+                            left: '8px',
+                            padding: '6px 8px',
+                            minWidth: 'auto',
+                            fontSize: '12px'
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteCustomBackground(bg.id);
+                          }}
+                        >
+                          🗑️
+                        </button>
+                        {callBackgroundUrl === bg.url && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            backgroundColor: '#fff',
+                            borderRadius: '50%',
+                            padding: '4px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                          }}>
+                            <span style={{ color: '#22c55e', fontSize: '20px' }}>✓</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="divider-text" style={{ margin: '24px 0' }}>
+                    <span className="muted small">or choose preset</span>
+                  </div>
+                </>
+              )}
+              
+              <p className="muted strong">Preset Backgrounds</p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
+                {inbuiltBackgrounds.map((bg) => (
+                  <div
+                    key={bg.id}
+                    className="card"
+                    style={{
+                      cursor: 'pointer',
+                      padding: 0,
+                      overflow: 'hidden',
+                      border: callBackgroundUrl === bg.url ? '3px solid #3c82f6' : '1px solid #e5e7eb',
+                      position: 'relative'
+                    }}
+                    onClick={() => handleSelectBackground(bg.url)}
+                  >
+                    <img
+                      src={`${API_BASE}${bg.url}`}
+                      alt={`Background ${bg.id}`}
+                      style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }}
+                    />
+                    {callBackgroundUrl === bg.url && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        backgroundColor: '#fff',
+                        borderRadius: '50%',
+                        padding: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <span style={{ color: '#22c55e', fontSize: '20px' }}>✓</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="divider-text" style={{ margin: '24px 0' }}>
+                <span className="muted small">or upload new</span>
+              </div>
+              <Button 
+                label="Upload New Image" 
+                variant="secondary" 
+                onClick={() => {
+                  setShowBackgroundGallery(false);
+                  setTimeout(handleBackgroundClick, 100);
+                }}
+              />
             </div>
           </div>
         </div>

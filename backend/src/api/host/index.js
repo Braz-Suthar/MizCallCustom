@@ -720,7 +720,30 @@ router.post(
   }
 );
 
-/* UPLOAD CALL BACKGROUND IMAGE */
+/* GET ALL CUSTOM UPLOADED BACKGROUNDS FOR HOST */
+router.get(
+  "/call-background/custom",
+  requireAuth,
+  requireHost,
+  async (req, res) => {
+    try {
+      const result = await query(
+        `SELECT id, url, filename, uploaded_at 
+         FROM custom_backgrounds 
+         WHERE host_id = $1 
+         ORDER BY uploaded_at DESC`,
+        [req.hostId]
+      );
+      
+      res.json({ backgrounds: result.rows });
+    } catch (error) {
+      console.error("[Host] Failed to list custom backgrounds:", error);
+      res.json({ backgrounds: [] });
+    }
+  }
+);
+
+/* UPLOAD CALL BACKGROUND IMAGE (adds to library, doesn't set as active) */
 router.post(
   "/call-background",
   requireAuth,
@@ -730,39 +753,108 @@ router.post(
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
     const relativePath = `/uploads/backgrounds/${req.file.filename}`;
     
-    // Delete old background file if exists
-    const oldBg = await query(
-      `SELECT call_background_url FROM hosts WHERE id = $1`,
-      [req.hostId]
+    // Save to custom_backgrounds library
+    await query(
+      `INSERT INTO custom_backgrounds (host_id, url, filename)
+       VALUES ($1, $2, $3)`,
+      [req.hostId, relativePath, req.file.filename]
     );
-    if (oldBg.rowCount > 0 && oldBg.rows[0].call_background_url) {
-      const oldPath = path.join(process.cwd(), oldBg.rows[0].call_background_url);
-      if (fs.existsSync(oldPath)) {
-        try {
-          fs.unlinkSync(oldPath);
-        } catch (e) {
-          console.warn("[Host] Failed to delete old background:", e.message);
-        }
-      }
-    }
     
+    // Automatically set as active background
     await query(
       `UPDATE hosts SET call_background_url = $1 WHERE id = $2`,
       [relativePath, req.hostId]
     );
+    
+    console.log("[Host] Custom background uploaded and saved to library:", req.file.filename);
     res.json({ backgroundUrl: relativePath });
   }
 );
 
-/* GET CALL BACKGROUND IMAGE */
-router.get(
-  "/call-background",
+/* SET ACTIVE BACKGROUND (from library or inbuilt) */
+router.post(
+  "/call-background/set-active",
   requireAuth,
   requireHost,
   async (req, res) => {
+    const { backgroundUrl } = req.body;
+    
+    if (!backgroundUrl) {
+      return res.status(400).json({ error: "backgroundUrl required" });
+    }
+    
+    // Verify the background exists (either inbuilt or in custom library)
+    if (backgroundUrl.startsWith("/uploads/backgrounds/")) {
+      // Custom background - verify it belongs to this host
+      const customBg = await query(
+        `SELECT id FROM custom_backgrounds WHERE url = $1 AND host_id = $2`,
+        [backgroundUrl, req.hostId]
+      );
+      if (customBg.rowCount === 0) {
+        return res.status(404).json({ error: "Background not found in your library" });
+      }
+    } else if (backgroundUrl.startsWith("/public/inbuilt_call_background_images/")) {
+      // Inbuilt background - verify file exists
+      const filePath = path.join(process.cwd(), backgroundUrl);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "Inbuilt background not found" });
+      }
+    } else {
+      return res.status(400).json({ error: "Invalid background URL" });
+    }
+    
+    // Set as active
+    await query(
+      `UPDATE hosts SET call_background_url = $1 WHERE id = $2`,
+      [backgroundUrl, req.hostId]
+    );
+    
+    res.json({ backgroundUrl });
+  }
+);
+
+/* GET INBUILT BACKGROUND IMAGES */
+router.get(
+  "/call-background/inbuilt",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const backgroundsDir = path.join(process.cwd(), "public", "inbuilt_call_background_images");
+      if (!fs.existsSync(backgroundsDir)) {
+        return res.json({ backgrounds: [] });
+      }
+      
+      const files = fs.readdirSync(backgroundsDir);
+      const imageFiles = files.filter(file => /\.(jpg|jpeg|png|webp)$/i.test(file));
+      
+      const backgrounds = imageFiles.map(file => ({
+        id: file,
+        url: `/public/inbuilt_call_background_images/${file}`,
+      }));
+      
+      res.json({ backgrounds });
+    } catch (error) {
+      console.error("[Host] Failed to list inbuilt backgrounds:", error);
+      res.json({ backgrounds: [] });
+    }
+  }
+);
+
+/* GET CALL BACKGROUND IMAGE (accessible by both host and their users) */
+router.get(
+  "/call-background",
+  requireAuth,
+  async (req, res) => {
+    // Get the host ID (either from host login or from user's host)
+    const hostId = req.auth.role === "host" ? req.auth.hostId : req.auth.hostId;
+    
+    if (!hostId) {
+      return res.status(400).json({ error: "Host ID not found" });
+    }
+    
     const result = await query(
       `SELECT call_background_url FROM hosts WHERE id = $1`,
-      [req.hostId]
+      [hostId]
     );
     
     if (result.rowCount === 0) {
@@ -773,36 +865,97 @@ router.get(
   }
 );
 
-/* DELETE CALL BACKGROUND IMAGE */
+/* SET INBUILT BACKGROUND (deprecated - use set-active instead) */
+router.post(
+  "/call-background/select",
+  requireAuth,
+  requireHost,
+  async (req, res) => {
+    const { backgroundId } = req.body;
+    
+    if (!backgroundId) {
+      return res.status(400).json({ error: "backgroundId required" });
+    }
+    
+    // Verify the inbuilt background exists
+    const backgroundPath = path.join(process.cwd(), "public", "inbuilt_call_background_images", backgroundId);
+    if (!fs.existsSync(backgroundPath)) {
+      return res.status(404).json({ error: "Background image not found" });
+    }
+    
+    const backgroundUrl = `/public/inbuilt_call_background_images/${backgroundId}`;
+    
+    // Don't delete old custom backgrounds - keep them in library
+    // Just set the new one as active
+    await query(
+      `UPDATE hosts SET call_background_url = $1 WHERE id = $2`,
+      [backgroundUrl, req.hostId]
+    );
+    
+    res.json({ backgroundUrl });
+  }
+);
+
+/* CLEAR ACTIVE BACKGROUND (don't delete files, just clear active) */
 router.delete(
   "/call-background",
   requireAuth,
   requireHost,
   async (req, res) => {
-    // Get current background
-    const result = await query(
-      `SELECT call_background_url FROM hosts WHERE id = $1`,
-      [req.hostId]
-    );
-    
-    if (result.rowCount > 0 && result.rows[0].call_background_url) {
-      const bgPath = path.join(process.cwd(), result.rows[0].call_background_url);
-      if (fs.existsSync(bgPath)) {
-        try {
-          fs.unlinkSync(bgPath);
-        } catch (e) {
-          console.warn("[Host] Failed to delete background file:", e.message);
-        }
-      }
-    }
-    
-    // Clear from database
+    // Just clear the active background, keep all files in library
     await query(
       `UPDATE hosts SET call_background_url = NULL WHERE id = $1`,
       [req.hostId]
     );
     
-    res.json({ ok: true, message: "Background removed" });
+    res.json({ ok: true, message: "Background cleared" });
+  }
+);
+
+/* DELETE SPECIFIC BACKGROUND FROM LIBRARY */
+router.delete(
+  "/call-background/custom/:id",
+  requireAuth,
+  requireHost,
+  async (req, res) => {
+    const { id } = req.params;
+    
+    // Get the background to delete
+    const bgResult = await query(
+      `SELECT url FROM custom_backgrounds WHERE id = $1 AND host_id = $2`,
+      [id, req.hostId]
+    );
+    
+    if (bgResult.rowCount === 0) {
+      return res.status(404).json({ error: "Background not found in your library" });
+    }
+    
+    const bgUrl = bgResult.rows[0].url;
+    
+    // Delete from database
+    await query(
+      `DELETE FROM custom_backgrounds WHERE id = $1`,
+      [id]
+    );
+    
+    // Delete the actual file
+    const filePath = path.join(process.cwd(), bgUrl);
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+        console.log("[Host] Deleted background file:", bgUrl);
+      } catch (e) {
+        console.warn("[Host] Failed to delete background file:", e.message);
+      }
+    }
+    
+    // If this was the active background, clear it
+    await query(
+      `UPDATE hosts SET call_background_url = NULL WHERE id = $1 AND call_background_url = $2`,
+      [req.hostId, bgUrl]
+    );
+    
+    res.json({ ok: true, message: "Background deleted from library" });
   }
 );
 

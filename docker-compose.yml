@@ -41,6 +41,7 @@ services:
       - recordings:/var/app/recordings
       - /opt/docker-data/recordings:/var/app/recordings
       - ./backend/firebase-serviceAccountKey.json:/app/firebase-serviceAccountKey.json:ro
+      - ./backend/uploads:/app/uploads
     restart: always
 
   # ========================
