@@ -21,6 +21,13 @@ export class NotificationService {
    */
   static async requestPermissions(): Promise<boolean> {
     try {
+      // Skip FCM on iOS (requires paid Apple Developer account)
+      if (Platform.OS === "ios") {
+        console.log("[Notifications] ⚠️ FCM disabled on iOS (requires paid Apple Developer account)");
+        console.log("[Notifications] iOS notifications will be enabled once you have a paid account");
+        return false;
+      }
+
       // Only request on physical devices
       if (!Device.isDevice) {
         console.log("[Notifications] Skipping on simulator/emulator");
@@ -54,12 +61,18 @@ export class NotificationService {
    */
   static async registerDevice(authToken: string): Promise<boolean> {
     try {
+      // Skip FCM on iOS (requires paid Apple Developer account)
+      if (Platform.OS === "ios") {
+        console.log("[Notifications] ⚠️ Skipping FCM registration on iOS");
+        return false;
+      }
+
       if (!Device.isDevice) {
         console.log("[Notifications] Skipping registration on simulator/emulator");
         return false;
       }
 
-      // Get FCM token
+      // Get FCM token (Android only)
       const tokenData = await Notifications.getExpoPushTokenAsync({
         projectId: "0aa170c5-60bd-47c2-8015-cebd6a3717b6", // Your EAS project ID
       });

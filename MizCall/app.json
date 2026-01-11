@@ -19,10 +19,8 @@
       "bundleIdentifier": "com.mizcall.app",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "MizCall needs microphone access for audio calls.",
-        "NSLocalNetworkUsageDescription": "Allow this app to discover development servers on your local network.",
-        "NSUserNotificationsUsageDescription": "MizCall needs permission to send you notifications about calls and messages."
-      },
-      "googleServicesFile": "./GoogleService-Info.plist"
+        "NSLocalNetworkUsageDescription": "Allow this app to discover development servers on your local network."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -67,7 +65,8 @@
           "icon": "./assets/images/icon.png",
           "color": "#3c82f6",
           "sounds": [],
-          "mode": "production"
+          "mode": "production",
+          "iosDisplayInForeground": false
         }
       ],
       "expo-audio"

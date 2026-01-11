@@ -2,6 +2,15 @@
 
 This guide explains how to set up Firebase Cloud Messaging (FCM) for push notifications in MizCall.
 
+## ⚠️ Current Configuration: Android Only
+
+**Push notifications are currently configured for Android only.**
+
+- ✅ **Android**: Full FCM support (works now)
+- ⚠️ **iOS**: Disabled (requires paid Apple Developer account)
+
+All other features work perfectly on both platforms. iOS will get push notifications once you have a paid Apple Developer account. See `IOS_FCM_DISABLED.md` for details.
+
 ## Overview
 
 MizCall uses FCM to send push notifications for:
@@ -21,21 +30,31 @@ MizCall uses FCM to send push notifications for:
 
 ---
 
-## 2. Add Android App to Firebase
+## 2. Add Android App to Firebase ✅ REQUIRED
 
 1. In Firebase Console, click "Add app" → Android icon
 2. **Android package name**: `com.mizcall.app` (must match `app.json`)
 3. Download `google-services.json`
 4. Place it in: `MizCall/google-services.json`
 
+✅ **You've already done this!** The file is in place.
+
 ---
 
-## 3. Add iOS App to Firebase
+## 3. Add iOS App to Firebase (OPTIONAL - Requires Paid Apple Developer Account)
 
+⚠️ **Currently disabled** - iOS FCM requires a paid Apple Developer account ($99/year).
+
+**When you get a paid account:**
 1. In Firebase Console, click "Add app" → iOS icon
 2. **iOS bundle ID**: `com.mizcall.app` (must match `app.json`)
 3. Download `GoogleService-Info.plist`
 4. Place it in: `MizCall/GoogleService-Info.plist`
+5. Get APNs auth key from Apple Developer Portal
+6. Upload APNs key to Firebase Console
+7. Re-enable iOS in code (see `IOS_FCM_DISABLED.md`)
+
+**For now**: iOS builds work fine without FCM. All features except background push notifications work normally.
 
 ---
 
