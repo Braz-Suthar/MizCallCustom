@@ -7,6 +7,15 @@ export async function requireAuth(req, res, next) {
     if (!token) return res.sendStatus(401);
 
     const decoded = verifyToken(token);
+    
+    // Admin role - no additional session checks needed
+    if (decoded.role === "admin") {
+      req.auth = decoded;
+      req.role = "admin";
+      req.username = decoded.username;
+      return next();
+    }
+    
     if (decoded.role === "host") {
       // Enforce active session membership for host access tokens
       if (!decoded.jti) return res.sendStatus(401);
@@ -30,12 +39,14 @@ export async function requireAuth(req, res, next) {
         ).catch(() => {});
       }
       req.auth = decoded;
+      req.role = "host";
       req.sessionId = result.rows[0].id;
       // best-effort last_seen update
       query("UPDATE host_sessions SET last_seen_at = now() WHERE id = $1", [result.rows[0].id]).catch(() => {});
       return next();
     }
     req.auth = decoded;
+    req.role = decoded.role;
     next();
   } catch {
     res.sendStatus(401);

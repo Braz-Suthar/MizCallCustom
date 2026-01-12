@@ -1,0 +1,8 @@
+{
+  "name": "mizcall-admin-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "bcrypt": "^5.1.1"
+  }
+}

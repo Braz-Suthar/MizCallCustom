@@ -1,0 +1,63 @@
+name: mizcall_admin
+description: MizCall Admin Panel - Manage hosts, users, calls, and system logs
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Material Design
+  cupertino_icons: ^1.0.6
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # HTTP & API
+  http: ^1.1.2
+  dio: ^5.4.0
+  
+  # Storage
+  shared_preferences: ^2.2.2
+  flutter_secure_storage: ^9.0.0
+  
+  # Navigation
+  go_router: ^13.0.0
+  
+  # Charts & Visualizations
+  fl_chart: ^0.66.0
+  
+  # UI Components
+  flutter_screenutil: ^5.9.0
+  intl: ^0.19.0
+  
+  # Platform
+  window_manager: ^0.3.8
+  
+  # Real-time
+  web_socket_channel: ^2.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/fonts/
+
+  fonts:
+    - family: SFProDisplay
+      fonts:
+        - asset: assets/fonts/SFProDisplay-Regular.otf
+          weight: 400
+        - asset: assets/fonts/SFProDisplay-Medium.otf
+          weight: 500
+        - asset: assets/fonts/SFProDisplay-Bold.otf
+          weight: 700

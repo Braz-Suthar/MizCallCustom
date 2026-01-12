@@ -4,6 +4,7 @@ import path from "path";
 import fs from "fs";
 
 import authRoutes from "./api/auth/index.js";
+import adminRoutes from "./api/admin/index.js";
 import hostRoutes from "./api/host/index.js";
 import userRoutes from "./api/user/index.js";
 import recordingRoutes from "./api/recordings/index.js";
@@ -57,6 +58,7 @@ app.use((req, res, next) => {
 
 // Routes
 app.use("/auth", authRoutes);
+app.use("/admin", adminRoutes);
 app.use(requireAuth, recordingsRoutes);
 app.use("/host", hostRoutes);
 app.use("/user", userRoutes);
