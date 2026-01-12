@@ -3981,8 +3981,18 @@ function App() {
     };
 
     if (tab === "call-active") {
+      const backgroundStyle = callBackgroundUrl 
+        ? { 
+            backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url(${API_BASE}${callBackgroundUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            minHeight: '100vh'
+          } 
+        : {};
+      
       return (
-        <div className="main-pane call-active-standalone">
+        <div className="main-pane call-active-standalone" style={backgroundStyle}>
           <div className="content">{renderActiveCall()}</div>
         </div>
       );
