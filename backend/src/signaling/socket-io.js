@@ -207,42 +207,42 @@ export function handleSocket({ socket, io }) {
         userId: peer.id,
       });
 
-      sendRecorder({
-        type: "START_USER",
-        hostId: peer.hostId,
-        userId: peer.id,
-        meetingId: roomId,
+    sendRecorder({
+      type: "START_USER",
+      hostId: peer.hostId,
+      userId: peer.id,
+      meetingId: roomId,
         userPreSeconds: 3,
         hostPreSeconds: 3,
         userPostSeconds: 3,
         hostPostSeconds: 3,
-      });
-
+    });
+    
       const result = await waitForResult(peer.id);
       if (!result.ok) {
         console.error("[Socket.IO] START_USER failed attempt", attempt, result.reason);
         continue;
       }
 
-      try {
+    try {
+      await sendMediasoup({
+        type: MS.CREATE_RECORDER,
+        roomId,
+        producerOwnerId: peer.id,
+          remotePort: result.userPort,
+          remoteIp,
+      });
+
+      if (room.hostProducerId) {
         await sendMediasoup({
           type: MS.CREATE_RECORDER,
           roomId,
-          producerOwnerId: peer.id,
-          remotePort: result.userPort,
-          remoteIp,
-        });
-
-        if (room.hostProducerId) {
-          await sendMediasoup({
-            type: MS.CREATE_RECORDER,
-            roomId,
-            producerOwnerId: peer.hostId,
+          producerOwnerId: peer.hostId,
             remotePort: result.hostPort,
             remoteIp,
-          });
-        }
-      } catch (err) {
+        });
+      }
+    } catch (err) {
         console.error("[Socket.IO] CREATE_RECORDER failed attempt", attempt, err?.message || err);
         continue;
       }

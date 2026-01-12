@@ -584,9 +584,13 @@ function App() {
       status: "connected" | "connecting";
       muted: boolean;
       speaking: boolean;
+      lastSpoke?: number;
       avatarUrl?: string;
     }>
   >([]);
+  const [participantSpeakingStates, setParticipantSpeakingStates] = useState<
+    Record<string, { speaking: boolean; lastSpoke: number; endedAt?: number }>
+  >({});
   const [callMuted, setCallMuted] = useState(false);
   const [callVolume, setCallVolume] = useState(70);
   const [remoteAudioStream, setRemoteAudioStream] = useState<MediaStream | null>(null);
@@ -1972,6 +1976,32 @@ function App() {
 
         if (msg.type === "USER_LEFT") {
           setActiveParticipants((prev) => prev.filter((p) => p.id !== msg.userId));
+          setParticipantSpeakingStates((prev) => {
+            const newStates = { ...prev };
+            delete newStates[msg.userId];
+            return newStates;
+          });
+        }
+
+        if (msg.type === "USER_SPEAKING_STATUS") {
+          const userId = msg.userId || msg.id;
+          const speaking = msg.speaking;
+          if (!userId) return;
+          
+          console.log("[desktop] USER_SPEAKING_STATUS", { userId, speaking });
+          
+          // Update speaking states
+          setParticipantSpeakingStates((prev) => {
+            const now = Date.now();
+            return {
+              ...prev,
+              [userId]: {
+                speaking,
+                lastSpoke: speaking ? now : (prev[userId]?.lastSpoke || now),
+                endedAt: speaking ? undefined : now,
+              },
+            };
+          });
         }
       } catch (err) {
         console.error("ws message error", err);
@@ -1991,6 +2021,7 @@ function App() {
       "PRODUCE_ERROR",
       "USER_JOINED",
       "USER_LEFT",
+      "USER_SPEAKING_STATUS",
     ].forEach((event) => {
       ws.on(event, (payload) => handleMsg(payload ?? { type: event }));
     });
@@ -3149,52 +3180,132 @@ function App() {
             </div>
           </div>
 
-          <div className="card stack gap-sm">
+          <div className="card stack gap-sm" style={{ background: "transparent", border: "none", boxShadow: "none" }}>
             <div className="row-inline between">
               <p className="muted strong">Participants</p>
               <span className="muted small">
                 {callJoinState === "connected" ? "Audio connected" : callJoinState === "connecting" ? "Connecting…" : callError || "Idle"}
               </span>
             </div>
-            <div className="participants-grid">
-              {activeParticipants.filter((p) => p.role === "User").map((p) => (
-                <div key={p.id} className="participant-card">
-                  <div className="participant-header">
-                    <div className="avatar-sm">
-                      {p.avatarUrl ? (
-                        <img 
-                          src={p.avatarUrl.startsWith('http') 
-                            ? p.avatarUrl 
-                            : `${API_BASE}${p.avatarUrl}`
-                          } 
-                          alt={p.name} 
-                        />
-                      ) : (p.name || "U")[0]}
-                    </div>
-                    <div className="stack gap-xxs">
-                      <strong>{p.name}</strong>
-                    </div>
-                    <button className="icon-btn" onClick={() => showToast("More actions (stub)", "info")} title="More">
-                      <FiMoreVertical />
-                    </button>
-                  </div>
-                  <div className="participant-meta" />
-                  <div className="participant-actions">
-                    <button className="icon-btn" onClick={() => toggleMuteParticipant(p.id)} title={p.muted ? "Unmute" : "Mute"}>
-                      {p.muted ? <FiVolumeX /> : <FiVolume2 />}
-                    </button>
-                  </div>
-                  <div className="participant-status">
-                    {p.muted ? <span className="muted small">Muted</span> : <span className="muted small">Speaking</span>}
-                  </div>
+            {activeParticipants.length === 0 ? (
+              <div style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "400px",
+                gap: "16px",
+              }}>
+                <div style={{
+                  fontSize: "64px",
+                  opacity: 0.3,
+                }}>
+                  👥
                 </div>
-              ))}
-              {activeParticipants.length === 0 ? (
-                <div className="card subtle">
-                  <p className="muted small">No participants yet.</p>
-                </div>
-              ) : null}
-            </div>
+                <p className="muted" style={{
+                  fontSize: "18px",
+                  fontWeight: "500",
+                  opacity: 0.7,
+                }}>
+                  No participants in the call yet
+                </p>
+                <p className="muted small" style={{ opacity: 0.5 }}>
+                  Waiting for users to join...
+                </p>
+              </div>
+            ) : (
+              <div className="participants-grid">
+              {(() => {
+                // Merge speaking state with participants
+                const enrichedParticipants = activeParticipants
+                  .filter((p) => p.role === "User")
+                  .map((p) => {
+                    const speakingState = participantSpeakingStates[p.id];
+                    return {
+                      ...p,
+                      speaking: speakingState?.speaking || false,
+                      lastSpoke: speakingState?.lastSpoke || 0,
+                    };
+                  });
+                
+                // Sort: speaking first, then by recent speak time
+                const sortedParticipants = enrichedParticipants.sort((a, b) => {
+                  if (a.speaking && !b.speaking) return -1;
+                  if (!a.speaking && b.speaking) return 1;
+                  return (b.lastSpoke || 0) - (a.lastSpoke || 0);
+                });
+
+                return sortedParticipants.map((p) => {
+                  const isSpeaking = p.speaking;
+                  const initials = p.name
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .toUpperCase()
+                    .slice(0, 2);
+                  
+                  return (
+                    <div 
+                      key={p.id} 
+                      className={`participant-card ${isSpeaking ? "participant-speaking" : ""}`}
+                      style={{
+                        borderColor: isSpeaking ? "#22c55e" : "#d1d5db",
+                        borderWidth: isSpeaking ? "3px" : "2px",
+                        boxShadow: isSpeaking ? "0 4px 16px rgba(34, 197, 94, 0.3)" : undefined,
+                      }}
+                    >
+                      {/* Speaking indicator */}
+                      {isSpeaking && (
+                        <div className="participant-speaking-indicator">
+                          <FiMic style={{ fontSize: "12px" }} />
+                        </div>
+                      )}
+                      
+                      <div className="participant-header">
+                        <div 
+                          className="avatar-sm" 
+                          style={{ 
+                            backgroundColor: isSpeaking ? "#22c55e" : undefined 
+                          }}
+                        >
+                          {p.avatarUrl ? (
+                            <img 
+                              src={p.avatarUrl.startsWith('http') 
+                                ? p.avatarUrl 
+                                : `${API_BASE}${p.avatarUrl}`
+                              } 
+                              alt={p.name} 
+                            />
+                          ) : initials}
+                        </div>
+                        <div className="stack gap-xxs">
+                          <strong>{p.name}</strong>
+                        </div>
+                        <button className="icon-btn" onClick={() => showToast("More actions (stub)", "info")} title="More">
+                          <FiMoreVertical />
+                        </button>
+                      </div>
+                      <div className="participant-meta" />
+                      <div className="participant-actions">
+                        <button className="icon-btn" onClick={() => toggleMuteParticipant(p.id)} title={p.muted ? "Unmute" : "Mute"}>
+                          {p.muted ? <FiVolumeX /> : <FiVolume2 />}
+                        </button>
+                      </div>
+                      <div className="participant-status">
+                        {isSpeaking ? (
+                          <span style={{ color: "#22c55e", fontWeight: "600" }}>Speaking</span>
+                        ) : p.muted ? (
+                          <span className="muted small">Muted</span>
+                        ) : (
+                          <span className="muted small">Idle</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+              </div>
+            )}
           </div>
 
           <div className="card call-footer">
