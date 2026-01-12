@@ -655,7 +655,15 @@ export default function HostSettings() {
           <View style={styles.profileRow}>
             <Pressable onPress={() => setEditProfileVisible(true)}>
               {auth.avatarUrl ? (
-                <Image source={{ uri: auth.avatarUrl }} style={styles.avatarImage} contentFit="cover" />
+                <Image 
+                  source={{ 
+                    uri: auth.avatarUrl.startsWith('http') 
+                      ? auth.avatarUrl 
+                      : `${API_BASE}${auth.avatarUrl}` 
+                  }} 
+                  style={styles.avatarImage} 
+                  contentFit="cover" 
+                />
               ) : (
                 <View style={[styles.avatar, { backgroundColor: PRIMARY_BLUE }]}>
                   <Text style={styles.avatarText}>
@@ -1262,7 +1270,13 @@ export default function HostSettings() {
         currentName={auth.displayName ?? auth.email ?? ""}
         currentEmail={auth.email ?? ""}
         onSave={handleSaveProfile}
-        avatarUrl={auth.avatarUrl ?? null}
+        avatarUrl={
+          auth.avatarUrl 
+            ? (auth.avatarUrl.startsWith('http') 
+                ? auth.avatarUrl 
+                : `${API_BASE}${auth.avatarUrl}`)
+            : null
+        }
         token={auth.token ?? null}
         onAvatarUpdated={handleAvatarUpdated}
       />

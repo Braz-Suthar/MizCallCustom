@@ -3161,7 +3161,15 @@ function App() {
                 <div key={p.id} className="participant-card">
                   <div className="participant-header">
                     <div className="avatar-sm">
-                      {p.avatarUrl ? <img src={p.avatarUrl} alt={p.name} /> : (p.name || "U")[0]}
+                      {p.avatarUrl ? (
+                        <img 
+                          src={p.avatarUrl.startsWith('http') 
+                            ? p.avatarUrl 
+                            : `${API_BASE}${p.avatarUrl}`
+                          } 
+                          alt={p.name} 
+                        />
+                      ) : (p.name || "U")[0]}
                     </div>
                     <div className="stack gap-xxs">
                       <strong>{p.name}</strong>
@@ -3642,7 +3650,15 @@ function App() {
                   </div>
                   <div className="profile-row">
                     <div className="avatar-lg">
-                      {session.avatarUrl ? <img src={session.avatarUrl} alt="avatar" /> : initials}
+                      {session.avatarUrl ? (
+                        <img 
+                          src={session.avatarUrl.startsWith('http') 
+                            ? session.avatarUrl 
+                            : `${API_BASE}${session.avatarUrl}`
+                          } 
+                          alt="avatar" 
+                        />
+                      ) : initials}
                     </div>
             <div className="stack gap-xxs">
                       <strong>{name}</strong>
@@ -3881,7 +3897,15 @@ function App() {
                 <p className="muted strong">Profile</p>
                 <div className="profile-row">
                   <div className="avatar-lg">
-                    {session.avatarUrl ? <img src={session.avatarUrl} alt="avatar" /> : initials}
+                    {session.avatarUrl ? (
+                      <img 
+                        src={session.avatarUrl.startsWith('http') 
+                          ? session.avatarUrl 
+                          : `${API_BASE}${session.avatarUrl}`
+                        } 
+                        alt="avatar" 
+                      />
+                    ) : initials}
                   </div>
                   <div className="stack gap-xxs">
                     <strong>{name}</strong>
@@ -5171,7 +5195,15 @@ function App() {
                 return (
               <div className="profile-row">
                 <div className="avatar-lg">
-                  {session?.avatarUrl ? <img src={session.avatarUrl} alt="avatar" /> : modalInitials}
+                  {session?.avatarUrl ? (
+                    <img 
+                      src={session.avatarUrl.startsWith('http') 
+                        ? session.avatarUrl 
+                        : `${API_BASE}${session.avatarUrl}`
+                      } 
+                      alt="avatar" 
+                    />
+                  ) : modalInitials}
                 </div>
                 <Button label="Change photo" variant="ghost" onClick={handleAvatarClick} />
               </div>

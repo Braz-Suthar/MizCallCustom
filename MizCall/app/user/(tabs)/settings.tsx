@@ -12,6 +12,7 @@ import { signOut } from "../../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { setCallBackground, setAvatarUrl } from "../../../state/authSlice";
 import { saveSession } from "../../../state/sessionStorage";
+import { API_BASE } from "../../../state/api";
 
 export default function UserSettings() {
   const dispatch = useAppDispatch();
@@ -90,6 +91,12 @@ export default function UserSettings() {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(seed)}&background=007aff&color=fff`;
   }, [userId]);
 
+  const fullAvatarUrl = useMemo(() => {
+    if (!avatarUrl) return avatarFallback;
+    if (avatarUrl.startsWith('http') || avatarUrl.startsWith('file://')) return avatarUrl;
+    return `${API_BASE}${avatarUrl}`;
+  }, [avatarUrl, avatarFallback]);
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, position: "relative" }}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
@@ -104,7 +111,7 @@ export default function UserSettings() {
         <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={styles.profileRow}>
             <View>
-              <Image source={{ uri: avatarUrl ?? avatarFallback }} style={styles.avatar} />
+              <Image source={{ uri: fullAvatarUrl }} style={styles.avatar} />
               <Pressable style={[styles.avatarEdit, { backgroundColor: colors.card, borderColor: colors.border }]} onPress={onChangeAvatar}>
                 <Ionicons name="camera" size={16} color={colors.text} />
               </Pressable>
