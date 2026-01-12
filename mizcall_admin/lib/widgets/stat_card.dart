@@ -23,34 +23,38 @@ class StatCard extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: EdgeInsets.all(isMobile ? 16 : 20),
+        padding: EdgeInsets.all(isMobile ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
                   child: Text(
                     title,
-                    style: theme.textTheme.bodySmall,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: isMobile ? 12 : 13,
+                    ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(icon, color: color, size: isMobile ? 18 : 20),
+                  child: Icon(icon, color: color, size: isMobile ? 16 : 18),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
@@ -59,7 +63,7 @@ class StatCard extends StatelessWidget {
                 style: theme.textTheme.displaySmall?.copyWith(
                   color: color,
                   fontWeight: FontWeight.w800,
-                  fontSize: isMobile ? 28 : null,
+                  fontSize: isMobile ? 24 : 32,
                 ),
               ),
             ),
@@ -68,7 +72,7 @@ class StatCard extends StatelessWidget {
               Text(
                 subtitle!,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: isMobile ? 11 : 12,
+                  fontSize: isMobile ? 10 : 11,
                 ),
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,

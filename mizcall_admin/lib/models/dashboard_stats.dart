@@ -1,3 +1,26 @@
+class HistoryDataPoint {
+  final DateTime date;
+  final int totalHosts;
+  final int totalUsers;
+  final int totalCalls;
+
+  HistoryDataPoint({
+    required this.date,
+    required this.totalHosts,
+    required this.totalUsers,
+    required this.totalCalls,
+  });
+
+  factory HistoryDataPoint.fromJson(Map<String, dynamic> json) {
+    return HistoryDataPoint(
+      date: DateTime.parse(json['date']),
+      totalHosts: json['total_hosts'] ?? 0,
+      totalUsers: json['total_users'] ?? 0,
+      totalCalls: json['total_calls'] ?? 0,
+    );
+  }
+}
+
 class DashboardStats {
   final int totalHosts;
   final int activeHosts;
@@ -10,6 +33,7 @@ class DashboardStats {
   final String serverStatus;
   final String mediasoupStatus;
   final String databaseStatus;
+  final List<HistoryDataPoint> history;
 
   DashboardStats({
     this.totalHosts = 0,
@@ -23,9 +47,17 @@ class DashboardStats {
     this.serverStatus = 'Unknown',
     this.mediasoupStatus = 'Unknown',
     this.databaseStatus = 'Unknown',
+    this.history = const [],
   });
 
   factory DashboardStats.fromJson(Map<String, dynamic> json) {
+    List<HistoryDataPoint> historyList = [];
+    if (json['history'] != null) {
+      historyList = (json['history'] as List)
+          .map((item) => HistoryDataPoint.fromJson(item))
+          .toList();
+    }
+
     return DashboardStats(
       totalHosts: json['totalHosts'] ?? json['total_hosts'] ?? 0,
       activeHosts: json['activeHosts'] ?? json['active_hosts'] ?? 0,
@@ -38,6 +70,7 @@ class DashboardStats {
       serverStatus: json['serverStatus'] ?? json['server_status'] ?? 'Unknown',
       mediasoupStatus: json['mediasoupStatus'] ?? json['mediasoup_status'] ?? 'Unknown',
       databaseStatus: json['databaseStatus'] ?? json['database_status'] ?? 'Unknown',
+      history: historyList,
     );
   }
 }

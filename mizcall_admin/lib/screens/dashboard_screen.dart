@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 import 'dart:async';
 
 import '../config/theme.dart';
@@ -310,46 +311,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Stats Grid (Responsive)
+                            // Stats Grid (2x2)
                             LayoutBuilder(
                               builder: (context, constraints) {
-                                final width = constraints.maxWidth;
-                                int crossAxisCount;
-                                double childAspectRatio;
-                                
-                                if (width < 600) {
-                                  crossAxisCount = 1;
-                                  childAspectRatio = 2.5;
-                                } else if (width < 900) {
-                                  crossAxisCount = 2;
-                                  childAspectRatio = 2.0;
-                                } else if (width < 1200) {
-                                  crossAxisCount = 3;
-                                  childAspectRatio = 1.8;
-                                } else {
-                                  crossAxisCount = 4;
-                                  childAspectRatio = 1.8;
-                                }
+                                final isMobile = constraints.maxWidth < 600;
                                 
                                 return GridView.count(
-                                  crossAxisCount: crossAxisCount,
-                                  crossAxisSpacing: width < 600 ? 12 : 20,
-                                  mainAxisSpacing: width < 600 ? 12 : 20,
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: isMobile ? 12 : 20,
+                                  mainAxisSpacing: isMobile ? 12 : 20,
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
-                                  childAspectRatio: childAspectRatio,
+                                  childAspectRatio: isMobile ? 1.3 : 2.2,
                                   children: [
                                     StatCard(
                                       title: 'Total Hosts',
                                       value: _stats!.totalHosts.toString(),
-                                      icon: Icons.people,
+                                      icon: Icons.business,
                                       color: AppTheme.primaryBlue,
                                       subtitle: '${_stats!.activeHosts} active',
                                     ),
                                     StatCard(
                                       title: 'Total Users',
                                       value: _stats!.totalUsers.toString(),
-                                      icon: Icons.person,
+                                      icon: Icons.people,
                                       color: AppTheme.secondaryBlue,
                                       subtitle: '${_stats!.activeUsers} active',
                                     ),
@@ -381,6 +366,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             const SizedBox(height: 16),
                             
+                            // Growth Charts Row
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                if (constraints.maxWidth < 900) {
+                                  return Column(
+                                    children: [
+                                      _buildHostGrowthChart(),
+                                      const SizedBox(height: 16),
+                                      _buildUserGrowthChart(),
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  children: [
+                                    Expanded(child: _buildHostGrowthChart()),
+                                    const SizedBox(width: 16),
+                                    Expanded(child: _buildUserGrowthChart()),
+                                  ],
+                                );
+                              },
+                            ),
+                            
+                            const SizedBox(height: 16),
+                            
+                            // Distribution Charts Row
                             LayoutBuilder(
                               builder: (context, constraints) {
                                 if (constraints.maxWidth < 900) {
@@ -388,7 +398,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     children: [
                                       _buildCallsChart(),
                                       const SizedBox(height: 16),
-                                      _buildUsersChart(),
+                                      _buildUsersDistributionChart(),
                                     ],
                                   );
                                 }
@@ -396,7 +406,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   children: [
                                     Expanded(child: _buildCallsChart()),
                                     const SizedBox(width: 16),
-                                    Expanded(child: _buildUsersChart()),
+                                    Expanded(child: _buildUsersDistributionChart()),
                                   ],
                                 );
                               },
@@ -641,7 +651,282 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildUsersChart() {
+  Widget _buildHostGrowthChart() {
+    final theme = Theme.of(context);
+    final history = _stats?.history ?? [];
+    
+    // Use actual data if available, otherwise show message
+    final spots = history.isEmpty
+        ? List.generate(6, (i) => FlSpot(i.toDouble(), 0))
+        : history.asMap().entries.map((entry) {
+            return FlSpot(entry.key.toDouble(), entry.value.totalHosts.toDouble());
+          }).toList();
+
+    final maxY = history.isEmpty 
+        ? 10.0 
+        : history.map((h) => h.totalHosts).reduce((a, b) => a > b ? a : b).toDouble() * 1.2;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Host Growth',
+                  style: theme.textTheme.titleMedium,
+                ),
+                Icon(
+                  Icons.business,
+                  color: AppTheme.primaryBlue,
+                  size: 20,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 200,
+              child: history.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.show_chart,
+                            size: 48,
+                            color: theme.textTheme.bodySmall?.color?.withOpacity(0.3),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No historical data yet',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Data will appear after 24 hours',
+                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    )
+                  : LineChart(
+                      LineChartData(
+                        maxY: maxY,
+                        minY: 0,
+                        gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          horizontalInterval: maxY > 10 ? maxY / 5 : 2,
+                          getDrawingHorizontalLine: (value) {
+                            return FlLine(
+                              color: theme.brightness == Brightness.dark
+                                  ? AppTheme.darkBorder
+                                  : AppTheme.lightBorder,
+                              strokeWidth: 1,
+                            );
+                          },
+                        ),
+                        titlesData: FlTitlesData(
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              interval: 1,
+                              getTitlesWidget: (value, meta) {
+                                if (value.toInt() < history.length) {
+                                  final date = history[value.toInt()].date;
+                                  return Text(
+                                    DateFormat('MMM').format(date),
+                                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                                  );
+                                }
+                                return const Text('');
+                              },
+                            ),
+                          ),
+                          leftTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              reservedSize: 40,
+                              getTitlesWidget: (value, meta) {
+                                return Text(
+                                  value.toInt().toString(),
+                                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                                );
+                              },
+                            ),
+                          ),
+                          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        ),
+                        borderData: FlBorderData(show: false),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: spots,
+                            isCurved: true,
+                            color: AppTheme.primaryBlue,
+                            barWidth: 3,
+                            dotData: const FlDotData(show: true),
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: AppTheme.primaryBlue.withOpacity(0.1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              history.isEmpty ? 'Tracking starts today' : 'Last ${history.length} days',
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserGrowthChart() {
+    final theme = Theme.of(context);
+    final history = _stats?.history ?? [];
+    
+    final spots = history.isEmpty
+        ? List.generate(6, (i) => FlSpot(i.toDouble(), 0))
+        : history.asMap().entries.map((entry) {
+            return FlSpot(entry.key.toDouble(), entry.value.totalUsers.toDouble());
+          }).toList();
+
+    final maxY = history.isEmpty 
+        ? 10.0 
+        : history.map((h) => h.totalUsers).reduce((a, b) => a > b ? a : b).toDouble() * 1.2;
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'User Growth',
+                  style: theme.textTheme.titleMedium,
+                ),
+                Icon(
+                  Icons.people,
+                  color: AppTheme.secondaryBlue,
+                  size: 20,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 200,
+              child: history.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.show_chart,
+                            size: 48,
+                            color: theme.textTheme.bodySmall?.color?.withOpacity(0.3),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No historical data yet',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Data will appear after 24 hours',
+                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    )
+                  : LineChart(
+                      LineChartData(
+                        maxY: maxY,
+                        minY: 0,
+                        gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          horizontalInterval: maxY > 10 ? maxY / 5 : 2,
+                          getDrawingHorizontalLine: (value) {
+                            return FlLine(
+                              color: theme.brightness == Brightness.dark
+                                  ? AppTheme.darkBorder
+                                  : AppTheme.lightBorder,
+                              strokeWidth: 1,
+                            );
+                          },
+                        ),
+                        titlesData: FlTitlesData(
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              interval: 1,
+                              getTitlesWidget: (value, meta) {
+                                if (value.toInt() < history.length) {
+                                  final date = history[value.toInt()].date;
+                                  return Text(
+                                    DateFormat('MMM').format(date),
+                                    style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                                  );
+                                }
+                                return const Text('');
+                              },
+                            ),
+                          ),
+                          leftTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              reservedSize: 40,
+                              getTitlesWidget: (value, meta) {
+                                return Text(
+                                  value.toInt().toString(),
+                                  style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
+                                );
+                              },
+                            ),
+                          ),
+                          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        ),
+                        borderData: FlBorderData(show: false),
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: spots,
+                            isCurved: true,
+                            color: AppTheme.secondaryBlue,
+                            barWidth: 3,
+                            dotData: const FlDotData(show: true),
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: AppTheme.secondaryBlue.withOpacity(0.1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              history.isEmpty ? 'Tracking starts today' : 'Last ${history.length} days',
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUsersDistributionChart() {
     final theme = Theme.of(context);
     final activeUsers = _stats?.activeUsers ?? 0;
     final totalUsers = _stats?.totalUsers ?? 1;
@@ -661,8 +946,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: theme.textTheme.titleMedium,
                 ),
                 Icon(
-                  Icons.person,
-                  color: AppTheme.primaryBlue,
+                  Icons.pie_chart,
+                  color: AppTheme.successGreen,
                   size: 20,
                 ),
               ],
@@ -703,9 +988,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Active vs Inactive users',
+              'Active vs Inactive',
               style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
-              textAlign: TextAlign.center,
             ),
           ],
         ),

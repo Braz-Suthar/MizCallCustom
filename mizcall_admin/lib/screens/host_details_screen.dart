@@ -1240,7 +1240,8 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
   Future<void> _exportCallHistory() async {
     try {
       final exportService = context.read<ExportService>();
-      final path = await exportService.exportCallsToCSV(_calls);
+      final callsData = _calls.map((call) => Map<String, dynamic>.from(call)).toList();
+      final path = await exportService.exportCallsToCSV(callsData);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

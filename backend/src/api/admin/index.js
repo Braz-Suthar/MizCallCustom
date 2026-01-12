@@ -94,6 +94,27 @@ router.get("/dashboard", requireAuth, requireAdmin, async (req, res) => {
     // Calculate storage (simplified - you might want to query actual file sizes)
     const storageUsed = "0 MB"; // TODO: Calculate actual storage
 
+    // Save today's snapshot
+    await query(`
+      INSERT INTO stats_history (date, total_hosts, total_users, total_calls, total_recordings, active_users, active_calls)
+      VALUES (CURRENT_DATE, $1, $2, $3, $4, $5, $6)
+      ON CONFLICT (date) DO UPDATE SET
+        total_hosts = $1,
+        total_users = $2,
+        total_calls = $3,
+        total_recordings = $4,
+        active_users = $5,
+        active_calls = $6
+    `, [totalHosts, totalUsers, totalCalls, totalRecordings, activeUsers, activeCalls]);
+
+    // Get historical data for charts (last 6 months)
+    const historyResult = await query(`
+      SELECT date, total_hosts, total_users, total_calls
+      FROM stats_history
+      WHERE date >= CURRENT_DATE - INTERVAL '6 months'
+      ORDER BY date ASC
+    `);
+
     res.json({
       totalHosts,
       activeHosts: totalHosts, // All hosts are considered active for now
@@ -106,6 +127,7 @@ router.get("/dashboard", requireAuth, requireAdmin, async (req, res) => {
       serverStatus: "Online",
       mediasoupStatus: "Online",
       databaseStatus: "Online",
+      history: historyResult.rows,
     });
   } catch (error) {
     console.error("Dashboard stats error:", error);
