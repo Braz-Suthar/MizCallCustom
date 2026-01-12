@@ -1646,3 +1646,44 @@ body.theme-dark .divider-text::after {
 .divider-text span {
   padding: 0 12px;
 }
+
+.security-option-btn {
+  width: 100%;
+  padding: 14px 16px;
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.theme-dark .security-option-btn {
+  border-color: var(--border-dark);
+}
+
+.security-option-btn:hover {
+  background: rgba(59, 130, 246, 0.05);
+  border-color: #3b82f6;
+}
+
+.theme-dark .security-option-btn:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.security-option-btn strong {
+  color: var(--text-light);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.theme-dark .security-option-btn strong {
+  color: var(--text-dark);
+}
+
+.align-center {
+  align-items: center;
+}

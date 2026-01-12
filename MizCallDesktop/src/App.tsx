@@ -498,6 +498,8 @@ function App() {
   const [oneDeviceOnly, setOneDeviceOnly] = useState(false);
   const [allowMultipleSessions, setAllowMultipleSessions] = useState(true);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [showTwoFactorSettings, setShowTwoFactorSettings] = useState(false);
+  const [emailOtpEnabled, setEmailOtpEnabled] = useState(false);
   const [callBackgroundUrl, setCallBackgroundUrl] = useState<string | null>(null);
   const [inbuiltBackgrounds, setInbuiltBackgrounds] = useState<Array<{ id: string; url: string }>>([]);
   const [customBackgrounds, setCustomBackgrounds] = useState<Array<{ id: string; url: string; filename: string }>>([]);
@@ -2082,24 +2084,41 @@ function App() {
     }
   };
 
-  const handleToggleTwoFactor = async () => {
+  const loadTwoFactorSettings = async () => {
     if (!session || session.role !== "host") return;
     try {
-      const nextValue = !twoFactorEnabled;
-      setTwoFactorEnabled(nextValue);
-      const res = await authFetch(`${API_BASE}/host/security`, {
+      const res = await authFetch(`${API_BASE}/host/two-factor-settings`);
+      if (!res.ok) throw new Error("Failed to load 2FA settings");
+      const data = await res.json();
+      setEmailOtpEnabled(data.emailOtpEnabled || false);
+      setTwoFactorEnabled(data.emailOtpEnabled || false);
+    } catch (err) {
+      console.error("Failed to load 2FA settings:", err);
+    }
+  };
+
+  const handleToggleEmailOtp = async () => {
+    if (!session || session.role !== "host") return;
+    try {
+      const nextValue = !emailOtpEnabled;
+      setEmailOtpEnabled(nextValue);
+      const res = await authFetch(`${API_BASE}/host/two-factor-settings/email`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ twoFactorEnabled: nextValue }),
+        body: JSON.stringify({ enabled: nextValue }),
       });
       if (!res.ok) {
         const msg = await res.text();
-        throw new Error(msg || "Failed to update security settings");
+        throw new Error(msg || "Failed to update Email OTP setting");
       }
+      setTwoFactorEnabled(nextValue);
       setSession((prev) => (prev ? { ...prev, twoFactorEnabled: nextValue } : prev));
-      showToast("Security settings updated", "success");
+      showToast(
+        nextValue ? "Email OTP enabled" : "Email OTP disabled",
+        "success"
+      );
     } catch (err) {
-      setTwoFactorEnabled((prev) => !prev);
+      setEmailOtpEnabled((prev) => !prev);
       showToast(err instanceof Error ? err.message : "Update failed", "error");
     }
   };
@@ -3753,13 +3772,26 @@ function App() {
                     <Button label="Change Password" variant="secondary" onClick={() => setShowChangePassword(true)} />
                   </div>
                   <p className="muted small">Secure your account with a new password.</p>
-                  <div className="row-inline between">
+                  <button 
+                    className="security-option-btn"
+                    onClick={() => {
+                      loadTwoFactorSettings();
+                      setShowTwoFactorSettings(true);
+                    }}
+                  >
                     <div className="stack gap-xxs">
-                      <strong>Two-factor login</strong>
-                      <span className="muted small">Send OTP when signing in.</span>
+                      <strong>Two-Factor Authentication</strong>
+                      <span className="muted small">
+                        {twoFactorEnabled ? "Manage your 2FA methods" : "Add extra security to your account"}
+                      </span>
                     </div>
-                    <ToggleSwitch checked={twoFactorEnabled} onToggle={handleToggleTwoFactor} />
-                  </div>
+                    <div className="row-inline gap-sm align-center">
+                      {twoFactorEnabled && (
+                        <span className="status-enabled" style={{ fontSize: '13px' }}>Enabled</span>
+                      )}
+                      <FiChevronRight />
+                    </div>
+                  </button>
                 </div>
 
                 <div className="card stack gap-sm">
@@ -4486,6 +4518,150 @@ function App() {
                 }}
               />
               <Button label={pwLoading ? "Updating..." : "Save"} onClick={handleChangePasswordSubmit} disabled={pwLoading} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Two-Factor Authentication Settings Modal */}
+      {showTwoFactorSettings ? (
+        <div className="modal-backdrop" onClick={() => setShowTwoFactorSettings(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+            <div className="modal-header">
+              <p className="muted strong">Two-Factor Authentication</p>
+            </div>
+            <div className="modal-body stack gap-md">
+              {/* Intro */}
+              <div className="stack gap-xxs center" style={{ alignItems: 'center', padding: '20px 0 10px' }}>
+                <IoShieldCheckmarkOutline style={{ fontSize: '48px', color: '#3b82f6' }} />
+                <h3 style={{ margin: '12px 0 8px', fontSize: '20px', fontWeight: '700' }}>Secure Your Account</h3>
+                <p className="muted small" style={{ textAlign: 'center', maxWidth: '90%' }}>
+                  Enable two-factor authentication to add an extra layer of security to your account.
+                  Choose one or both methods below.
+                </p>
+              </div>
+
+              {/* Email OTP Section */}
+              <div className="card stack gap-sm" style={{ padding: '18px', borderRadius: '12px' }}>
+                <div className="row-inline between">
+                  <div className="stack gap-xxs" style={{ flex: 1 }}>
+                    <div className="row-inline gap-sm align-center">
+                      <IoLockClosedOutline style={{ fontSize: '24px', color: '#3b82f6' }} />
+                      <strong style={{ fontSize: '16px' }}>Email OTP</strong>
+                    </div>
+                    <span className="muted small">
+                      Receive verification codes via email during login
+                    </span>
+                    {session?.email && (
+                      <div style={{ 
+                        marginTop: '8px',
+                        padding: '6px 12px',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderRadius: '8px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        alignSelf: 'flex-start'
+                      }}>
+                        <span style={{ fontSize: '16px' }}>✓</span>
+                        <span style={{ fontSize: '13px', color: '#3b82f6', fontWeight: '600' }}>
+                          {session.email}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <ToggleSwitch checked={emailOtpEnabled} onToggle={handleToggleEmailOtp} />
+                </div>
+              </div>
+
+              {/* Mobile OTP Section - Disabled */}
+              <div className="card stack gap-sm" style={{ 
+                padding: '18px', 
+                borderRadius: '12px',
+                opacity: 0.6,
+                pointerEvents: 'none'
+              }}>
+                <div className="row-inline between">
+                  <div className="stack gap-xxs" style={{ flex: 1 }}>
+                    <div className="row-inline gap-sm align-center">
+                      <FiSmartphone style={{ fontSize: '24px', color: '#64748b' }} />
+                      <strong style={{ fontSize: '16px' }}>Mobile OTP</strong>
+                      <span style={{
+                        padding: '3px 8px',
+                        backgroundColor: '#64748b',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        color: '#fff',
+                        fontWeight: '600'
+                      }}>
+                        Coming Soon
+                      </span>
+                    </div>
+                    <span className="muted small">
+                      Receive verification codes via SMS during login
+                    </span>
+                    <div style={{ 
+                      marginTop: '8px',
+                      padding: '6px 12px',
+                      backgroundColor: 'rgba(100, 116, 139, 0.1)',
+                      borderRadius: '8px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      alignSelf: 'flex-start'
+                    }}>
+                      <span style={{ fontSize: '16px' }}>⏱</span>
+                      <span style={{ fontSize: '13px', color: '#64748b', fontWeight: '600' }}>
+                        SMS verification will be available soon
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{
+                    width: '46px',
+                    height: '24px',
+                    borderRadius: '12px',
+                    backgroundColor: '#cbd5e1',
+                    position: 'relative',
+                    opacity: 0.4
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      top: '3px',
+                      left: '3px',
+                      width: '18px',
+                      height: '18px',
+                      borderRadius: '9px',
+                      backgroundColor: '#fff'
+                    }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Info Section */}
+              <div style={{
+                padding: '16px',
+                backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                borderRadius: '12px',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                display: 'flex',
+                gap: '12px'
+              }}>
+                <IoInformationCircleOutline style={{ fontSize: '24px', color: '#3b82f6', flexShrink: 0 }} />
+                <div className="stack gap-xxs">
+                  <strong style={{ fontSize: '14px' }}>How it works</strong>
+                  <p className="muted small" style={{ lineHeight: '1.5' }}>
+                    When you sign in, you'll enter your password and then receive a one-time code via your
+                    selected method(s). This ensures only you can access your account.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <Button
+                label="Close"
+                variant="primary"
+                onClick={() => setShowTwoFactorSettings(false)}
+              />
             </div>
           </div>
         </div>
