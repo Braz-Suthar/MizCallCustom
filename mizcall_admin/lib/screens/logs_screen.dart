@@ -101,7 +101,7 @@ class _LogsScreenState extends State<LogsScreen> {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: EdgeInsets.all(MediaQuery.of(context).size.width < 800 ? 16 : 32),
             decoration: BoxDecoration(
               color: theme.cardTheme.color,
               border: Border(
@@ -113,122 +113,256 @@ class _LogsScreenState extends State<LogsScreen> {
                 ),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 600;
+                
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'System Logs',
-                          style: theme.textTheme.displaySmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${_logs.length} total logs',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            setState(() {
-                              _filterLevel = null;
-                              _filterService = null;
-                            });
-                          },
-                          icon: const Icon(Icons.clear_all, size: 20),
-                          label: const Text('Clear Filters'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: theme.brightness == Brightness.dark
-                                ? AppTheme.darkCard
-                                : Colors.white,
-                            foregroundColor: theme.textTheme.bodyMedium?.color,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton.icon(
-                          onPressed: _loadLogs,
-                          icon: _isLoading
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Icon(Icons.refresh, size: 20),
-                          label: const Text('Refresh'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Filters
-                Row(
-                  children: [
-                    // Level Filter
-                    DropdownButton<LogLevel?>(
-                      value: _filterLevel,
-                      hint: const Text('All Levels'),
-                      items: [
-                        const DropdownMenuItem(value: null, child: Text('All Levels')),
-                        ...LogLevel.values.map((level) {
-                          return DropdownMenuItem(
-                            value: level,
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: _getLevelColor(level),
-                                    shape: BoxShape.circle,
-                                  ),
+                    if (isMobile)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'System Logs',
+                                      style: theme.textTheme.headlineMedium?.copyWith(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${_logs.length} logs',
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                Text(level.name.toUpperCase()),
-                              ],
-                            ),
-                          );
-                        }),
-                      ],
-                      onChanged: (value) {
-                        setState(() => _filterLevel = value);
-                      },
-                    ),
-                    const SizedBox(width: 20),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _filterLevel = null;
+                                        _filterService = null;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.clear_all, size: 20),
+                                    tooltip: 'Clear Filters',
+                                  ),
+                                  IconButton(
+                                    onPressed: _loadLogs,
+                                    icon: _isLoading
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+                                        : const Icon(Icons.refresh, size: 20),
+                                    tooltip: 'Refresh',
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      )
+                    else
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'System Logs',
+                                style: theme.textTheme.displaySmall?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${_logs.length} total logs',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                          Row(
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _filterLevel = null;
+                                    _filterService = null;
+                                  });
+                                },
+                                icon: const Icon(Icons.clear_all, size: 20),
+                                label: const Text('Clear Filters'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: theme.brightness == Brightness.dark
+                                      ? AppTheme.darkCard
+                                      : Colors.white,
+                                  foregroundColor: theme.textTheme.bodyMedium?.color,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton.icon(
+                                onPressed: _loadLogs,
+                                icon: _isLoading
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh, size: 20),
+                                label: const Text('Refresh'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 20),
 
-                    // Service Filter
-                    DropdownButton<String?>(
-                      value: _filterService,
-                      hint: const Text('All Services'),
-                      items: [
-                        const DropdownMenuItem(value: null, child: Text('All Services')),
-                        ..._services.map((service) {
-                          return DropdownMenuItem(
-                            value: service,
-                            child: Text(service),
-                          );
-                        }),
+                // Filters (Responsive)
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth < 600) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButton<LogLevel?>(
+                                  value: _filterLevel,
+                                  hint: const Text('All Levels'),
+                                  isExpanded: true,
+                                  items: [
+                                    const DropdownMenuItem(value: null, child: Text('All Levels')),
+                                    ...LogLevel.values.map((level) {
+                                      return DropdownMenuItem(
+                                        value: level,
+                                        child: Row(
+                                          children: [
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: BoxDecoration(
+                                                color: _getLevelColor(level),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(level.name.toUpperCase()),
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() => _filterLevel = value);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButton<String?>(
+                                  value: _filterService,
+                                  hint: const Text('All Services'),
+                                  isExpanded: true,
+                                  items: [
+                                    const DropdownMenuItem(value: null, child: Text('All Services')),
+                                    ..._services.map((service) {
+                                      return DropdownMenuItem(
+                                        value: service,
+                                        child: Text(service),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() => _filterService = value);
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    }
+                    
+                    return Row(
+                      children: [
+                        // Level Filter
+                        DropdownButton<LogLevel?>(
+                          value: _filterLevel,
+                          hint: const Text('All Levels'),
+                          items: [
+                            const DropdownMenuItem(value: null, child: Text('All Levels')),
+                            ...LogLevel.values.map((level) {
+                              return DropdownMenuItem(
+                                value: level,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: _getLevelColor(level),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(level.name.toUpperCase()),
+                                  ],
+                                ),
+                              );
+                            }),
+                          ],
+                          onChanged: (value) {
+                            setState(() => _filterLevel = value);
+                          },
+                        ),
+                        const SizedBox(width: 20),
+
+                        // Service Filter
+                        DropdownButton<String?>(
+                          value: _filterService,
+                          hint: const Text('All Services'),
+                          items: [
+                            const DropdownMenuItem(value: null, child: Text('All Services')),
+                            ..._services.map((service) {
+                              return DropdownMenuItem(
+                                value: service,
+                                child: Text(service),
+                              );
+                            }),
+                          ],
+                          onChanged: (value) {
+                            setState(() => _filterService = value);
+                          },
+                        ),
                       ],
-                      onChanged: (value) {
-                        setState(() => _filterService = value);
-                      },
-                    ),
-                  ],
-                ),
-              ],
+                    );
+                  },
+                  ),
+                ],
+              );
+              },
             ),
           ),
 
@@ -272,7 +406,7 @@ class _LogsScreenState extends State<LogsScreen> {
                           )
                         : ListView.separated(
                             controller: _scrollController,
-                            padding: const EdgeInsets.all(32),
+                            padding: EdgeInsets.all(MediaQuery.of(context).size.width < 800 ? 16 : 32),
                             itemCount: filteredLogs.length,
                             separatorBuilder: (context, index) => const SizedBox(height: 8),
                             itemBuilder: (context, index) {
@@ -289,7 +423,76 @@ class _LogsScreenState extends State<LogsScreen> {
   Widget _buildLogEntry(LogEntry log) {
     final theme = Theme.of(context);
     final levelColor = _getLevelColor(log.level);
+    final isMobile = MediaQuery.of(context).size.width < 800;
 
+    if (isMobile) {
+      // Mobile: Vertical layout
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: levelColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: levelColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      log.levelText,
+                      style: TextStyle(
+                        color: levelColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryBlue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      log.service,
+                      style: const TextStyle(
+                        color: AppTheme.primaryBlue,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    DateFormat('HH:mm:ss').format(log.timestamp),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                log.message,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Desktop: Horizontal layout
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),

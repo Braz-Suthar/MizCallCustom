@@ -7,6 +7,7 @@ import '../config/theme.dart';
 import '../config/app_config.dart';
 import '../models/host.dart';
 import '../services/api_service.dart';
+import '../services/host_service.dart';
 
 class HostDetailsScreen extends StatefulWidget {
   final String hostId;
@@ -78,7 +79,7 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: EdgeInsets.all(MediaQuery.of(context).size.width < 800 ? 16 : 32),
             decoration: BoxDecoration(
               color: theme.cardTheme.color,
               border: Border(
@@ -90,47 +91,111 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                 ),
               ),
             ),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () => context.go('/hosts'),
-                  icon: const Icon(Icons.arrow_back),
-                  tooltip: 'Back to Hosts',
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 600;
+                
+                if (isMobile) {
+                  return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        _host?.displayLabel ?? widget.hostId,
-                        style: theme.textTheme.displaySmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      Row(
+                        children: [
+                          IconButton(
+                            onPressed: () => context.go('/hosts'),
+                            icon: const Icon(Icons.arrow_back),
+                            tooltip: 'Back',
+                          ),
+                          Expanded(
+                            child: Text(
+                              _host?.displayLabel ?? widget.hostId,
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert),
+                            tooltip: 'Actions',
+                            onSelected: _handleAction,
+                            itemBuilder: (context) => _buildActionMenuItems(),
+                          ),
+                          IconButton(
+                            onPressed: _loadHostDetails,
+                            icon: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.refresh),
+                            tooltip: 'Refresh',
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        'Host ID: ${widget.hostId}',
-                        style: theme.textTheme.bodySmall,
+                      Padding(
+                        padding: const EdgeInsets.only(left: 48),
+                        child: Text(
+                          'ID: ${widget.hostId}',
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ),
                     ],
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _loadHostDetails,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  );
+                }
+                
+                return Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => context.go('/hosts'),
+                      icon: const Icon(Icons.arrow_back),
+                      tooltip: 'Back to Hosts',
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _host?.displayLabel ?? widget.hostId,
+                            style: theme.textTheme.displaySmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
-                        )
-                      : const Icon(Icons.refresh, size: 20),
-                  label: const Text('Refresh'),
-                ),
-              ],
+                          const SizedBox(height: 4),
+                          Text(
+                            'Host ID: ${widget.hostId}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert),
+                      tooltip: 'Actions',
+                      onSelected: _handleAction,
+                      itemBuilder: (context) => _buildActionMenuItems(),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      onPressed: _loadHostDetails,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.refresh, size: 20),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
 
@@ -162,7 +227,7 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                         ),
                       )
                     : SingleChildScrollView(
-                        padding: const EdgeInsets.all(32),
+                        padding: EdgeInsets.all(MediaQuery.of(context).size.width < 800 ? 16 : 32),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -170,49 +235,85 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                             _buildHostInfoCard(),
                             const SizedBox(height: 24),
 
-                            // Stats Row
-                            Row(
-                              children: [
-                                Expanded(child: _buildQuickStat('Total Users', _host!.totalUsers?.toString() ?? '0', Icons.people)),
-                                const SizedBox(width: 16),
-                                Expanded(child: _buildQuickStat('Active Users', _host!.activeUsers?.toString() ?? '0', Icons.person)),
-                                const SizedBox(width: 16),
-                                Expanded(child: _buildQuickStat('Total Calls', _host!.totalCalls?.toString() ?? '0', Icons.call)),
-                                const SizedBox(width: 16),
-                                Expanded(child: _buildQuickStat('Active Sessions', _sessions.length.toString(), Icons.devices)),
-                              ],
+                            // Stats Row (Responsive)
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                if (constraints.maxWidth < 800) {
+                                  return Column(
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(child: _buildQuickStat('Total Users', _host!.totalUsers?.toString() ?? '0', Icons.people)),
+                                          const SizedBox(width: 12),
+                                          Expanded(child: _buildQuickStat('Active Users', _host!.activeUsers?.toString() ?? '0', Icons.person)),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        children: [
+                                          Expanded(child: _buildQuickStat('Total Calls', _host!.totalCalls?.toString() ?? '0', Icons.call)),
+                                          const SizedBox(width: 12),
+                                          Expanded(child: _buildQuickStat('Sessions', _sessions.length.toString(), Icons.devices)),
+                                        ],
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  children: [
+                                    Expanded(child: _buildQuickStat('Total Users', _host!.totalUsers?.toString() ?? '0', Icons.people)),
+                                    const SizedBox(width: 16),
+                                    Expanded(child: _buildQuickStat('Active Users', _host!.activeUsers?.toString() ?? '0', Icons.person)),
+                                    const SizedBox(width: 16),
+                                    Expanded(child: _buildQuickStat('Total Calls', _host!.totalCalls?.toString() ?? '0', Icons.call)),
+                                    const SizedBox(width: 16),
+                                    Expanded(child: _buildQuickStat('Active Sessions', _sessions.length.toString(), Icons.devices)),
+                                  ],
+                                );
+                              },
                             ),
                             const SizedBox(height: 24),
 
-                            // Tabs
-                            DefaultTabController(
-                              length: 3,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  TabBar(
-                                    labelColor: AppTheme.primaryBlue,
-                                    unselectedLabelColor: theme.textTheme.bodySmall?.color,
-                                    indicatorColor: AppTheme.primaryBlue,
-                                    tabs: const [
-                                      Tab(text: 'Users'),
-                                      Tab(text: 'Call History'),
-                                      Tab(text: 'Sessions'),
+                            // Tabs (Responsive)
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isMobile = constraints.maxWidth < 600;
+                                
+                                return DefaultTabController(
+                                  length: 3,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      TabBar(
+                                        labelColor: AppTheme.primaryBlue,
+                                        unselectedLabelColor: theme.textTheme.bodySmall?.color,
+                                        indicatorColor: AppTheme.primaryBlue,
+                                        labelStyle: TextStyle(
+                                          fontSize: isMobile ? 13 : 14,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        isScrollable: isMobile,
+                                        tabs: const [
+                                          Tab(text: 'Users'),
+                                          Tab(text: 'Call History'),
+                                          Tab(text: 'Sessions'),
+                                        ],
+                                      ),
+                                      SizedBox(height: isMobile ? 12 : 20),
+                                      SizedBox(
+                                        height: isMobile ? 300 : 400,
+                                        child: TabBarView(
+                                          children: [
+                                            _buildUsersTab(),
+                                            _buildCallsTab(),
+                                            _buildSessionsTab(),
+                                          ],
+                                        ),
+                                      ),
                                     ],
                                   ),
-                                  const SizedBox(height: 20),
-                                  SizedBox(
-                                    height: 400,
-                                    child: TabBarView(
-                                      children: [
-                                        _buildUsersTab(),
-                                        _buildCallsTab(),
-                                        _buildSessionsTab(),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -225,10 +326,11 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
 
   Widget _buildHostInfoCard() {
     final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 800;
     
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(isMobile ? 16 : 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -237,7 +339,73 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
               style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 20),
-            Row(
+            isMobile
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Avatar centered on mobile
+                    Center(
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [AppTheme.primaryBlue, Color(0xFF2563EB)],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: _host!.avatarUrl != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.network(
+                                  _host!.avatarUrl!.startsWith('http')
+                                      ? _host!.avatarUrl!
+                                      : '${AppConfig.apiBaseUrl}${_host!.avatarUrl}',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Center(
+                                      child: Text(
+                                        _host!.name[0].toUpperCase(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 32,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              )
+                            : Center(
+                                child: Text(
+                                  _host!.name[0].toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _buildDetailRow('Display Name', _host!.displayName ?? 'Not set'),
+                    const SizedBox(height: 12),
+                    _buildDetailRow('Email', _host!.email ?? 'Not set'),
+                    const SizedBox(height: 12),
+                    _buildDetailRow('Host ID', _host!.id),
+                    const SizedBox(height: 12),
+                    _buildDetailRow('Status', _host!.statusText, 
+                      valueColor: _host!.enabled ? AppTheme.successGreen : AppTheme.dangerRed),
+                    const SizedBox(height: 12),
+                    _buildDetailRow('2FA', _host!.twoFactorStatus,
+                      valueColor: _host!.twoFactorEnabled ? AppTheme.successGreen : null),
+                    const SizedBox(height: 12),
+                    _buildDetailRow('Multiple Sessions', 
+                      _host!.allowMultipleSessions == true ? 'Allowed' : 'Not Allowed'),
+                  ],
+                )
+              : Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Avatar
@@ -285,38 +453,59 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                 ),
                 const SizedBox(width: 24),
 
-                // Details
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildDetailRow('Display Name', _host!.displayName ?? 'Not set'),
-                      const SizedBox(height: 12),
-                      _buildDetailRow('Email', _host!.email ?? 'Not set'),
-                      const SizedBox(height: 12),
-                      _buildDetailRow('Host ID', _host!.id),
-                    ],
-                  ),
-                ),
+                    // Details
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDetailRow('Display Name', _host!.displayName ?? 'Not set'),
+                          const SizedBox(height: 12),
+                          _buildDetailRow('Email', _host!.email ?? 'Not set'),
+                          const SizedBox(height: 12),
+                          _buildDetailRow('Host ID', _host!.id),
+                        ],
+                      ),
+                    ),
 
-                // Security Info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildDetailRow('Status', _host!.statusText, 
-                        valueColor: _host!.enabled ? AppTheme.successGreen : AppTheme.dangerRed),
-                      const SizedBox(height: 12),
-                      _buildDetailRow('2FA', _host!.twoFactorStatus,
-                        valueColor: _host!.twoFactorEnabled ? AppTheme.successGreen : null),
-                      const SizedBox(height: 12),
-                      _buildDetailRow('Multiple Sessions', 
-                        _host!.allowMultipleSessions == true ? 'Allowed' : 'Not Allowed'),
-                    ],
-                  ),
+                    // Security Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDetailRow('Status', _host!.statusText,
+                            valueColor: _host!.enabled ? AppTheme.successGreen : AppTheme.dangerRed),
+                          const SizedBox(height: 12),
+                          _buildDetailRow('2FA', _host!.twoFactorStatus,
+                            valueColor: _host!.twoFactorEnabled ? AppTheme.successGreen : null),
+                          const SizedBox(height: 12),
+                          _buildDetailRow('Multiple Sessions',
+                            _host!.allowMultipleSessions == true ? 'Allowed' : 'Not Allowed'),
+                        ],
+                      ),
+                    ),
+
+                    // Subscription Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDetailRow('Subscription', _host!.subscriptionStatus,
+                            valueColor: _host!.membershipType == 'Premium' || _host!.membershipType == 'Enterprise'
+                              ? AppTheme.successGreen 
+                              : (_host!.isSubscriptionActive ? null : AppTheme.dangerRed)),
+                          const SizedBox(height: 12),
+                          if (_host!.membershipStartDate != null)
+                            _buildDetailRow('Started', 
+                              DateFormat('MMM dd, yyyy').format(_host!.membershipStartDate!)),
+                          const SizedBox(height: 12),
+                          if (_host!.membershipEndDate != null)
+                            _buildDetailRow('Expires', 
+                              DateFormat('MMM dd, yyyy').format(_host!.membershipEndDate!)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
           ],
         ),
       ),
@@ -540,5 +729,495 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
     if (p.contains('windows')) return Icons.desktop_windows;
     if (p.contains('linux')) return Icons.computer;
     return Icons.devices;
+  }
+
+  List<PopupMenuEntry<String>> _buildActionMenuItems() {
+    return [
+      const PopupMenuItem(
+        value: 'edit',
+        child: Row(
+          children: [
+            Icon(Icons.edit, size: 18),
+            SizedBox(width: 8),
+            Text('Edit Host'),
+          ],
+        ),
+      ),
+      const PopupMenuItem(
+        value: 'reset_password',
+        child: Row(
+          children: [
+            Icon(Icons.lock_reset, size: 18),
+            SizedBox(width: 8),
+            Text('Reset Password'),
+          ],
+        ),
+      ),
+      PopupMenuItem(
+        value: 'toggle_status',
+        child: Row(
+          children: [
+            Icon(
+              _host?.enabled == true ? Icons.block : Icons.check_circle,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(_host?.enabled == true ? 'Disable Host' : 'Enable Host'),
+          ],
+        ),
+      ),
+      const PopupMenuItem(
+        value: 'subscription',
+        child: Row(
+          children: [
+            Icon(Icons.card_membership, size: 18),
+            SizedBox(width: 8),
+            Text('Manage Subscription'),
+          ],
+        ),
+      ),
+      const PopupMenuDivider(),
+      const PopupMenuItem(
+        value: 'delete',
+        child: Row(
+          children: [
+            Icon(Icons.delete, size: 18, color: AppTheme.dangerRed),
+            SizedBox(width: 8),
+            Text('Delete Host', style: TextStyle(color: AppTheme.dangerRed)),
+          ],
+        ),
+      ),
+    ];
+  }
+
+  void _handleAction(String action) {
+    switch (action) {
+      case 'edit':
+        _showEditHostDialog();
+        break;
+      case 'reset_password':
+        _showResetPasswordDialog();
+        break;
+      case 'toggle_status':
+        _toggleHostStatus();
+        break;
+      case 'subscription':
+        _showSubscriptionDialog();
+        break;
+      case 'delete':
+        _showDeleteConfirmation();
+        break;
+    }
+  }
+
+  Future<void> _showEditHostDialog() async {
+    final displayNameController = TextEditingController(text: _host?.displayName ?? '');
+    final emailController = TextEditingController(text: _host?.email ?? '');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Host'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: displayNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Display Name',
+                  hintText: 'Enter display name',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: emailController,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  hintText: 'Enter email',
+                ),
+                keyboardType: TextInputType.emailAddress,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      try {
+        final hostService = context.read<HostService>();
+        await hostService.updateHost(
+          hostId: widget.hostId,
+          displayName: displayNameController.text.trim(),
+          email: emailController.text.trim(),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Host updated successfully')),
+          );
+          _loadHostDetails();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: ${e.toString().replaceFirst('ApiException: ', '')}')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showResetPasswordDialog() async {
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset Password'),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: passwordController,
+                decoration: const InputDecoration(
+                  labelText: 'New Password',
+                  hintText: 'Enter new password',
+                ),
+                obscureText: true,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: confirmController,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm Password',
+                  hintText: 'Re-enter password',
+                ),
+                obscureText: true,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (passwordController.text != confirmController.text) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Passwords do not match')),
+                );
+                return;
+              }
+              if (passwordController.text.length < 6) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Password must be at least 6 characters')),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      try {
+        final hostService = context.read<HostService>();
+        await hostService.resetPassword(
+          hostId: widget.hostId,
+          newPassword: passwordController.text,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Password reset successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: ${e.toString().replaceFirst('ApiException: ', '')}')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _toggleHostStatus() async {
+    final newStatus = !(_host?.enabled ?? true);
+    final action = newStatus ? 'enable' : 'disable';
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('${action.substring(0, 1).toUpperCase()}${action.substring(1)} Host'),
+        content: Text('Are you sure you want to $action this host?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: newStatus ? AppTheme.successGreen : AppTheme.dangerRed,
+            ),
+            child: Text(action.substring(0, 1).toUpperCase() + action.substring(1)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        final hostService = context.read<HostService>();
+        await hostService.updateHost(
+          hostId: widget.hostId,
+          enabled: newStatus,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Host ${action}d successfully')),
+          );
+          _loadHostDetails();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: ${e.toString().replaceFirst('ApiException: ', '')}')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showSubscriptionDialog() async {
+    String selectedType = _host?.membershipType ?? 'Free';
+    DateTime? selectedEndDate = _host?.membershipEndDate;
+
+    final result = await showDialog<Map<String, dynamic>?>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Manage Subscription'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Membership Type', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  value: selectedType,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'Free', child: Text('Free')),
+                    DropdownMenuItem(value: 'Premium', child: Text('Premium')),
+                    DropdownMenuItem(value: 'Enterprise', child: Text('Enterprise')),
+                  ],
+                  onChanged: (value) {
+                    setState(() => selectedType = value ?? 'Free');
+                  },
+                ),
+                const SizedBox(height: 16),
+                const Text('End Date', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedEndDate ?? DateTime.now().add(const Duration(days: 365)),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 3650)),
+                    );
+                    if (date != null) {
+                      setState(() => selectedEndDate = date);
+                    }
+                  },
+                  icon: const Icon(Icons.calendar_today),
+                  label: Text(
+                    selectedEndDate != null
+                        ? DateFormat('MMM dd, yyyy').format(selectedEndDate!)
+                        : 'Select date',
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Divider(),
+                const SizedBox(height: 12),
+                const Text('Quick Actions', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.pop(context, {'action': 'renew'}),
+                        icon: const Icon(Icons.autorenew, size: 18),
+                        label: const Text('Renew (1 Year)'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.successGreen,
+                          side: const BorderSide(color: AppTheme.successGreen),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => Navigator.pop(context, {'action': 'end'}),
+                        icon: const Icon(Icons.cancel, size: 18),
+                        label: const Text('End Now'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.dangerRed,
+                          side: const BorderSide(color: AppTheme.dangerRed),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, {
+                'membershipType': selectedType,
+                'membershipEndDate': selectedEndDate,
+              }),
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      try {
+        final hostService = context.read<HostService>();
+        await hostService.updateSubscription(
+          hostId: widget.hostId,
+          membershipType: result['membershipType'],
+          membershipEndDate: result['membershipEndDate'],
+          action: result['action'],
+        );
+
+        if (mounted) {
+          final action = result['action'];
+          final message = action == 'renew'
+              ? 'Subscription renewed for 1 year'
+              : action == 'end'
+                  ? 'Subscription ended'
+                  : 'Subscription updated successfully';
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message)),
+          );
+          _loadHostDetails();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: ${e.toString().replaceFirst('ApiException: ', '')}')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showDeleteConfirmation() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Host'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Are you sure you want to delete this host?'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.dangerRed.withOpacity(0.1),
+                border: Border.all(color: AppTheme.dangerRed),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning, color: AppTheme.dangerRed, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This will delete all users, calls, and data associated with this host.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.dangerRed,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      try {
+        final hostService = context.read<HostService>();
+        await hostService.deleteHost(widget.hostId);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Host deleted successfully')),
+          );
+          context.go('/hosts');
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: ${e.toString().replaceFirst('ApiException: ', '')}')),
+          );
+        }
+      }
+    }
   }
 }

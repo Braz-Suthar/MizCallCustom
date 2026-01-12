@@ -10,6 +10,7 @@ import 'config/theme.dart';
 import 'config/routes.dart';
 import 'services/auth_service.dart';
 import 'services/api_service.dart';
+import 'services/host_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,10 +45,14 @@ void main() async {
   final authService = AuthService(apiService: apiService, prefs: prefs);
   await authService.loadSavedToken();
   
+  // Initialize host service
+  final hostService = HostService(apiService: apiService);
+  
   runApp(
     MultiProvider(
       providers: [
         Provider<ApiService>.value(value: apiService),
+        Provider<HostService>.value(value: hostService),
         ChangeNotifierProvider<AuthService>.value(value: authService),
       ],
       child: const MizCallAdminApp(),

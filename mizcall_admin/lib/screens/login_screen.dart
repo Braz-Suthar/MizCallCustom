@@ -57,6 +57,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
 
     return Scaffold(
       body: Container(
@@ -69,44 +71,47 @@ class _LoginScreenState extends State<LoginScreen> {
                 : [const Color(0xFFF8FAFC), const Color(0xFFE2E8F0)],
           ),
         ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: Card(
-                elevation: 8,
-                shadowColor: Colors.black.withOpacity(0.2),
-                child: Padding(
-                  padding: const EdgeInsets.all(40),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(isMobile ? 16 : 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: isMobile ? screenWidth - 32 : 480),
+                child: Card(
+                  elevation: 8,
+                  shadowColor: Colors.black.withOpacity(0.2),
+                  child: Padding(
+                    padding: EdgeInsets.all(isMobile ? 24 : 40),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // Logo/Icon
                         Container(
-                          width: 80,
-                          height: 80,
+                          width: isMobile ? 64 : 80,
+                          height: isMobile ? 64 : 80,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
                               colors: [AppTheme.primaryBlue, Color(0xFF2563EB)],
                             ),
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: BorderRadius.circular(isMobile ? 16 : 20),
                           ),
-                          child: const Icon(
+                          child: Icon(
                             Icons.admin_panel_settings,
-                            size: 48,
+                            size: isMobile ? 36 : 48,
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        SizedBox(height: isMobile ? 20 : 24),
 
                         // Title
                         Text(
                           'MizCall Admin',
-                          style: theme.textTheme.displaySmall?.copyWith(
+                          style: (isMobile 
+                            ? theme.textTheme.headlineMedium 
+                            : theme.textTheme.displaySmall)?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
                           textAlign: TextAlign.center,
@@ -117,7 +122,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: theme.textTheme.bodySmall,
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 32),
+                        SizedBox(height: isMobile ? 24 : 32),
 
                         // Error Message
                         if (_errorMessage != null) ...[
@@ -161,7 +166,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             return null;
                           },
                         ),
-                        const SizedBox(height: 20),
+                        SizedBox(height: isMobile ? 16 : 20),
 
                         // Password Field
                         TextFormField(
@@ -192,13 +197,13 @@ class _LoginScreenState extends State<LoginScreen> {
                             return null;
                           },
                         ),
-                        const SizedBox(height: 32),
+                        SizedBox(height: isMobile ? 24 : 32),
 
                         // Login Button
                         ElevatedButton(
                           onPressed: _isLoading ? null : _handleLogin,
                           style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            padding: EdgeInsets.symmetric(vertical: isMobile ? 16 : 18),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -228,6 +233,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ],
                     ),
                   ),
+                ),
                 ),
               ),
             ),

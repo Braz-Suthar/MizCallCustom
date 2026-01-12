@@ -15,6 +15,9 @@ class Host {
   final int? activeUsers;
   final int? totalCalls;
   final String? callBackgroundUrl;
+  final String? membershipType;
+  final DateTime? membershipStartDate;
+  final DateTime? membershipEndDate;
   final DateTime? createdAt;
   final DateTime? lastLoginAt;
 
@@ -35,6 +38,9 @@ class Host {
     this.activeUsers,
     this.totalCalls,
     this.callBackgroundUrl,
+    this.membershipType,
+    this.membershipStartDate,
+    this.membershipEndDate,
     this.createdAt,
     this.lastLoginAt,
   });
@@ -57,6 +63,13 @@ class Host {
       activeUsers: json['activeUsers'] ?? json['active_users'],
       totalCalls: json['totalCalls'] ?? json['total_calls'],
       callBackgroundUrl: json['callBackgroundUrl'] ?? json['call_background_url'],
+      membershipType: json['membershipType'] ?? json['membership_type'],
+      membershipStartDate: json['membershipStartDate'] != null 
+        ? DateTime.tryParse(json['membershipStartDate']) 
+        : (json['membership_start_date'] != null ? DateTime.tryParse(json['membership_start_date']) : null),
+      membershipEndDate: json['membershipEndDate'] != null 
+        ? DateTime.tryParse(json['membershipEndDate']) 
+        : (json['membership_end_date'] != null ? DateTime.tryParse(json['membership_end_date']) : null),
       createdAt: json['createdAt'] != null 
         ? DateTime.tryParse(json['createdAt']) 
         : (json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null),
@@ -76,5 +89,16 @@ class Host {
     if (emailOtpEnabled) methods.add('Email');
     if (mobileOtpEnabled) methods.add('Mobile');
     return methods.isEmpty ? 'Disabled' : methods.join(', ');
+  }
+
+  bool get isSubscriptionActive {
+    if (membershipEndDate == null) return true;
+    return DateTime.now().isBefore(membershipEndDate!);
+  }
+
+  String get subscriptionStatus {
+    if (membershipType == 'Free') return 'Free';
+    if (!isSubscriptionActive) return 'Expired';
+    return membershipType ?? 'Unknown';
   }
 }

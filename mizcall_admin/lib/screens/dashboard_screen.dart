@@ -59,7 +59,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(32),
+            padding: EdgeInsets.all(MediaQuery.of(context).size.width < 800 ? 16 : 32),
             decoration: BoxDecoration(
               color: theme.cardTheme.color,
               border: Border(
@@ -71,46 +71,96 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 600;
+                
+                if (isMobile) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Dashboard',
+                                  style: theme.textTheme.headlineMedium?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'System overview',
+                                  style: theme.textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: _loadStats,
+                            icon: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh),
+                            tooltip: 'Refresh',
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                }
+                
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Dashboard',
-                      style: theme.textTheme.displaySmall?.copyWith(
-                        fontWeight: FontWeight.w800,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Dashboard',
+                          style: theme.textTheme.displaySmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'System overview and statistics',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _loadStats,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.refresh, size: 20),
+                      label: const Text('Refresh'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 14,
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'System overview and statistics',
-                      style: theme.textTheme.bodySmall,
-                    ),
                   ],
-                ),
-                ElevatedButton.icon(
-                  onPressed: _loadStats,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Icon(Icons.refresh, size: 20),
-                  label: const Text('Refresh'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
-                    ),
-                  ),
-                ),
-              ],
+                );
+              },
             ),
           ),
 
@@ -148,48 +198,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       )
                     : SingleChildScrollView(
-                        padding: const EdgeInsets.all(32),
+                        padding: EdgeInsets.all(MediaQuery.of(context).size.width < 800 ? 16 : 32),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Stats Grid
-                            GridView.count(
-                              crossAxisCount: 4,
-                              crossAxisSpacing: 20,
-                              mainAxisSpacing: 20,
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              childAspectRatio: 1.8,
-                              children: [
-                                StatCard(
-                                  title: 'Total Hosts',
-                                  value: _stats!.totalHosts.toString(),
-                                  icon: Icons.people,
-                                  color: AppTheme.primaryBlue,
-                                  subtitle: '${_stats!.activeHosts} active',
-                                ),
-                                StatCard(
-                                  title: 'Total Users',
-                                  value: _stats!.totalUsers.toString(),
-                                  icon: Icons.person,
-                                  color: AppTheme.secondaryBlue,
-                                  subtitle: '${_stats!.activeUsers} active',
-                                ),
-                                StatCard(
-                                  title: 'Total Calls',
-                                  value: _stats!.totalCalls.toString(),
-                                  icon: Icons.call,
-                                  color: AppTheme.successGreen,
-                                  subtitle: '${_stats!.activeCalls} active now',
-                                ),
-                                StatCard(
-                                  title: 'Recordings',
-                                  value: _stats!.totalRecordings.toString(),
-                                  icon: Icons.mic,
-                                  color: AppTheme.warningOrange,
-                                  subtitle: _stats!.storageUsed,
-                                ),
-                              ],
+                            // Stats Grid (Responsive)
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final width = constraints.maxWidth;
+                                int crossAxisCount;
+                                double childAspectRatio;
+                                
+                                if (width < 600) {
+                                  crossAxisCount = 1;
+                                  childAspectRatio = 2.5;
+                                } else if (width < 900) {
+                                  crossAxisCount = 2;
+                                  childAspectRatio = 2.0;
+                                } else if (width < 1200) {
+                                  crossAxisCount = 3;
+                                  childAspectRatio = 1.8;
+                                } else {
+                                  crossAxisCount = 4;
+                                  childAspectRatio = 1.8;
+                                }
+                                
+                                return GridView.count(
+                                  crossAxisCount: crossAxisCount,
+                                  crossAxisSpacing: width < 600 ? 12 : 20,
+                                  mainAxisSpacing: width < 600 ? 12 : 20,
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  childAspectRatio: childAspectRatio,
+                                  children: [
+                                    StatCard(
+                                      title: 'Total Hosts',
+                                      value: _stats!.totalHosts.toString(),
+                                      icon: Icons.people,
+                                      color: AppTheme.primaryBlue,
+                                      subtitle: '${_stats!.activeHosts} active',
+                                    ),
+                                    StatCard(
+                                      title: 'Total Users',
+                                      value: _stats!.totalUsers.toString(),
+                                      icon: Icons.person,
+                                      color: AppTheme.secondaryBlue,
+                                      subtitle: '${_stats!.activeUsers} active',
+                                    ),
+                                    StatCard(
+                                      title: 'Total Calls',
+                                      value: _stats!.totalCalls.toString(),
+                                      icon: Icons.call,
+                                      color: AppTheme.successGreen,
+                                      subtitle: '${_stats!.activeCalls} active now',
+                                    ),
+                                    StatCard(
+                                      title: 'Recordings',
+                                      value: _stats!.totalRecordings.toString(),
+                                      icon: Icons.mic,
+                                      color: AppTheme.warningOrange,
+                                      subtitle: _stats!.storageUsed,
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
 
                             const SizedBox(height: 32),
@@ -201,32 +273,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             ),
                             const SizedBox(height: 16),
 
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildStatusCard(
-                                    'Backend API',
-                                    _stats!.serverStatus,
-                                    Icons.dns,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _buildStatusCard(
-                                    'Mediasoup',
-                                    _stats!.mediasoupStatus,
-                                    Icons.videocam,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: _buildStatusCard(
-                                    'Database',
-                                    _stats!.databaseStatus,
-                                    Icons.storage,
-                                  ),
-                                ),
-                              ],
+                            // Responsive System Status Cards
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                if (constraints.maxWidth < 800) {
+                                  // Mobile: Stack vertically
+                                  return Column(
+                                    children: [
+                                      _buildStatusCard(
+                                        'Backend API',
+                                        _stats!.serverStatus,
+                                        Icons.dns,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      _buildStatusCard(
+                                        'Mediasoup',
+                                        _stats!.mediasoupStatus,
+                                        Icons.videocam,
+                                      ),
+                                      const SizedBox(height: 12),
+                                      _buildStatusCard(
+                                        'Database',
+                                        _stats!.databaseStatus,
+                                        Icons.storage,
+                                      ),
+                                    ],
+                                  );
+                                } else {
+                                  // Desktop: Row
+                                  return Row(
+                                    children: [
+                                      Expanded(
+                                        child: _buildStatusCard(
+                                          'Backend API',
+                                          _stats!.serverStatus,
+                                          Icons.dns,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: _buildStatusCard(
+                                          'Mediasoup',
+                                          _stats!.mediasoupStatus,
+                                          Icons.videocam,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: _buildStatusCard(
+                                          'Database',
+                                          _stats!.databaseStatus,
+                                          Icons.storage,
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }
+                              },
                             ),
                           ],
                         ),

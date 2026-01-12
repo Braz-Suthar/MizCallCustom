@@ -16,6 +16,7 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout> {
   int _selectedIndex = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   final List<_NavItem> _navItems = [
     _NavItem(
@@ -87,30 +88,8 @@ class _MainLayoutState extends State<MainLayout> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final authService = context.watch<AuthService>();
-    final username = authService.currentUser?.username ?? 'Admin';
-
-    return Scaffold(
-      body: Row(
-        children: [
-          // Sidebar
-          Container(
-            width: 280,
-            decoration: BoxDecoration(
-              color: theme.cardTheme.color,
-              border: Border(
-                right: BorderSide(
-                  color: theme.brightness == Brightness.dark
-                      ? AppTheme.darkBorder
-                      : AppTheme.lightBorder,
-                  width: 1,
-                ),
-              ),
-            ),
-            child: Column(
+  Widget _buildSidebarContent(BuildContext context, ThemeData theme, String username, {bool isDrawer = false}) {
+    return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Header
@@ -158,7 +137,7 @@ class _MainLayoutState extends State<MainLayout> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     itemCount: _navItems.length,
                     itemBuilder: (context, index) {
-                      final item = _navItems[index];
+                              final item = _navItems[index];
                       final isSelected = _selectedIndex == index;
 
                       return Padding(
@@ -166,7 +145,13 @@ class _MainLayoutState extends State<MainLayout> {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: () => _onNavItemTapped(index),
+                            onTap: () {
+                              _onNavItemTapped(index);
+                              // Close drawer on mobile after navigation
+                              if (isDrawer && Navigator.canPop(context)) {
+                                Navigator.pop(context);
+                              }
+                            },
                             borderRadius: BorderRadius.circular(12),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
@@ -291,12 +276,113 @@ class _MainLayoutState extends State<MainLayout> {
                   ),
                 ),
               ],
+            );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final authService = context.watch<AuthService>();
+    final username = authService.currentUser?.username ?? 'Admin';
+    final mediaQuery = MediaQuery.of(context);
+    final isMobile = mediaQuery.size.width < 800;
+
+    final sidebarContent = _buildSidebarContent(context, theme, username, isDrawer: isMobile);
+
+    return Scaffold(
+      key: _scaffoldKey,
+      drawer: isMobile
+          ? Drawer(
+              width: 280,
+              child: sidebarContent,
+            )
+          : null,
+      body: Row(
+        children: [
+          // Desktop Sidebar (only show on larger screens)
+          if (!isMobile)
+            Container(
+              width: 280,
+              decoration: BoxDecoration(
+                color: theme.cardTheme.color,
+                border: Border(
+                  right: BorderSide(
+                    color: theme.brightness == Brightness.dark
+                        ? AppTheme.darkBorder
+                        : AppTheme.lightBorder,
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: sidebarContent,
             ),
-          ),
 
           // Main Content
           Expanded(
-            child: widget.child,
+            child: Column(
+              children: [
+                // Mobile App Bar (hamburger menu)
+                if (isMobile)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: theme.cardTheme.color,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: theme.brightness == Brightness.dark
+                              ? AppTheme.darkBorder
+                              : AppTheme.lightBorder,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.menu),
+                              onPressed: () {
+                                _scaffoldKey.currentState?.openDrawer();
+                              },
+                              tooltip: 'Menu',
+                            ),
+                            const SizedBox(width: 12),
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [AppTheme.primaryBlue, Color(0xFF2563EB)],
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.admin_panel_settings,
+                                size: 24,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'MizCall Admin',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                
+                // Main content
+                Expanded(
+                  child: widget.child,
+                ),
+              ],
+            ),
           ),
         ],
       ),

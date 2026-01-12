@@ -19,10 +19,11 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 600;
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(isMobile ? 16 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -35,24 +36,31 @@ class StatCard extends StatelessWidget {
                     title,
                     style: theme.textTheme.bodySmall,
                     overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, color: color, size: 20),
+                  child: Icon(icon, color: color, size: isMobile ? 18 : 20),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            Text(
-              value,
-              style: theme.textTheme.displaySmall?.copyWith(
-                color: color,
-                fontWeight: FontWeight.w800,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                style: theme.textTheme.displaySmall?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w800,
+                  fontSize: isMobile ? 28 : null,
+                ),
               ),
             ),
             if (subtitle != null) ...[
@@ -60,9 +68,10 @@ class StatCard extends StatelessWidget {
               Text(
                 subtitle!,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  fontSize: 12,
+                  fontSize: isMobile ? 11 : 12,
                 ),
                 overflow: TextOverflow.ellipsis,
+                maxLines: 1,
               ),
             ],
           ],

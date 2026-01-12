@@ -122,6 +122,7 @@ router.get("/hosts", requireAuth, requireAdmin, async (req, res) => {
         h.name,
         h.display_name,
         h.avatar_url,
+        h.enabled,
         h.two_factor_enabled,
         h.email_otp_enabled,
         h.mobile_otp_enabled,
@@ -129,6 +130,9 @@ router.get("/hosts", requireAuth, requireAdmin, async (req, res) => {
         h.enforce_single_session,
         h.enforce_user_single_session,
         h.call_background_url,
+        h.membership_type,
+        h.membership_start_date,
+        h.membership_end_date,
         COUNT(DISTINCT u.id) as total_users,
         COUNT(DISTINCT CASE WHEN u.enabled = true THEN u.id END) as active_users,
         COUNT(DISTINCT r.id) as total_calls
@@ -145,7 +149,7 @@ router.get("/hosts", requireAuth, requireAdmin, async (req, res) => {
       displayName: row.display_name,
       email: row.name, // name field stores email
       avatarUrl: row.avatar_url,
-      enabled: true, // No enabled flag on hosts yet
+      enabled: row.enabled ?? true,
       twoFactorEnabled: row.two_factor_enabled,
       emailOtpEnabled: row.email_otp_enabled,
       mobileOtpEnabled: row.mobile_otp_enabled,
@@ -156,6 +160,9 @@ router.get("/hosts", requireAuth, requireAdmin, async (req, res) => {
       activeUsers: parseInt(row.active_users) || 0,
       totalCalls: parseInt(row.total_calls) || 0,
       callBackgroundUrl: row.call_background_url,
+      membershipType: row.membership_type,
+      membershipStartDate: row.membership_start_date,
+      membershipEndDate: row.membership_end_date,
     }));
 
     res.json({ hosts });
@@ -176,6 +183,7 @@ router.get("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
         h.name,
         h.display_name,
         h.avatar_url,
+        h.enabled,
         h.two_factor_enabled,
         h.email_otp_enabled,
         h.mobile_otp_enabled,
@@ -183,6 +191,9 @@ router.get("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
         h.enforce_single_session,
         h.enforce_user_single_session,
         h.call_background_url,
+        h.membership_type,
+        h.membership_start_date,
+        h.membership_end_date,
         COUNT(DISTINCT u.id) as total_users,
         COUNT(DISTINCT CASE WHEN u.enabled = true THEN u.id END) as active_users,
         COUNT(DISTINCT r.id) as total_calls
@@ -205,7 +216,7 @@ router.get("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
       displayName: host.display_name,
       email: host.name,
       avatarUrl: host.avatar_url,
-      enabled: true,
+      enabled: host.enabled ?? true,
       twoFactorEnabled: host.two_factor_enabled,
       emailOtpEnabled: host.email_otp_enabled,
       mobileOtpEnabled: host.mobile_otp_enabled,
@@ -216,6 +227,9 @@ router.get("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
       activeUsers: parseInt(host.active_users) || 0,
       totalCalls: parseInt(host.total_calls) || 0,
       callBackgroundUrl: host.call_background_url,
+      membershipType: host.membership_type,
+      membershipStartDate: host.membership_start_date,
+      membershipEndDate: host.membership_end_date,
     });
   } catch (error) {
     console.error("Failed to fetch host details:", error);
@@ -323,6 +337,212 @@ router.get("/logs", requireAuth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch logs:", error);
     res.status(500).json({ error: "Failed to fetch logs" });
+  }
+});
+
+/* CREATE NEW HOST */
+router.post("/hosts", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { name, email, password, displayName, membershipType, membershipEndDate } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
+
+    // Check if host with this email already exists
+    const existingHost = await query(
+      `SELECT id FROM hosts WHERE LOWER(name) = LOWER($1)`,
+      [email]
+    );
+
+    if (existingHost.rows.length > 0) {
+      return res.status(400).json({ error: "Host with this email already exists" });
+    }
+
+    // Generate host ID
+    const { generateHostId } = await import("../../services/id.js");
+    const hostId = await generateHostId();
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Set membership dates
+    const startDate = new Date();
+    const endDate = membershipEndDate 
+      ? new Date(membershipEndDate)
+      : new Date(startDate.getTime() + 365 * 24 * 60 * 60 * 1000); // 1 year default
+
+    // Insert new host
+    await query(
+      `INSERT INTO hosts 
+       (id, name, display_name, password, membership_type, membership_start_date, membership_end_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [hostId, email, displayName || email, hashedPassword, membershipType || 'Free', startDate, endDate]
+    );
+
+    res.json({
+      success: true,
+      hostId,
+      message: "Host created successfully",
+    });
+  } catch (error) {
+    console.error("Failed to create host:", error);
+    res.status(500).json({ error: "Failed to create host" });
+  }
+});
+
+/* UPDATE HOST */
+router.patch("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { hostId } = req.params;
+    const { displayName, email, enabled } = req.body;
+
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (displayName !== undefined) {
+      updates.push(`display_name = $${idx++}`);
+      values.push(displayName);
+    }
+
+    if (email !== undefined) {
+      updates.push(`name = $${idx++}`);
+      values.push(email);
+    }
+
+    if (enabled !== undefined) {
+      updates.push(`enabled = $${idx++}`);
+      values.push(enabled);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    values.push(hostId);
+    await query(
+      `UPDATE hosts SET ${updates.join(", ")} WHERE id = $${idx}`,
+      values
+    );
+
+    res.json({ success: true, message: "Host updated successfully" });
+  } catch (error) {
+    console.error("Failed to update host:", error);
+    res.status(500).json({ error: "Failed to update host" });
+  }
+});
+
+/* RESET HOST PASSWORD */
+router.post("/hosts/:hostId/reset-password", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { hostId } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await query(
+      `UPDATE hosts SET password = $1 WHERE id = $2`,
+      [hashedPassword, hostId]
+    );
+
+    res.json({ success: true, message: "Password reset successfully" });
+  } catch (error) {
+    console.error("Failed to reset password:", error);
+    res.status(500).json({ error: "Failed to reset password" });
+  }
+});
+
+/* UPDATE HOST SUBSCRIPTION */
+router.patch("/hosts/:hostId/subscription", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { hostId } = req.params;
+    const { membershipType, membershipEndDate, action } = req.body;
+
+    if (action === 'end') {
+      // End subscription immediately
+      await query(
+        `UPDATE hosts 
+         SET membership_type = 'Free', 
+             membership_end_date = NOW() 
+         WHERE id = $1`,
+        [hostId]
+      );
+      return res.json({ success: true, message: "Subscription ended" });
+    }
+
+    if (action === 'renew') {
+      // Renew subscription
+      const endDate = membershipEndDate 
+        ? new Date(membershipEndDate)
+        : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // 1 year from now
+
+      await query(
+        `UPDATE hosts 
+         SET membership_type = $1, 
+             membership_start_date = NOW(),
+             membership_end_date = $2 
+         WHERE id = $3`,
+        [membershipType || 'Premium', endDate, hostId]
+      );
+      return res.json({ success: true, message: "Subscription renewed" });
+    }
+
+    // Regular update
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (membershipType !== undefined) {
+      updates.push(`membership_type = $${idx++}`);
+      values.push(membershipType);
+    }
+
+    if (membershipEndDate !== undefined) {
+      updates.push(`membership_end_date = $${idx++}`);
+      values.push(new Date(membershipEndDate));
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: "No fields to update" });
+    }
+
+    values.push(hostId);
+    await query(
+      `UPDATE hosts SET ${updates.join(", ")} WHERE id = $${idx}`,
+      values
+    );
+
+    res.json({ success: true, message: "Subscription updated successfully" });
+  } catch (error) {
+    console.error("Failed to update subscription:", error);
+    res.status(500).json({ error: "Failed to update subscription" });
+  }
+});
+
+/* DELETE HOST */
+router.delete("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { hostId } = req.params;
+
+    // Delete host (CASCADE will handle related records)
+    const result = await query(
+      `DELETE FROM hosts WHERE id = $1 RETURNING id`,
+      [hostId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Host not found" });
+    }
+
+    res.json({ success: true, message: "Host deleted successfully" });
+  } catch (error) {
+    console.error("Failed to delete host:", error);
+    res.status(500).json({ error: "Failed to delete host" });
   }
 });
 
