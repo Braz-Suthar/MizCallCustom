@@ -27,17 +27,28 @@ router.post("/login", async (req, res) => {
   const adminUsername = process.env.ADMIN_USERNAME || "admin";
   const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH;
 
+  console.log("[Admin] Environment check:", {
+    hasUsername: !!process.env.ADMIN_USERNAME,
+    hasPasswordHash: !!adminPasswordHash,
+    usernameMatch: username === adminUsername,
+    expectedUsername: adminUsername,
+  });
+
   if (!adminPasswordHash) {
     console.error("[Admin] ADMIN_PASSWORD_HASH not set in environment variables");
     return res.status(500).json({ error: "Admin authentication not configured" });
   }
 
   if (username !== adminUsername) {
+    console.log("[Admin] Username mismatch - expected:", adminUsername, "got:", username);
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
   // Verify password
+  console.log("[Admin] Verifying password...");
   const match = await bcrypt.compare(password, adminPasswordHash);
+  console.log("[Admin] Password match:", match);
+  
   if (!match) {
     return res.status(401).json({ error: "Invalid credentials" });
   }
