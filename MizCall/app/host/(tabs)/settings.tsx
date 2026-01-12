@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View, Linking } from "react-native";
 import { Image } from "expo-image";
 import { useTheme } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -24,6 +25,7 @@ const SUCCESS_GREEN = "#22c55e";
 
 export default function HostSettings() {
   const dispatch = useAppDispatch();
+  const router = useRouter();
   const themeMode = useAppSelector((s) => s.theme.mode);
   const auth = useAppSelector((s) => s.auth);
   const { colors } = useTheme();
@@ -545,37 +547,6 @@ export default function HostSettings() {
     }
   };
 
-  const handleToggleTwoFactor = async () => {
-    if (!auth.role) return;
-    const next = !twoFactorEnabled;
-    setTwoFactorEnabled(next);
-    try {
-      await dispatch<any>(authApiFetch("/host/security", {
-        method: "PATCH",
-        body: JSON.stringify({ twoFactorEnabled: next }),
-      }));
-      const updated = {
-        ...auth,
-        twoFactorEnabled: next,
-        token: auth.token,
-        refreshToken: auth.refreshToken,
-        role: auth.role ?? "host",
-      };
-      dispatch(setCredentials(updated as any));
-      await saveSession(updated as any);
-      Toast.show({
-        type: "success",
-        text1: "Security updated",
-        text2: next ? "OTP required at login." : "OTP disabled for login.",
-        position: "top",
-        visibilityTime: 2000,
-      });
-    } catch (e) {
-      setTwoFactorEnabled(!next);
-      Alert.alert("Error", "Failed to update two-factor login setting.");
-    }
-  };
-
   const handleChangePassword = async (currentPassword: string, newPassword: string) => {
     if (!auth.token) throw new Error("Not authenticated");
     
@@ -743,43 +714,30 @@ export default function HostSettings() {
           <Ionicons name="chevron-forward" size={20} color={colors.text} style={{ opacity: 0.5 }} />
         </Pressable>
 
-        <View style={[styles.notificationRow, styles.securityRow]}>
-          <View style={styles.notificationText}>
-            <Text style={[styles.notificationTitle, { color: colors.text }]}>Two-factor login</Text>
-            <Text style={[styles.notificationSubtitle, { color: colors.text }]}>
-              Send an OTP to your email when signing in.
-            </Text>
+        <Pressable
+          style={[styles.securityButton, { borderWidth: 0 }]}
+          onPress={() => router.push("/host/two-factor-settings")}
+        >
+          <View style={styles.securityButtonLeft}>
+            <View>
+              <Text style={[styles.securityButtonTitle, { color: colors.text }]}>
+                Two-Factor Authentication
+              </Text>
+              <Text style={[styles.securityButtonSubtitle, { color: colors.text }]}>
+                {twoFactorEnabled ? "Manage your 2FA methods" : "Add extra security to your account"}
+              </Text>
+            </View>
           </View>
-          <Pressable
-            accessibilityRole="switch"
-            accessibilityState={{ checked: twoFactorEnabled }}
-            onPress={handleToggleTwoFactor}
-            style={[
-              styles.toggleTrack,
-              {
-                backgroundColor: twoFactorEnabled
-                  ? PRIMARY_BLUE + "55"
-                  : isDarkBg
-                  ? "rgba(255,255,255,0.16)"
-                  : "rgba(0,0,0,0.06)",
-                borderColor: twoFactorEnabled
-                  ? colors.border ?? "transparent"
-                  : colors.border ?? (isDarkBg ? "rgba(255,255,255,0.25)" : "rgba(0,0,0,0.12)"),
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.toggleThumb,
-                {
-                  backgroundColor: twoFactorEnabled ? PRIMARY_BLUE : colors.card ?? "#f9fafb",
-                  transform: [{ translateX: twoFactorEnabled ? 20 : 0 }],
-                  shadowColor: "#000",
-                },
-              ]}
-            />
-          </Pressable>
-        </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {twoFactorEnabled && (
+              <View style={[styles.enabledBadge, { backgroundColor: SUCCESS_GREEN }]}>
+                <Ionicons name="checkmark-circle" size={14} color="#fff" />
+                <Text style={styles.enabledBadgeText}>Enabled</Text>
+              </View>
+            )}
+            <Ionicons name="chevron-forward" size={20} color={colors.text} style={{ opacity: 0.5 }} />
+          </View>
+        </Pressable>
       </View>
 
       {/* Appearance Section */}
@@ -1920,6 +1878,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginBottom: 40,
+  },
+  enabledBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  enabledBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
   },
 });
 

@@ -131,6 +131,255 @@ router.patch("/security", requireAuth, requireHost, async (req, res) => {
   });
 });
 
+/* GET TWO-FACTOR SETTINGS */
+router.get("/two-factor-settings", requireAuth, requireHost, async (req, res) => {
+  const result = await query(
+    `SELECT email_otp_enabled, mobile_otp_enabled, phone_number, phone_verified
+     FROM hosts
+     WHERE id = $1`,
+    [req.hostId]
+  );
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: "Host not found" });
+  }
+
+  const host = result.rows[0];
+  res.json({
+    emailOtpEnabled: host.email_otp_enabled || false,
+    mobileOtpEnabled: host.mobile_otp_enabled || false,
+    phoneNumber: host.phone_verified ? host.phone_number : null,
+  });
+});
+
+/* UPDATE EMAIL OTP SETTING */
+router.patch("/two-factor-settings/email", requireAuth, requireHost, async (req, res) => {
+  const { enabled } = req.body;
+  
+  if (enabled === undefined) {
+    return res.status(400).json({ error: "enabled field required" });
+  }
+
+  await query(
+    `UPDATE hosts 
+     SET email_otp_enabled = $1,
+         two_factor_enabled = (email_otp_enabled OR mobile_otp_enabled OR $1)
+     WHERE id = $2`,
+    [!!enabled, req.hostId]
+  );
+
+  res.json({ emailOtpEnabled: !!enabled });
+});
+
+/* UPDATE MOBILE OTP SETTING */
+router.patch("/two-factor-settings/mobile", requireAuth, requireHost, async (req, res) => {
+  const { enabled } = req.body;
+  
+  if (enabled === undefined) {
+    return res.status(400).json({ error: "enabled field required" });
+  }
+
+  // Check if phone is verified
+  const hostResult = await query(
+    `SELECT phone_verified FROM hosts WHERE id = $1`,
+    [req.hostId]
+  );
+
+  if (hostResult.rows.length === 0) {
+    return res.status(404).json({ error: "Host not found" });
+  }
+
+  if (enabled && !hostResult.rows[0].phone_verified) {
+    return res.status(400).json({ error: "Phone number not verified. Please add and verify a phone number first." });
+  }
+
+  await query(
+    `UPDATE hosts 
+     SET mobile_otp_enabled = $1,
+         two_factor_enabled = (email_otp_enabled OR $1)
+     WHERE id = $2`,
+    [!!enabled, req.hostId]
+  );
+
+  res.json({ mobileOtpEnabled: !!enabled });
+});
+
+/* SEND OTP TO PHONE */
+router.post("/two-factor-settings/mobile/send-otp", requireAuth, requireHost, async (req, res) => {
+  const { phoneNumber } = req.body;
+  
+  if (!phoneNumber) {
+    return res.status(400).json({ error: "phoneNumber required" });
+  }
+
+  // Generate a 6-digit OTP
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  // Store OTP in database (you might want to create a table for this)
+  await query(
+    `INSERT INTO otp_verifications (host_id, phone_number, otp, expires_at, verified)
+     VALUES ($1, $2, $3, $4, false)
+     ON CONFLICT (host_id, phone_number) 
+     DO UPDATE SET otp = $3, expires_at = $4, verified = false`,
+    [req.hostId, phoneNumber, otp, expiresAt]
+  );
+
+  // TODO: Send OTP via SMS service (Twilio, AWS SNS, etc.)
+  console.log(`[2FA] OTP for ${phoneNumber}: ${otp}`);
+  
+  // For development, just return success
+  // In production, integrate with SMS service
+  res.json({ 
+    success: true, 
+    message: "OTP sent successfully",
+    // Remove this in production:
+    dev_otp: process.env.NODE_ENV === "development" ? otp : undefined
+  });
+});
+
+/* VERIFY PHONE AND ENABLE MOBILE OTP */
+router.post("/two-factor-settings/mobile/verify", requireAuth, requireHost, async (req, res) => {
+  const { phoneNumber, otp } = req.body;
+  
+  if (!phoneNumber || !otp) {
+    return res.status(400).json({ error: "phoneNumber and otp required" });
+  }
+
+  // Check OTP
+  const otpResult = await query(
+    `SELECT otp, expires_at FROM otp_verifications
+     WHERE host_id = $1 AND phone_number = $2 AND verified = false
+     ORDER BY expires_at DESC
+     LIMIT 1`,
+    [req.hostId, phoneNumber]
+  );
+
+  if (otpResult.rows.length === 0) {
+    return res.status(400).json({ error: "No OTP found. Please request a new one." });
+  }
+
+  const otpRecord = otpResult.rows[0];
+  
+  if (new Date() > new Date(otpRecord.expires_at)) {
+    return res.status(400).json({ error: "OTP expired. Please request a new one." });
+  }
+
+  if (otpRecord.otp !== otp) {
+    return res.status(400).json({ error: "Invalid OTP" });
+  }
+
+  // Mark OTP as verified
+  await query(
+    `UPDATE otp_verifications 
+     SET verified = true 
+     WHERE host_id = $1 AND phone_number = $2`,
+    [req.hostId, phoneNumber]
+  );
+
+  // Update host with verified phone and enable mobile OTP
+  await query(
+    `UPDATE hosts 
+     SET phone_number = $1, 
+         phone_verified = true,
+         mobile_otp_enabled = true,
+         two_factor_enabled = true
+     WHERE id = $2`,
+    [phoneNumber, req.hostId]
+  );
+
+  res.json({ 
+    success: true, 
+    message: "Phone verified and mobile OTP enabled",
+    mobileOtpEnabled: true
+  });
+});
+
+/* CHANGE PHONE NUMBER */
+router.post("/two-factor-settings/mobile/change", requireAuth, requireHost, async (req, res) => {
+  const { currentOtp, newPhoneNumber, newOtp } = req.body;
+  
+  if (!currentOtp || !newPhoneNumber || !newOtp) {
+    return res.status(400).json({ error: "currentOtp, newPhoneNumber, and newOtp required" });
+  }
+
+  // Get current phone number
+  const hostResult = await query(
+    `SELECT phone_number FROM hosts WHERE id = $1 AND phone_verified = true`,
+    [req.hostId]
+  );
+
+  if (hostResult.rows.length === 0) {
+    return res.status(404).json({ error: "No verified phone number found" });
+  }
+
+  const currentPhone = hostResult.rows[0].phone_number;
+
+  // Verify current phone OTP
+  const currentOtpResult = await query(
+    `SELECT otp, expires_at FROM otp_verifications
+     WHERE host_id = $1 AND phone_number = $2 AND verified = false
+     ORDER BY expires_at DESC
+     LIMIT 1`,
+    [req.hostId, currentPhone]
+  );
+
+  if (currentOtpResult.rows.length === 0) {
+    return res.status(400).json({ error: "No OTP found for current number" });
+  }
+
+  if (new Date() > new Date(currentOtpResult.rows[0].expires_at)) {
+    return res.status(400).json({ error: "OTP for current number expired" });
+  }
+
+  if (currentOtpResult.rows[0].otp !== currentOtp) {
+    return res.status(400).json({ error: "Invalid OTP for current number" });
+  }
+
+  // Verify new phone OTP
+  const newOtpResult = await query(
+    `SELECT otp, expires_at FROM otp_verifications
+     WHERE host_id = $1 AND phone_number = $2 AND verified = false
+     ORDER BY expires_at DESC
+     LIMIT 1`,
+    [req.hostId, newPhoneNumber]
+  );
+
+  if (newOtpResult.rows.length === 0) {
+    return res.status(400).json({ error: "No OTP found for new number" });
+  }
+
+  if (new Date() > new Date(newOtpResult.rows[0].expires_at)) {
+    return res.status(400).json({ error: "OTP for new number expired" });
+  }
+
+  if (newOtpResult.rows[0].otp !== newOtp) {
+    return res.status(400).json({ error: "Invalid OTP for new number" });
+  }
+
+  // Mark both OTPs as verified
+  await query(
+    `UPDATE otp_verifications 
+     SET verified = true 
+     WHERE host_id = $1 AND phone_number IN ($2, $3)`,
+    [req.hostId, currentPhone, newPhoneNumber]
+  );
+
+  // Update phone number
+  await query(
+    `UPDATE hosts 
+     SET phone_number = $1 
+     WHERE id = $2`,
+    [newPhoneNumber, req.hostId]
+  );
+
+  res.json({ 
+    success: true, 
+    message: "Phone number changed successfully",
+    phoneNumber: newPhoneNumber
+  });
+});
+
 /* HOST SESSION LIST */
 router.get("/sessions", requireAuth, requireHost, async (req, res) => {
   const result = await query(

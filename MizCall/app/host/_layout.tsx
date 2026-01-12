@@ -9,6 +9,7 @@ export default function HostLayout() {
     >
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="create-user" />
+      <Stack.Screen name="two-factor-settings" />
       <Stack.Screen 
         name="active-call" 
         options={{
