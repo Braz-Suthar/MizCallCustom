@@ -6,6 +6,7 @@ import '../screens/login_screen.dart';
 import '../screens/dashboard_screen.dart';
 import '../screens/hosts_screen.dart';
 import '../screens/host_details_screen.dart';
+import '../screens/users_screen.dart';
 import '../screens/logs_screen.dart';
 import '../screens/main_layout.dart';
 import '../services/auth_service.dart';
@@ -52,6 +53,10 @@ class AppRouter {
               final hostId = state.pathParameters['hostId']!;
               return HostDetailsScreen(hostId: hostId);
             },
+          ),
+          GoRoute(
+            path: '/users',
+            builder: (context, state) => const UsersScreen(),
           ),
           GoRoute(
             path: '/logs',

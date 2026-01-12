@@ -8,6 +8,7 @@ import '../config/app_config.dart';
 import '../models/host.dart';
 import '../services/api_service.dart';
 import '../services/host_service.dart';
+import '../services/export_service.dart';
 
 class HostsScreen extends StatefulWidget {
   const HostsScreen({super.key});
@@ -118,6 +119,11 @@ class _HostsScreenState extends State<HostsScreen> {
                             ),
                           ),
                           IconButton(
+                            onPressed: _exportHosts,
+                            icon: const Icon(Icons.download),
+                            tooltip: 'Export',
+                          ),
+                          IconButton(
                             onPressed: _showCreateHostDialog,
                             icon: const Icon(Icons.add),
                             tooltip: 'Create Host',
@@ -191,6 +197,12 @@ class _HostsScreenState extends State<HostsScreen> {
                               setState(() => _searchQuery = value);
                             },
                           ),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton.icon(
+                          onPressed: _exportHosts,
+                          icon: const Icon(Icons.download, size: 20),
+                          label: const Text('Export'),
                         ),
                         const SizedBox(width: 12),
                         ElevatedButton.icon(
@@ -650,6 +662,44 @@ class _HostsScreenState extends State<HostsScreen> {
             SnackBar(content: Text('Error: ${e.toString().replaceFirst('ApiException: ', '')}')),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _exportHosts() async {
+    try {
+      final exportService = context.read<ExportService>();
+      final hostsData = _hosts.map((host) => {
+        'id': host.id,
+        'name': host.name,
+        'displayName': host.displayName,
+        'email': host.email,
+        'enabled': host.enabled,
+        'membershipType': host.membershipType,
+        'totalUsers': host.totalUsers,
+        'totalCalls': host.totalCalls,
+        'createdAt': host.createdAt?.toIso8601String() ?? '',
+      }).toList();
+
+      final path = await exportService.exportHostsToCSV(hostsData);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Exported to: $path'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: ${e.toString()}')),
+        );
       }
     }
   }

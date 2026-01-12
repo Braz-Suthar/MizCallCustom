@@ -8,6 +8,7 @@ import '../config/app_config.dart';
 import '../models/host.dart';
 import '../services/api_service.dart';
 import '../services/host_service.dart';
+import '../services/export_service.dart';
 
 class HostDetailsScreen extends StatefulWidget {
   final String hostId;
@@ -284,19 +285,34 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      TabBar(
-                                        labelColor: AppTheme.primaryBlue,
-                                        unselectedLabelColor: theme.textTheme.bodySmall?.color,
-                                        indicatorColor: AppTheme.primaryBlue,
-                                        labelStyle: TextStyle(
-                                          fontSize: isMobile ? 13 : 14,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        isScrollable: isMobile,
-                                        tabs: const [
-                                          Tab(text: 'Users'),
-                                          Tab(text: 'Call History'),
-                                          Tab(text: 'Sessions'),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: TabBar(
+                                              labelColor: AppTheme.primaryBlue,
+                                              unselectedLabelColor: theme.textTheme.bodySmall?.color,
+                                              indicatorColor: AppTheme.primaryBlue,
+                                              labelStyle: TextStyle(
+                                                fontSize: isMobile ? 13 : 14,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                              isScrollable: isMobile,
+                                              tabs: const [
+                                                Tab(text: 'Users'),
+                                                Tab(text: 'Call History'),
+                                                Tab(text: 'Sessions'),
+                                              ],
+                                            ),
+                                          ),
+                                          if (!isMobile)
+                                            Padding(
+                                              padding: const EdgeInsets.only(left: 16),
+                                              child: OutlinedButton.icon(
+                                                onPressed: _exportCallHistory,
+                                                icon: const Icon(Icons.download, size: 18),
+                                                label: const Text('Export Calls'),
+                                              ),
+                                            ),
                                         ],
                                       ),
                                       SizedBox(height: isMobile ? 12 : 20),
@@ -1019,7 +1035,7 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
     final result = await showDialog<Map<String, dynamic>?>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
+                                  builder: (context, setDialogState) => AlertDialog(
           title: const Text('Manage Subscription'),
           content: SizedBox(
             width: 400,
@@ -1041,7 +1057,7 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                     DropdownMenuItem(value: 'Enterprise', child: Text('Enterprise')),
                   ],
                   onChanged: (value) {
-                    setState(() => selectedType = value ?? 'Free');
+                    setDialogState(() => selectedType = value ?? 'Free');
                   },
                 ),
                 const SizedBox(height: 16),
@@ -1056,7 +1072,7 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                       lastDate: DateTime.now().add(const Duration(days: 3650)),
                     );
                     if (date != null) {
-                      setState(() => selectedEndDate = date);
+                      setDialogState(() => selectedEndDate = date);
                     }
                   },
                   icon: const Icon(Icons.calendar_today),
@@ -1217,6 +1233,32 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
             SnackBar(content: Text('Error: ${e.toString().replaceFirst('ApiException: ', '')}')),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _exportCallHistory() async {
+    try {
+      final exportService = context.read<ExportService>();
+      final path = await exportService.exportCallsToCSV(_calls);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Exported to: $path'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: ${e.toString()}')),
+        );
       }
     }
   }

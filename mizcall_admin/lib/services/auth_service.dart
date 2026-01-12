@@ -11,6 +11,9 @@ class AuthService extends ChangeNotifier {
   final ApiService apiService;
   final SharedPreferences prefs;
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  
+  // Callback for WebSocket connection
+  Function(String?)? onTokenChanged;
 
   AdminUser? _currentUser;
   String? _token;
@@ -66,6 +69,7 @@ class AuthService extends ChangeNotifier {
 
       _isAuthenticated = true;
       apiService.setToken(_token);
+      onTokenChanged?.call(_token);
       notifyListeners();
     } catch (e) {
       rethrow;
@@ -83,6 +87,7 @@ class AuthService extends ChangeNotifier {
     await prefs.remove(AppConfig.userKey);
 
     apiService.setToken(null);
+    onTokenChanged?.call(null);
     notifyListeners();
   }
 

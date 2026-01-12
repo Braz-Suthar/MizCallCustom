@@ -546,4 +546,85 @@ router.delete("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+/* GET ALL USERS (ACROSS ALL HOSTS) */
+router.get("/users", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const usersResult = await query(`
+      SELECT 
+        u.id,
+        u.username,
+        u.enabled,
+        u.host_id,
+        u.avatar_url,
+        u.enforce_single_device,
+        u.last_speaking,
+        h.name as host_name,
+        h.display_name as host_display_name
+      FROM users u
+      LEFT JOIN hosts h ON h.id = u.host_id
+      ORDER BY u.username
+    `);
+
+    const users = usersResult.rows.map(row => ({
+      id: row.id,
+      username: row.username,
+      enabled: row.enabled,
+      hostId: row.host_id,
+      avatarUrl: row.avatar_url,
+      enforceSingleDevice: row.enforce_single_device,
+      lastSpeaking: row.last_speaking,
+      hostName: row.host_display_name || row.host_name,
+    }));
+
+    res.json({ users });
+  } catch (error) {
+    console.error("Failed to fetch users:", error);
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+
+/* UPDATE USER STATUS */
+router.patch("/users/:hostId/:userId", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { hostId, userId } = req.params;
+    const { enabled } = req.body;
+
+    if (enabled === undefined) {
+      return res.status(400).json({ error: "enabled field is required" });
+    }
+
+    await query(
+      `UPDATE users SET enabled = $1 WHERE id = $2 AND host_id = $3`,
+      [enabled, userId, hostId]
+    );
+
+    res.json({ success: true, message: "User updated successfully" });
+  } catch (error) {
+    console.error("Failed to update user:", error);
+    res.status(500).json({ error: "Failed to update user" });
+  }
+});
+
+/* RESET USER PASSWORD */
+router.post("/users/:hostId/:userId/reset-password", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { hostId, userId } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    await query(
+      `UPDATE users SET password = $1 WHERE id = $2 AND host_id = $3`,
+      [newPassword, userId, hostId]
+    );
+
+    res.json({ success: true, message: "Password reset successfully" });
+  } catch (error) {
+    console.error("Failed to reset user password:", error);
+    res.status(500).json({ error: "Failed to reset user password" });
+  }
+});
+
 export default router;

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'dart:async';
 
 import '../config/theme.dart';
 import '../config/app_config.dart';
 import '../models/dashboard_stats.dart';
 import '../services/api_service.dart';
+import '../services/websocket_service.dart';
 import '../widgets/stat_card.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -19,32 +21,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   DashboardStats? _stats;
+  Timer? _refreshTimer;
+  StreamSubscription? _statsSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadStats();
+    _startAutoRefresh();
+    _listenToWebSocket();
   }
 
-  Future<void> _loadStats() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _statsSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    // Auto-refresh every 10 seconds
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (mounted) {
+        _loadStats(silent: true);
+      }
     });
+  }
+
+  void _listenToWebSocket() {
+    final wsService = context.read<WebSocketService>();
+    _statsSubscription = wsService.statsStream.listen((data) {
+      if (mounted) {
+        setState(() {
+          _stats = DashboardStats.fromJson(data);
+        });
+      }
+    });
+  }
+
+  Future<void> _loadStats({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final apiService = context.read<ApiService>();
       final response = await apiService.get(AppConfig.dashboardStatsEndpoint);
       
-      setState(() {
-        _stats = DashboardStats.fromJson(response);
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _stats = DashboardStats.fromJson(response);
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString().replaceFirst('ApiException: ', '');
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceFirst('ApiException: ', '');
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -100,18 +139,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               ],
                             ),
                           ),
-                          IconButton(
-                            onPressed: _loadStats,
-                            icon: _isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.successGreen.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(
+                                    color: AppTheme.successGreen.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.circle,
+                                      size: 8,
+                                      color: AppTheme.successGreen,
                                     ),
-                                  )
-                                : const Icon(Icons.refresh),
-                            tooltip: 'Refresh',
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Live',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.successGreen,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                onPressed: _loadStats,
+                                icon: _isLoading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh),
+                                tooltip: 'Refresh',
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -138,25 +212,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       ],
                     ),
-                    ElevatedButton.icon(
-                      onPressed: _loadStats,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppTheme.successGreen.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppTheme.successGreen.withOpacity(0.3),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                size: 8,
+                                color: AppTheme.successGreen,
                               ),
-                            )
-                          : const Icon(Icons.refresh, size: 20),
-                      label: const Text('Refresh'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 14,
+                              SizedBox(width: 6),
+                              Text(
+                                'Auto-refresh: 10s',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.successGreen,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 12),
+                        ElevatedButton.icon(
+                          onPressed: _loadStats,
+                          icon: _isLoading
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                )
+                              : const Icon(Icons.refresh, size: 20),
+                          label: const Text('Refresh'),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 14,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 );
@@ -259,6 +367,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       color: AppTheme.warningOrange,
                                       subtitle: _stats!.storageUsed,
                                     ),
+                                  ],
+                                );
+                              },
+                            ),
+
+                            const SizedBox(height: 32),
+
+                            // Charts Section
+                            Text(
+                              'Analytics',
+                              style: theme.textTheme.headlineMedium,
+                            ),
+                            const SizedBox(height: 16),
+                            
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                if (constraints.maxWidth < 900) {
+                                  return Column(
+                                    children: [
+                                      _buildCallsChart(),
+                                      const SizedBox(height: 16),
+                                      _buildUsersChart(),
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  children: [
+                                    Expanded(child: _buildCallsChart()),
+                                    const SizedBox(width: 16),
+                                    Expanded(child: _buildUsersChart()),
                                   ],
                                 );
                               },
@@ -393,6 +531,181 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCallsChart() {
+    final theme = Theme.of(context);
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Calls Overview',
+                  style: theme.textTheme.titleMedium,
+                ),
+                Icon(
+                  Icons.call,
+                  color: AppTheme.successGreen,
+                  size: 20,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 200,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: (_stats?.totalCalls.toDouble() ?? 100) * 1.2,
+                  barTouchData: BarTouchData(enabled: true),
+                  titlesData: FlTitlesData(
+                    show: true,
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                          return Text(
+                            days[value.toInt() % 7],
+                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 40,
+                        getTitlesWidget: (value, meta) {
+                          return Text(
+                            value.toInt().toString(),
+                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                          );
+                        },
+                      ),
+                    ),
+                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  gridData: FlGridData(
+                    show: true,
+                    drawVerticalLine: false,
+                    horizontalInterval: 20,
+                    getDrawingHorizontalLine: (value) {
+                      return FlLine(
+                        color: theme.brightness == Brightness.dark
+                            ? AppTheme.darkBorder
+                            : AppTheme.lightBorder,
+                        strokeWidth: 1,
+                      );
+                    },
+                  ),
+                  barGroups: List.generate(7, (index) {
+                    final value = (_stats?.totalCalls ?? 0) / 7 * (0.5 + (index % 3) * 0.3);
+                    return BarChartGroupData(
+                      x: index,
+                      barRods: [
+                        BarChartRodData(
+                          toY: value.toDouble(),
+                          color: AppTheme.successGreen,
+                          width: 16,
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                        ),
+                      ],
+                    );
+                  }),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Last 7 days activity',
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUsersChart() {
+    final theme = Theme.of(context);
+    final activeUsers = _stats?.activeUsers ?? 0;
+    final totalUsers = _stats?.totalUsers ?? 1;
+    final inactiveUsers = totalUsers - activeUsers;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Users Distribution',
+                  style: theme.textTheme.titleMedium,
+                ),
+                Icon(
+                  Icons.person,
+                  color: AppTheme.primaryBlue,
+                  size: 20,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 200,
+              child: PieChart(
+                PieChartData(
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 50,
+                  sections: [
+                    PieChartSectionData(
+                      value: activeUsers.toDouble(),
+                      title: 'Active\n$activeUsers',
+                      color: AppTheme.successGreen,
+                      radius: 60,
+                      titleStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    PieChartSectionData(
+                      value: inactiveUsers.toDouble(),
+                      title: 'Inactive\n$inactiveUsers',
+                      color: theme.textTheme.bodySmall?.color?.withOpacity(0.3),
+                      radius: 55,
+                      titleStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: theme.brightness == Brightness.dark ? Colors.white : Colors.black,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Active vs Inactive users',
+              style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

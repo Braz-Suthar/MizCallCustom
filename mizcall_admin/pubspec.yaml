@@ -39,6 +39,10 @@ dependencies:
   
   # Real-time
   web_socket_channel: ^2.4.0
+  
+  # Export
+  csv: ^6.0.0
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:

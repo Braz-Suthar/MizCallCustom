@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 
 import '../config/theme.dart';
 import '../config/app_config.dart';
 import '../models/log_entry.dart';
 import '../services/api_service.dart';
+import '../services/websocket_service.dart';
 
 class LogsScreen extends StatefulWidget {
   const LogsScreen({super.key});
@@ -21,17 +23,46 @@ class _LogsScreenState extends State<LogsScreen> {
   LogLevel? _filterLevel;
   String? _filterService;
   final ScrollController _scrollController = ScrollController();
+  StreamSubscription? _logsSubscription;
+  bool _autoScroll = true;
+  final int _maxLogs = 500; // Keep last 500 logs
 
   @override
   void initState() {
     super.initState();
     _loadLogs();
+    _listenToWebSocketLogs();
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _logsSubscription?.cancel();
     super.dispose();
+  }
+
+  void _listenToWebSocketLogs() {
+    final wsService = context.read<WebSocketService>();
+    _logsSubscription = wsService.logsStream.listen((log) {
+      if (mounted) {
+        setState(() {
+          _logs.insert(0, log); // Add new logs at the top
+          // Keep only last N logs
+          if (_logs.length > _maxLogs) {
+            _logs.removeRange(_maxLogs, _logs.length);
+          }
+        });
+        
+        // Auto-scroll to top if enabled
+        if (_autoScroll && _scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      }
+    });
   }
 
   Future<void> _loadLogs() async {
@@ -148,6 +179,49 @@ class _LogsScreenState extends State<LogsScreen> {
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.successGreen.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: AppTheme.successGreen.withOpacity(0.3),
+                                      ),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.circle,
+                                          size: 6,
+                                          color: AppTheme.successGreen,
+                                        ),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Live',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.successGreen,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _autoScroll = !_autoScroll;
+                                      });
+                                    },
+                                    icon: Icon(
+                                      _autoScroll ? Icons.vertical_align_top : Icons.vertical_align_center,
+                                      size: 20,
+                                    ),
+                                    tooltip: _autoScroll ? 'Disable auto-scroll' : 'Enable auto-scroll',
+                                    color: _autoScroll ? AppTheme.primaryBlue : null,
+                                  ),
                                   IconButton(
                                     onPressed: () {
                                       setState(() {
@@ -197,6 +271,57 @@ class _LogsScreenState extends State<LogsScreen> {
                           ),
                           Row(
                             children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.successGreen.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppTheme.successGreen.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.circle,
+                                      size: 8,
+                                      color: AppTheme.successGreen,
+                                    ),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Live Streaming',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.successGreen,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  setState(() {
+                                    _autoScroll = !_autoScroll;
+                                  });
+                                },
+                                icon: Icon(
+                                  _autoScroll ? Icons.vertical_align_top : Icons.vertical_align_center,
+                                  size: 18,
+                                ),
+                                label: Text(_autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: _autoScroll ? AppTheme.primaryBlue : null,
+                                  side: BorderSide(
+                                    color: _autoScroll 
+                                        ? AppTheme.primaryBlue 
+                                        : (theme.brightness == Brightness.dark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
                               ElevatedButton.icon(
                                 onPressed: () {
                                   setState(() {

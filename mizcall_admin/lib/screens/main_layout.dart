@@ -27,9 +27,15 @@ class _MainLayoutState extends State<MainLayout> {
     ),
     _NavItem(
       label: 'Hosts',
+      icon: Icons.business_outlined,
+      selectedIcon: Icons.business,
+      route: '/hosts',
+    ),
+    _NavItem(
+      label: 'Users',
       icon: Icons.people_outline,
       selectedIcon: Icons.people,
-      route: '/hosts',
+      route: '/users',
     ),
     _NavItem(
       label: 'Logs',

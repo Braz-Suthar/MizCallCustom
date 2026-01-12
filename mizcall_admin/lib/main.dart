@@ -11,6 +11,8 @@ import 'config/routes.dart';
 import 'services/auth_service.dart';
 import 'services/api_service.dart';
 import 'services/host_service.dart';
+import 'services/websocket_service.dart';
+import 'services/export_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,17 +45,36 @@ void main() async {
   
   // Initialize auth service
   final authService = AuthService(apiService: apiService, prefs: prefs);
-  await authService.loadSavedToken();
   
   // Initialize host service
   final hostService = HostService(apiService: apiService);
+  
+  // Initialize WebSocket service
+  final websocketService = WebSocketService();
+  
+  // Initialize export service
+  final exportService = ExportService();
+  
+  // Connect WebSocket when token changes
+  authService.onTokenChanged = (token) {
+    if (token != null) {
+      websocketService.setToken(token);
+      websocketService.connect();
+    } else {
+      websocketService.disconnect();
+    }
+  };
+  
+  await authService.loadSavedToken();
   
   runApp(
     MultiProvider(
       providers: [
         Provider<ApiService>.value(value: apiService),
         Provider<HostService>.value(value: hostService),
+        Provider<ExportService>.value(value: exportService),
         ChangeNotifierProvider<AuthService>.value(value: authService),
+        ChangeNotifierProvider<WebSocketService>.value(value: websocketService),
       ],
       child: const MizCallAdminApp(),
     ),
