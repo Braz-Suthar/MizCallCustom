@@ -880,7 +880,7 @@ router.post("/database/backup", requireAuth, requireAdmin, async (req, res) => {
 
     if (fs.existsSync(scriptPath)) {
       try {
-        const backupProcess = spawn(scriptPath, [filename], {
+        const backupProcess = spawn('sh', [scriptPath, filename], {
           env: {
             ...process.env,
             DB_HOST: process.env.DB_HOST || 'postgres',
@@ -888,6 +888,7 @@ router.post("/database/backup", requireAuth, requireAdmin, async (req, res) => {
             DB_NAME: process.env.DB_NAME || 'mizcallcustom',
             DB_USER: process.env.DB_USER || 'miz',
             DB_PASSWORD: process.env.DB_PASSWORD || 'mizpass',
+            PGPASSWORD: process.env.DB_PASSWORD || 'mizpass',
             BACKUP_DIR: process.env.BACKUP_DIR || '/var/app/backups',
           },
           detached: true,
