@@ -10,6 +10,7 @@ import '../models/dashboard_stats.dart';
 import '../services/api_service.dart';
 import '../services/websocket_service.dart';
 import '../widgets/stat_card.dart';
+import '../widgets/system_metrics_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -414,30 +415,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                             const SizedBox(height: 32),
 
-                            // System Status
+                            // System Monitoring
                             Text(
-                              'System Status',
+                              'System Monitoring',
                               style: theme.textTheme.headlineMedium,
                             ),
                             const SizedBox(height: 16),
 
-                            // Responsive System Status Cards
                             LayoutBuilder(
                               builder: (context, constraints) {
-                                if (constraints.maxWidth < 800) {
-                                  // Mobile: Stack vertically
+                                if (constraints.maxWidth < 900) {
                                   return Column(
                                     children: [
-                                      _buildStatusCard(
-                                        'Backend API',
-                                        _stats!.serverStatus,
-                                        Icons.dns,
-                                      ),
-                                      const SizedBox(height: 12),
-                                      _buildStatusCard(
-                                        'Mediasoup',
-                                        _stats!.mediasoupStatus,
-                                        Icons.videocam,
+                                      const SystemMetricsCard(),
+                                      const SizedBox(height: 16),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: _buildStatusCard(
+                                              'Backend',
+                                              _stats!.serverStatus,
+                                              Icons.dns,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: _buildStatusCard(
+                                              'Mediasoup',
+                                              _stats!.mediasoupStatus,
+                                              Icons.videocam,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       const SizedBox(height: 12),
                                       _buildStatusCard(
@@ -447,36 +456,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                       ),
                                     ],
                                   );
-                                } else {
-                                  // Desktop: Row
-                                  return Row(
-                                    children: [
-                                      Expanded(
-                                        child: _buildStatusCard(
-                                          'Backend API',
-                                          _stats!.serverStatus,
-                                          Icons.dns,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: _buildStatusCard(
-                                          'Mediasoup',
-                                          _stats!.mediasoupStatus,
-                                          Icons.videocam,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      Expanded(
-                                        child: _buildStatusCard(
-                                          'Database',
-                                          _stats!.databaseStatus,
-                                          Icons.storage,
-                                        ),
-                                      ),
-                                    ],
-                                  );
                                 }
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Expanded(
+                                      flex: 2,
+                                      child: SystemMetricsCard(),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Column(
+                                        children: [
+                                          _buildStatusCard(
+                                            'Backend API',
+                                            _stats!.serverStatus,
+                                            Icons.dns,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          _buildStatusCard(
+                                            'Mediasoup',
+                                            _stats!.mediasoupStatus,
+                                            Icons.videocam,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          _buildStatusCard(
+                                            'Database',
+                                            _stats!.databaseStatus,
+                                            Icons.storage,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                );
                               },
                             ),
                           ],

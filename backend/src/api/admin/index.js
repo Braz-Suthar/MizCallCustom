@@ -1,10 +1,22 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
+import os from "os";
 import { query } from "../../services/db.js";
 import { signToken } from "../../services/auth.js";
 import { requireAuth } from "../../middleware/auth.js";
+import { logAdminAction, logInfo, logWarn, logError } from "../../services/logger.js";
 
 const router = Router();
+
+function formatUptime(seconds) {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
 
 // Middleware to check if user is admin
 const requireAdmin = (req, res, next) => {
@@ -16,8 +28,10 @@ const requireAdmin = (req, res, next) => {
 
 /* ADMIN LOGIN */
 router.post("/login", async (req, res) => {
-  console.log("[Admin] Login attempt:", req.body.username);
   const { username, password } = req.body;
+  const ipAddress = req.ip || req.connection.remoteAddress;
+  
+  logInfo(`Admin login attempt: ${username}`, 'admin', { username, ipAddress });
 
   if (!username || !password) {
     return res.status(400).json({ error: "Username and password required" });
@@ -56,12 +70,57 @@ router.post("/login", async (req, res) => {
   // Generate token
   const token = signToken({ role: "admin", username: adminUsername });
 
+  logAdminAction(adminUsername, 'login', { success: true }, ipAddress);
+
   res.json({
     token,
     id: "admin",
     username: adminUsername,
     name: "Administrator",
   });
+});
+
+/* SYSTEM METRICS */
+router.get("/system-metrics", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    console.log("[SystemMetrics] Request received from admin");
+    
+    const cpuUsage = os.loadavg();
+    const totalMemory = os.totalmem();
+    const freeMemory = os.freemem();
+    const usedMemory = totalMemory - freeMemory;
+
+    const metrics = {
+      cpu: {
+        load1min: cpuUsage[0].toFixed(2),
+        load5min: cpuUsage[1].toFixed(2),
+        load15min: cpuUsage[2].toFixed(2),
+        cores: os.cpus().length,
+      },
+      memory: {
+        total: totalMemory,
+        free: freeMemory,
+        used: usedMemory,
+        usedPercent: ((usedMemory / totalMemory) * 100).toFixed(2),
+      },
+      uptime: {
+        seconds: os.uptime(),
+        formatted: formatUptime(os.uptime()),
+      },
+      platform: {
+        type: os.platform(),
+        release: os.release(),
+        hostname: os.hostname(),
+      },
+    };
+
+    console.log("[SystemMetrics] Sending response");
+    res.json(metrics);
+  } catch (error) {
+    console.error("[SystemMetrics] Error:", error);
+    logError("System metrics error", "admin", { error: error.message });
+    res.status(500).json({ error: "Failed to fetch system metrics" });
+  }
 });
 
 /* DASHBOARD STATS */
@@ -323,38 +382,54 @@ router.get("/hosts/:hostId/sessions", requireAuth, requireAdmin, async (req, res
 /* GET SYSTEM LOGS */
 router.get("/logs", requireAuth, requireAdmin, async (req, res) => {
   try {
-    // For now, return mock logs
-    // In production, you would integrate with your logging system
-    const logs = [
-      {
-        id: "1",
-        timestamp: new Date().toISOString(),
-        level: "info",
-        service: "backend",
-        message: "Server started successfully",
-      },
-      {
-        id: "2",
-        timestamp: new Date(Date.now() - 60000).toISOString(),
-        level: "info",
-        service: "mediasoup",
-        message: "Mediasoup server initialized",
-      },
-      {
-        id: "3",
-        timestamp: new Date(Date.now() - 120000).toISOString(),
-        level: "info",
-        service: "database",
-        message: "Database connection established",
-      },
-    ];
+    const limit = parseInt(req.query.limit) || 500;
+    const offset = parseInt(req.query.offset) || 0;
+    const level = req.query.level;
+    const service = req.query.service;
 
-    // TODO: Integrate with actual logging system
-    // You might want to:
-    // 1. Read from log files
-    // 2. Query a logs table in database
-    // 3. Use a logging service like Winston, Bunyan, etc.
-    
+    let sql = `SELECT 
+      id::text,
+      timestamp,
+      level,
+      service,
+      message,
+      metadata,
+      host_id,
+      user_id,
+      admin_id,
+      ip_address
+    FROM system_logs
+    WHERE 1=1`;
+
+    const params = [];
+    let paramIndex = 1;
+
+    if (level) {
+      sql += ` AND level = $${paramIndex}`;
+      params.push(level);
+      paramIndex++;
+    }
+
+    if (service) {
+      sql += ` AND service = $${paramIndex}`;
+      params.push(service);
+      paramIndex++;
+    }
+
+    sql += ` ORDER BY timestamp DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(limit, offset);
+
+    const result = await query(sql, params);
+
+    const logs = result.rows.map(row => ({
+      id: row.id,
+      timestamp: row.timestamp,
+      level: row.level,
+      service: row.service,
+      message: row.message,
+      metadata: row.metadata,
+    }));
+
     res.json({ logs });
   } catch (error) {
     console.error("Failed to fetch logs:", error);
@@ -402,13 +477,15 @@ router.post("/hosts", requireAuth, requireAdmin, async (req, res) => {
       [hostId, email, displayName || email, hashedPassword, membershipType || 'Free', startDate, endDate]
     );
 
+    logAdminAction(req.username, 'create_host', { hostId, email });
+
     res.json({
       success: true,
       hostId,
       message: "Host created successfully",
     });
   } catch (error) {
-    console.error("Failed to create host:", error);
+    logError("Failed to create host", 'admin', { error: error.message });
     res.status(500).json({ error: "Failed to create host" });
   }
 });
@@ -448,9 +525,11 @@ router.patch("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
       values
     );
 
+    logAdminAction(req.username, 'update_host', { hostId, updates: Object.keys(req.body) });
+
     res.json({ success: true, message: "Host updated successfully" });
   } catch (error) {
-    console.error("Failed to update host:", error);
+    logError("Failed to update host", 'admin', { error: error.message, hostId });
     res.status(500).json({ error: "Failed to update host" });
   }
 });
@@ -472,9 +551,11 @@ router.post("/hosts/:hostId/reset-password", requireAuth, requireAdmin, async (r
       [hashedPassword, hostId]
     );
 
+    logAdminAction(req.username, 'reset_host_password', { hostId });
+
     res.json({ success: true, message: "Password reset successfully" });
   } catch (error) {
-    console.error("Failed to reset password:", error);
+    logError("Failed to reset host password", 'admin', { error: error.message, hostId });
     res.status(500).json({ error: "Failed to reset password" });
   }
 });
@@ -561,9 +642,11 @@ router.delete("/hosts/:hostId", requireAuth, requireAdmin, async (req, res) => {
       return res.status(404).json({ error: "Host not found" });
     }
 
+    logAdminAction(req.username, 'delete_host', { hostId });
+
     res.json({ success: true, message: "Host deleted successfully" });
   } catch (error) {
-    console.error("Failed to delete host:", error);
+    logError("Failed to delete host", 'admin', { error: error.message, hostId });
     res.status(500).json({ error: "Failed to delete host" });
   }
 });

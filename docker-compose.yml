@@ -81,7 +81,26 @@ services:
       - mediasoup
     restart: always
 
+  # ========================
+  # PROMETHEUS (METRICS)
+  # ========================
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+    restart: always
+    depends_on:
+      - api
+
 volumes:
   pgdata:
   redisdata:
   recordings:
+  prometheus_data:

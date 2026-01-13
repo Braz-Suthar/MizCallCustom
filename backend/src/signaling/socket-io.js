@@ -5,6 +5,7 @@ import { sendMediasoup } from "../mediasoup/client.js";
 import { MS } from "../mediasoup/commands.js";
 import { v4 as uuid } from "uuid";
 import { sendRecorder, recorderEvents } from "../recorder/client.js";
+import logger, { logInfo, logError, logWarn, logHostAction, logUserAction } from "../services/logger.js";
 
 const peers = new Map();
 let io = null;
@@ -54,6 +55,8 @@ export async function ensureMediasoupRoom(roomId) {
 }
 
 export async function startWebSocketServer(httpServer) {
+  logInfo("Initializing Socket.IO server", "signaling");
+  
   io = new Server(httpServer, {
     cors: {
       origin: "*",

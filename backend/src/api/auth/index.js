@@ -122,6 +122,7 @@ router.post("/host/login", async (req, res) => {
 
   const match = await bcrypt.compare(password, hashed);
   if (!match) {
+    logWarn("Host login failed - invalid password", "auth", { identifier });
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
@@ -203,6 +204,8 @@ router.post("/host/login", async (req, res) => {
       [id]
     );
   }
+
+  logHostAction(id, "login", { sessionId, deviceLabel });
 
   res.json({
     token,

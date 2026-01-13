@@ -2,6 +2,7 @@ import express from "express";
 import http from "http";
 import path from "path";
 import fs from "fs";
+import os from "os";
 
 import authRoutes from "./api/auth/index.js";
 import adminRoutes from "./api/admin/index.js";
@@ -17,9 +18,15 @@ import { connectMediasoup } from "./mediasoup/client.js";
 import { connectRecorder } from "./recorder/client.js";
 import { runMigrations } from "./db/migrate.js";
 import { initializeFirebase } from "./services/firebase.js";
+import { query } from "./services/db.js";
+import logger, { logInfo } from "./services/logger.js";
+import { register as metricsRegister, metricsMiddleware, updateMetrics } from "./services/metrics.js";
 
 const app = express();
 app.use(express.json());
+
+// Add metrics middleware
+app.use(metricsMiddleware);
 
 // Static uploads
 const uploadsDir = path.join(process.cwd(), "uploads");
@@ -56,6 +63,20 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+// Prometheus metrics endpoint
+app.get("/metrics", async (req, res) => {
+  try {
+    res.set('Content-Type', metricsRegister.contentType);
+    res.end(await metricsRegister.metrics());
+  } catch (err) {
+    res.status(500).end(err);
+  }
+});
+
 // Routes
 app.use("/auth", authRoutes);
 app.use("/admin", adminRoutes);
@@ -65,24 +86,40 @@ app.use("/user", userRoutes);
 app.use("/recordings", recordingRoutes);
 app.use("/notifications", notificationsRoutes);
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
-
 // Create HTTP server (required for WS)
 const server = http.createServer(app);
 
 // Boot sequence (ensure mediasoup first, then WS)
+logInfo('Starting MizCall backend...', 'backend');
+
 await runMigrations();
+logInfo('Database migrations completed', 'database');
+
 initializeFirebase(); // Initialize FCM (optional, won't crash if not configured)
+logInfo('Firebase initialized', 'backend');
+
 await connectMediasoup();
+logInfo('Mediasoup connected', 'mediasoup');
+
 connectRecorder();
+logInfo('Recorder client connected', 'recorder');
+
 // Start WS signaling (requires mediasoup connection ready)
 startWebSocketServer(server);
+logInfo('WebSocket server started', 'backend');
 
 // 🔑 IMPORTANT: use env port
 const PORT = Number(process.env.API_PORT) || 3100;
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`MizCallCustom API + WS running on :${PORT}`);
+  logInfo(`MizCallCustom API started on port ${PORT}`, 'backend');
+  
+  // Update Prometheus metrics every 30 seconds
+  setInterval(() => {
+    updateMetrics(query);
+  }, 30000);
+  
+  // Initial metrics update
+  updateMetrics(query);
 });

@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { logInfo, logError, logWarn } from "../services/logger.js";
 import { EventEmitter } from "events";
 import { pool } from "../db/pool.js";
 
