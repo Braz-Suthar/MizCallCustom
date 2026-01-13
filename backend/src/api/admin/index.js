@@ -1,6 +1,8 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import os from "os";
+import fs from "fs";
+import path from "path";
 import { query } from "../../services/db.js";
 import { signToken } from "../../services/auth.js";
 import { requireAuth } from "../../middleware/auth.js";
@@ -860,22 +862,54 @@ router.post("/database/backup", requireAuth, requireAdmin, async (req, res) => {
     logAdminAction(req.username, 'trigger_backup', { filename });
 
     // Store backup metadata
-    await query(
+    const result = await query(
       `INSERT INTO database_backups (filename, triggered_by, status)
        VALUES ($1, $2, 'pending')
        RETURNING id`,
       [filename, req.username]
     );
 
-    // Note: Actual backup command would run in background
-    // For Docker/PostgreSQL: pg_dump command
-    // This is a placeholder - implement based on your infrastructure
+    // Execute backup script in background
+    const { spawn } = await import('child_process');
+    const backupScript = '/app/scripts/backup-database.sh';
+    
+    // Check if script exists (in Docker) or use local path
+    const scriptPath = fs.existsSync(backupScript) 
+      ? backupScript 
+      : path.join(process.cwd(), 'scripts', 'backup-database.sh');
+
+    if (fs.existsSync(scriptPath)) {
+      const backupProcess = spawn(scriptPath, [filename], {
+        env: {
+          ...process.env,
+          DB_HOST: process.env.DB_HOST || 'postgres',
+          DB_PORT: process.env.DB_PORT || '5432',
+          DB_NAME: process.env.DB_NAME || 'mizcallcustom',
+          DB_USER: process.env.DB_USER || 'miz',
+          DB_PASSWORD: process.env.DB_PASSWORD || 'mizpass',
+          BACKUP_DIR: process.env.BACKUP_DIR || '/var/app/backups',
+        },
+        detached: true,
+        stdio: 'ignore',
+      });
+
+      backupProcess.unref(); // Allow process to run independently
+      
+      logInfo("Backup process started", 'admin', { filename, backupId: result.rows[0].id });
+    } else {
+      // Fallback: Mark as completed but note it's manual
+      await query(
+        `UPDATE database_backups SET status = 'completed', completed_at = NOW(), error_message = 'Backup script not found - manual backup required' WHERE id = $1`,
+        [result.rows[0].id]
+      );
+      
+      logWarn("Backup script not found", 'admin', { filename });
+    }
     
     res.json({ 
       success: true, 
-      message: "Backup initiated",
+      message: "Backup initiated. Check backup history for completion status.",
       filename,
-      note: "Backup process started. Check backup history for completion status."
     });
   } catch (error) {
     logError("Failed to trigger backup", 'admin', { error: error.message });

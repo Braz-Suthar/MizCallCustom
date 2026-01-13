@@ -42,6 +42,7 @@ services:
       - /opt/docker-data/recordings:/var/app/recordings
       - ./backend/firebase-serviceAccountKey.json:/app/firebase-serviceAccountKey.json:ro
       - ./backend/uploads:/app/uploads
+      - backups:/var/app/backups
     restart: always
 
   # ========================
@@ -104,3 +105,4 @@ volumes:
   redisdata:
   recordings:
   prometheus_data:
+  backups:
