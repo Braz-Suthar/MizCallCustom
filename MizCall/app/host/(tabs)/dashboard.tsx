@@ -245,6 +245,12 @@ export default function HostDashboard() {
     // Prevent double-tap
     if (isStartingCall) return;
     
+    // Check subscription before attempting
+    if (subscriptionExpired) {
+      setShowSubscriptionExpired(true);
+      return;
+    }
+    
     // Check if there's already an active call in Redux state or call logs
     if (activeCall || callStatus === "starting" || callLogs.find(call => call.status !== "ended")) {
       setShowActiveCallModal(true);
@@ -268,9 +274,14 @@ export default function HostDashboard() {
       if (roomId) {
         router.push(`/host/active-call?roomId=${roomId}`);
       }
-    } catch (e) {
-      console.error("[handleStartCall] Error starting call:", e);
-      // ignore here; startCall already handles errors upstream
+    } catch (e: any) {
+      // Check if it's a subscription error
+      if (e?.subscriptionExpired === true) {
+        setShowSubscriptionExpired(true);
+      } else {
+        // Only log non-subscription errors
+        console.error("[handleStartCall] Error starting call:", e);
+      }
     } finally {
       setIsStartingCall(false);
     }
@@ -283,6 +294,25 @@ export default function HostDashboard() {
 
   const handleCancelModal = () => {
     setShowActiveCallModal(false);
+  };
+
+  const handleCreateUser = () => {
+    console.log("[CreateUser] Subscription check:", {
+      subscriptionExpired,
+      membershipType,
+      membershipEndDate,
+      currentDate: new Date().toISOString(),
+    });
+    
+    // Check subscription before navigating
+    if (subscriptionExpired) {
+      console.log("[CreateUser] Subscription expired, showing modal");
+      setShowSubscriptionExpired(true);
+      return;
+    }
+    
+    console.log("[CreateUser] Navigating to create user screen");
+    router.push("/host/create-user");
   };
 
   const onRefresh = async () => {
@@ -374,7 +404,7 @@ export default function HostDashboard() {
               </Pressable>
               <Pressable 
                 style={[styles.actionButton, { backgroundColor: PRIMARY_BLUE }]}
-                onPress={() => router.push("/host/create-user")}
+                onPress={handleCreateUser}
               >
                 <Ionicons name="person-add" size={20} color="#fff" />
                 <Text style={styles.actionButtonText}>Create User</Text>

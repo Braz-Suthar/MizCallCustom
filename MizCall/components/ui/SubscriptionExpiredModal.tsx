@@ -1,5 +1,5 @@
 import React from "react";
-import { Modal, Pressable, StyleSheet, Text, View, Linking } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -18,11 +18,6 @@ export function SubscriptionExpiredModal({
   onClose,
 }: SubscriptionExpiredModalProps) {
   const { colors } = useTheme();
-
-  const handleContactSupport = () => {
-    // You can add your support contact here
-    Linking.openURL('mailto:support@mizcall.com?subject=Subscription Renewal');
-  };
 
   return (
     <Modal
@@ -68,24 +63,14 @@ export function SubscriptionExpiredModal({
             </View>
           </View>
 
-          <View style={styles.buttons}>
-            <Pressable
-              style={[styles.supportButton, { backgroundColor: PRIMARY_BLUE }]}
-              onPress={handleContactSupport}
-            >
-              <Ionicons name="mail" size={20} color="#fff" />
-              <Text style={styles.supportButtonText}>Contact Support</Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.closeButton, { borderColor: colors.border }]}
-              onPress={onClose}
-            >
-              <Text style={[styles.closeButtonText, { color: colors.text }]}>
-                Close
-              </Text>
-            </Pressable>
-          </View>
+          <Pressable
+            style={[styles.closeButton, { backgroundColor: PRIMARY_BLUE }]}
+            onPress={onClose}
+          >
+            <Text style={styles.closeButtonText}>
+              Got it
+            </Text>
+          </Pressable>
         </View>
       </View>
     </Modal>
@@ -140,30 +125,15 @@ const styles = StyleSheet.create({
   featureText: {
     fontSize: 14,
   },
-  buttons: {
-    width: "100%",
-    gap: 12,
-  },
-  supportButton: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  supportButtonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "600",
-  },
   closeButton: {
+    width: "100%",
     paddingVertical: 14,
     borderRadius: 12,
-    borderWidth: 1,
     alignItems: "center",
+    justifyContent: "center",
   },
   closeButtonText: {
+    color: "#fff",
     fontSize: 15,
     fontWeight: "600",
   },

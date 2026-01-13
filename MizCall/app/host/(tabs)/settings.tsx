@@ -75,12 +75,32 @@ export default function HostSettings() {
   >([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
 
-  // Mock membership data - replace with actual API call
+  // Get actual membership data from auth state
   const membership = {
-    type: "Premium", // or "Free"
-    startDate: "2024-01-15",
-    endDate: "2025-01-15",
+    type: auth.membershipType || "Free",
+    startDate: auth.membershipStartDate,
+    endDate: auth.membershipEndDate,
   };
+
+  // Calculate if subscription is active
+  const isSubscriptionActive = auth.membershipEndDate 
+    ? new Date(auth.membershipEndDate) > new Date()
+    : true;
+
+  // Debug log to see membership data
+  useEffect(() => {
+    console.log('[Settings] Membership Data:', {
+      type: membership.type,
+      startDate: membership.startDate,
+      endDate: membership.endDate,
+      isActive: isSubscriptionActive,
+      raw: {
+        membershipType: auth.membershipType,
+        membershipStartDate: auth.membershipStartDate,
+        membershipEndDate: auth.membershipEndDate,
+      }
+    });
+  }, [auth.membershipType, auth.membershipStartDate, auth.membershipEndDate]);
 
   const onThemeChange = (mode: ThemeMode) => dispatch(setThemeMode(mode));
   const onLogout = () => dispatch(signOut());
@@ -591,18 +611,34 @@ export default function HostSettings() {
         </View>
         
         <View style={styles.membershipCard}>
+          {!isSubscriptionActive && membership.endDate && (
+            <View style={[styles.expiredBanner, { backgroundColor: "#ef4444" }]}>
+              <Ionicons name="warning" size={18} color="#fff" />
+              <Text style={styles.expiredBannerText}>EXPIRED</Text>
+            </View>
+          )}
+          
           <View style={styles.membershipHeader}>
             <View style={[styles.membershipBadge, { 
-              backgroundColor: membership.type === "Premium" ? SUCCESS_GREEN : "#64748b" 
+              backgroundColor: membership.type === "Premium" || membership.type === "Enterprise"
+                ? SUCCESS_GREEN 
+                : membership.type === "Trial"
+                  ? "#f59e0b"
+                  : "#64748b"
             }]}>
               <Ionicons 
-                name={membership.type === "Premium" ? "star" : "person"} 
+                name={membership.type === "Premium" || membership.type === "Enterprise" 
+                  ? "star" 
+                  : membership.type === "Trial"
+                    ? "time"
+                    : "person"
+                } 
                 size={16} 
                 color="#fff" 
               />
               <Text style={styles.membershipBadgeText}>{membership.type}</Text>
             </View>
-            {membership.type === "Premium" && (
+            {isSubscriptionActive && membership.type !== "Free" && (
               <View style={styles.activeDot}>
                 <View style={[styles.activeDotInner, { backgroundColor: SUCCESS_GREEN }]} />
               </View>
@@ -611,35 +647,44 @@ export default function HostSettings() {
 
           <View style={styles.membershipDetails}>
             <View style={styles.membershipRow}>
-              <View style={styles.membershipItem}>
-                <Ionicons name="calendar-outline" size={18} color={colors.text} style={{ opacity: 0.6 }} />
-                <View style={styles.membershipItemText}>
-                  <Text style={[styles.membershipLabel, { color: colors.text }]}>Start Date</Text>
-                  <Text style={[styles.membershipValue, { color: colors.text }]}>
-                    {formatDate(membership.startDate)}
-                  </Text>
+              {membership.startDate && (
+                <View style={styles.membershipItem}>
+                  <Ionicons name="calendar-outline" size={18} color={colors.text} style={{ opacity: 0.6 }} />
+                  <View style={styles.membershipItemText}>
+                    <Text style={[styles.membershipLabel, { color: colors.text }]}>Start Date</Text>
+                    <Text style={[styles.membershipValue, { color: colors.text }]}>
+                      {formatDate(membership.startDate)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              <View style={styles.membershipItem}>
-                <Ionicons name="calendar-outline" size={18} color={colors.text} style={{ opacity: 0.6 }} />
-                <View style={styles.membershipItemText}>
-                  <Text style={[styles.membershipLabel, { color: colors.text }]}>End Date</Text>
-                  <Text style={[styles.membershipValue, { color: colors.text }]}>
-                    {formatDate(membership.endDate)}
-                  </Text>
+              )}
+              {membership.endDate && (
+                <View style={styles.membershipItem}>
+                  <Ionicons name="calendar-outline" size={18} color={colors.text} style={{ opacity: 0.6 }} />
+                  <View style={styles.membershipItemText}>
+                    <Text style={[styles.membershipLabel, { color: colors.text }]}>End Date</Text>
+                    <Text style={[styles.membershipValue, { color: isSubscriptionActive ? colors.text : "#ef4444" }]}>
+                      {formatDate(membership.endDate)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
+              )}
             </View>
+            
           </View>
 
-          {membership.type === "Free" && (
-            <Pressable
-              style={[styles.upgradeButton, { backgroundColor: SUCCESS_GREEN }]}
-              onPress={() => {}}
-            >
-              <Ionicons name="arrow-up-circle" size={20} color="#fff" />
-              <Text style={styles.upgradeButtonText}>Upgrade to Premium</Text>
-            </Pressable>
+          {!isSubscriptionActive && membership.endDate && (
+            <View style={[styles.subscriptionMessage, { 
+              backgroundColor: PRIMARY_BLUE + "15",
+              borderColor: PRIMARY_BLUE + "40"
+            }]}>
+              <Ionicons name="information-circle" size={20} color={PRIMARY_BLUE} />
+              <Text style={[styles.subscriptionMessageText, { color: colors.text }]}>
+                {membership.type === "Trial" || membership.type === "Free"
+                  ? "Your trial has expired. Please contact your administrator to purchase a paid subscription plan."
+                  : "Your subscription has expired. Please contact your administrator to renew your subscription."}
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -1427,6 +1472,24 @@ const styles = StyleSheet.create({
   },
   membershipCard: {
     gap: 14,
+    position: "relative",
+    overflow: "hidden",
+  },
+  expiredBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderRadius: 8,
+  },
+  expiredBannerText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 1.2,
   },
   membershipHeader: {
     flexDirection: "row",
@@ -1484,19 +1547,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
-  upgradeButton: {
+  subscriptionMessage: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 12,
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 12,
     borderRadius: 10,
-    marginTop: 4,
+    marginTop: 12,
+    borderWidth: 1,
   },
-  upgradeButtonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
+  subscriptionMessageText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 20,
   },
   profileCard: {
     gap: 16,

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "@react-navigation/native";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -7,6 +7,7 @@ import { Image as SvgIcon } from "expo-image";
 import { Fab } from "../../../components/ui/Fab";
 import { AppButton } from "../../../components/ui/AppButton";
 import { ActiveCallModal } from "../../../components/ui/ActiveCallModal";
+import { SubscriptionExpiredModal } from "../../../components/ui/SubscriptionExpiredModal";
 import { apiFetch } from "../../../state/api";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { endCall, startCall } from "../../../state/callActions";
@@ -33,14 +34,22 @@ export default function HostCalls() {
   const callStatus = useAppSelector((s) => s.call.status);
   const callError = useAppSelector((s) => s.call.error);
   const participants = useAppSelector((s) => s.call.participants);
-  const { token, role } = useAppSelector((s) => s.auth);
+  const auth = useAppSelector((s) => s.auth);
+  const { token, role, membershipType, membershipEndDate } = auth;
   const dispatch = useAppDispatch();
 
   const [callLogs, setCallLogs] = useState<CallLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [showActiveCallModal, setShowActiveCallModal] = useState(false);
+  const [showSubscriptionExpired, setShowSubscriptionExpired] = useState(false);
   const [activeCallRoomId, setActiveCallRoomId] = useState<string | undefined>();
   const [isStartingCall, setIsStartingCall] = useState(false);
+  
+  // Calculate subscription status
+  const subscriptionExpired = useMemo(() => {
+    if (!membershipEndDate) return false;
+    return new Date(membershipEndDate) < new Date();
+  }, [membershipEndDate]);
 
   const loadCallLogs = async () => {
     if (!token || role !== "host") return;
@@ -153,6 +162,12 @@ export default function HostCalls() {
     // Prevent double-tap
     if (isStartingCall) return;
     
+    // Check subscription before attempting
+    if (subscriptionExpired) {
+      setShowSubscriptionExpired(true);
+      return;
+    }
+    
     // Check if there's already an active call in Redux state
     if (activeCall || callStatus === "starting") {
       setActiveCallRoomId(activeCall?.roomId);
@@ -185,8 +200,13 @@ export default function HostCalls() {
       if (roomId) {
         router.push(`/host/active-call?roomId=${roomId}`);
       }
-    } catch (error) {
-      console.error("[handleStartCall] Error starting call:", error);
+    } catch (error: any) {
+      // Check if it's a subscription error
+      if (error?.subscriptionExpired === true) {
+        setShowSubscriptionExpired(true);
+      } else {
+        console.error("[handleStartCall] Error starting call:", error);
+      }
       // Error will be shown via callError state
     } finally {
       setIsStartingCall(false);
@@ -396,6 +416,13 @@ export default function HostCalls() {
         onConfirm={handleJoinCallFromModal}
         confirmText="Join Call"
         cancelText="Cancel"
+      />
+
+      {/* Subscription Expired Modal */}
+      <SubscriptionExpiredModal
+        visible={showSubscriptionExpired}
+        membershipType={membershipType}
+        onClose={() => setShowSubscriptionExpired(false)}
       />
 
       <Fab 

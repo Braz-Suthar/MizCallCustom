@@ -11,6 +11,7 @@ import { AppButton } from "../../../components/ui/AppButton";
 import { DeleteConfirmationModal } from "../../../components/ui/DeleteConfirmationModal";
 import { UserSessionsModal } from "../../../components/ui/UserSessionsModal";
 import { SendNotificationModal } from "../../../components/ui/SendNotificationModal";
+import { SubscriptionExpiredModal } from "../../../components/ui/SubscriptionExpiredModal";
 import { authApiFetch } from "../../../state/authActions";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 
@@ -44,10 +45,18 @@ export default function HostUsers() {
   const secondaryButtonBorder = colors.border ?? (isDarkBg ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.1)");
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { token, role } = useAppSelector((s) => s.auth);
+  const auth = useAppSelector((s) => s.auth);
+  const { token, role, membershipType, membershipEndDate } = auth;
   const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string; deviceInfo?: string; avatar_url?: string | null }>>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showSubscriptionExpired, setShowSubscriptionExpired] = useState(false);
+  
+  // Calculate subscription status
+  const subscriptionExpired = useMemo(() => {
+    if (!membershipEndDate) return false;
+    return new Date(membershipEndDate) < new Date();
+  }, [membershipEndDate]);
   const [filterStatus, setFilterStatus] = useState<"all" | "active" | "disabled">("all");
   
   // Modal states
@@ -414,7 +423,17 @@ export default function HostUsers() {
           contentContainerStyle={{ paddingTop: 12, paddingBottom: 80, gap: 10 }}
         />
       </View>
-      <Fab icon="person-add" accessibilityLabel="Add user" onPress={() => router.push("/host/create-user")} />
+      <Fab 
+        icon="person-add" 
+        accessibilityLabel="Add user" 
+        onPress={() => {
+          if (subscriptionExpired) {
+            setShowSubscriptionExpired(true);
+          } else {
+            router.push("/host/create-user");
+          }
+        }} 
+      />
 
       {/* View User Modal */}
       <Modal
@@ -744,6 +763,13 @@ export default function HostUsers() {
         visible={notificationModalVisible}
         onClose={() => setNotificationModalVisible(false)}
         users={users}
+      />
+
+      {/* Subscription Expired Modal */}
+      <SubscriptionExpiredModal
+        visible={showSubscriptionExpired}
+        membershipType={membershipType}
+        onClose={() => setShowSubscriptionExpired(false)}
       />
     </>
   );
@@ -1092,4 +1118,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-

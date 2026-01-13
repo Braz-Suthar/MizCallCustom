@@ -524,6 +524,10 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
     IconData planIcon;
     
     switch (membershipType) {
+      case 'Trial':
+        planColor = AppTheme.warningOrange;
+        planIcon = Icons.schedule;
+        break;
       case 'Premium':
         planColor = AppTheme.primaryBlue;
         planIcon = Icons.star;
@@ -1173,7 +1177,11 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
   }
 
   Future<void> _showSubscriptionDialog() async {
-    String selectedType = _host?.membershipType ?? 'Free';
+    // Ensure selectedType matches dropdown items
+    final currentType = _host?.membershipType ?? 'Free';
+    String selectedType = ['Free', 'Trial', 'Premium', 'Enterprise'].contains(currentType) 
+        ? currentType 
+        : 'Free';
     DateTime? selectedEndDate = _host?.membershipEndDate;
 
     final result = await showDialog<Map<String, dynamic>?>(
@@ -1197,6 +1205,7 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                   ),
                   items: const [
                     DropdownMenuItem(value: 'Free', child: Text('Free')),
+                    DropdownMenuItem(value: 'Trial', child: Text('Trial (7 Days)')),
                     DropdownMenuItem(value: 'Premium', child: Text('Premium')),
                     DropdownMenuItem(value: 'Enterprise', child: Text('Enterprise')),
                   ],

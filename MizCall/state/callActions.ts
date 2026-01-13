@@ -109,15 +109,35 @@ export const startCall =
     dispatch(setCallStatus("starting"));
     dispatch(setCallError(null));
     dispatch(resetParticipants());
-    const res = await dispatch<any>(authApiFetch<{ roomId: string }>("/host/calls/start", {
-      method: "POST",
-    }));
+    
+    try {
+      const res = await dispatch<any>(authApiFetch<{ roomId: string }>("/host/calls/start", {
+        method: "POST",
+      }));
 
-    dispatch(setActiveCall({ roomId: res.roomId }));
-    // notify signaling server to create mediasoup room and broadcast, keep socket open to receive user joins
-    await openHostCallSocket(token, dispatch, res.roomId);
-    dispatch(setCallStatus("active"));
-    return res.roomId;
+      dispatch(setActiveCall({ roomId: res.roomId }));
+      // notify signaling server to create mediasoup room and broadcast, keep socket open to receive user joins
+      await openHostCallSocket(token, dispatch, res.roomId);
+      dispatch(setCallStatus("active"));
+      return res.roomId;
+    } catch (error: any) {
+      dispatch(setCallStatus("idle"));
+      
+      // Check if it's a subscription error
+      if (error?.message?.includes('Subscription expired') || 
+          error?.message?.includes('subscription') ||
+          error?.subscriptionExpired) {
+        // Return special error object instead of throwing
+        return Promise.reject({
+          subscriptionExpired: true,
+          membershipType: error?.membershipType,
+          message: error?.message || 'Subscription expired',
+        });
+      }
+      
+      // For other errors, throw normally
+      throw error;
+    }
   };
 
 export const endCall =

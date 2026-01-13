@@ -506,8 +506,8 @@ class _HostsScreenState extends State<HostsScreen> {
     final passwordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
     final displayNameController = TextEditingController();
-    String membershipType = 'Free';
-    DateTime? membershipEndDate;
+    String membershipType = 'Trial'; // Default to Trial
+    DateTime? membershipEndDate = DateTime.now().add(const Duration(days: 7)); // 7-day trial default
 
     final result = await showDialog<bool>(
       context: context,
@@ -568,16 +568,17 @@ class _HostsScreenState extends State<HostsScreen> {
                       border: OutlineInputBorder(),
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     ),
-                    items: const [
-                      DropdownMenuItem(value: 'Free', child: Text('Free')),
-                      DropdownMenuItem(value: 'Premium', child: Text('Premium')),
-                      DropdownMenuItem(value: 'Enterprise', child: Text('Enterprise')),
-                    ],
+                  items: const [
+                    DropdownMenuItem(value: 'Trial', child: Text('Trial (7 Days)')),
+                    DropdownMenuItem(value: 'Free', child: Text('Free')),
+                    DropdownMenuItem(value: 'Premium', child: Text('Premium')),
+                    DropdownMenuItem(value: 'Enterprise', child: Text('Enterprise')),
+                  ],
                     onChanged: (value) {
                       setState(() => membershipType = value ?? 'Free');
                     },
                   ),
-                  if (membershipType != 'Free') ...[
+                  if (membershipType != 'Free' && membershipType != 'Trial') ...[
                     const SizedBox(height: 16),
                     OutlinedButton.icon(
                       onPressed: () async {

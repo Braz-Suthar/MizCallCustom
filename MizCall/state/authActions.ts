@@ -88,6 +88,9 @@ export const loginHost =
         accessJti: res.accessJti ?? null,
         twoFactorEnabled: res.twoFactorEnabled ?? false,
         allowMultipleSessions: res.allowMultipleSessions ?? true,
+        membershipType: res.membershipType,
+        membershipStartDate: res.membershipStartDate,
+        membershipEndDate: res.membershipEndDate,
       };
       dispatch(setCredentials(session));
       await saveSession(session);
@@ -188,6 +191,9 @@ export const registerUser =
         accessJti: res.accessJti ?? null,
         twoFactorEnabled: res.twoFactorEnabled ?? false,
         allowMultipleSessions: res.allowMultipleSessions ?? true,
+        membershipType: res.membershipType,
+        membershipStartDate: res.membershipStartDate,
+        membershipEndDate: res.membershipEndDate,
       };
       dispatch(setCredentials(session));
       await saveSession(session);
