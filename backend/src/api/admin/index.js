@@ -955,4 +955,45 @@ router.get("/database/backups", requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+/* DOWNLOAD BACKUP FILE */
+router.get("/database/backups/:filename/download", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { filename } = req.params;
+    
+    // Verify backup exists in database
+    const backupRecord = await query(
+      `SELECT id, filename, status, file_size FROM database_backups WHERE filename = $1`,
+      [filename]
+    );
+
+    if (backupRecord.rows.length === 0) {
+      return res.status(404).json({ error: "Backup not found" });
+    }
+
+    if (backupRecord.rows[0].status !== 'completed') {
+      return res.status(400).json({ error: "Backup is not completed yet" });
+    }
+
+    const backupDir = process.env.BACKUP_DIR || '/var/app/backups';
+    const filePath = path.join(backupDir, filename);
+
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Backup file not found on disk" });
+    }
+
+    logAdminAction(req.username, 'download_backup', { filename });
+
+    // Send file
+    res.download(filePath, filename, (err) => {
+      if (err) {
+        logError("Backup download failed", 'admin', { error: err.message, filename });
+      }
+    });
+  } catch (error) {
+    logError("Failed to download backup", 'admin', { error: error.message });
+    res.status(500).json({ error: "Failed to download backup" });
+  }
+});
+
 export default router;

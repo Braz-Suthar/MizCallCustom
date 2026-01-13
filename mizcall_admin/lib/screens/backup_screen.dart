@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+import 'dart:io';
 
 import '../config/theme.dart';
+import '../config/app_config.dart';
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -358,6 +364,14 @@ class _BackupScreenState extends State<BackupScreen> {
               ),
             ),
             const SizedBox(width: 12),
+            if (status == 'completed')
+              IconButton(
+                onPressed: () => _downloadBackup(backup),
+                icon: const Icon(Icons.download, size: 20),
+                tooltip: 'Download Backup',
+                color: AppTheme.primaryBlue,
+              ),
+            const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
@@ -378,6 +392,135 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _downloadBackup(Map<String, dynamic> backup) async {
+    final filename = backup['filename'];
+    
+    try {
+      // Get auth token
+      final authService = context.read<AuthService>();
+      final token = authService.token;
+      
+      if (token == null) {
+        throw Exception('Not authenticated');
+      }
+
+      // Show downloading dialog
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text('Downloading $filename...'),
+              const SizedBox(height: 8),
+              const Text(
+                'This may take a few moments',
+                style: TextStyle(fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      // Determine save location based on platform
+      Directory? directory;
+      if (Platform.isAndroid) {
+        directory = await getExternalStorageDirectory();
+      } else if (Platform.isIOS) {
+        directory = await getApplicationDocumentsDirectory();
+      } else {
+        // Desktop: use downloads folder
+        directory = await getDownloadsDirectory();
+      }
+
+      if (directory == null) {
+        directory = await getApplicationDocumentsDirectory();
+      }
+
+      final savePath = '${directory.path}/$filename';
+      
+      // Download file using dio
+      final dio = Dio();
+      await dio.download(
+        '${AppConfig.apiBaseUrl}/admin/database/backups/$filename/download',
+        savePath,
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $token',
+          },
+        ),
+        onReceiveProgress: (received, total) {
+          if (total != -1) {
+            final progress = (received / total * 100).toStringAsFixed(0);
+            print('Download progress: $progress%');
+          }
+        },
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Close downloading dialog
+        
+        // Show success with option to open
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: AppTheme.successGreen),
+                SizedBox(width: 8),
+                Text('Download Complete'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('File saved to:'),
+                const SizedBox(height: 8),
+                SelectableText(
+                  savePath,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+              if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS)
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    await OpenFile.open(savePath);
+                  },
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: const Text('Open File'),
+                ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close downloading dialog if open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Download failed: ${e.toString()}'),
+            backgroundColor: AppTheme.dangerRed,
+          ),
+        );
+      }
+    }
   }
 
   String _formatFileSize(dynamic bytes) {
