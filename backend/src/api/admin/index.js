@@ -73,6 +73,9 @@ router.post("/login", async (req, res) => {
   });
 });
 
+// Store previous CPU times for calculating usage
+let previousCpuTimes = null;
+
 /* SYSTEM METRICS */
 router.get("/system-metrics", requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -85,20 +88,46 @@ router.get("/system-metrics", requireAuth, requireAdmin, async (req, res) => {
     // Approximate percentage: (load / cores) * 100, capped at 100%
     const cpuPercent = Math.min(100, (cpuUsage[0] / cores) * 100).toFixed(2);
     
-    // Get per-core information
-    const coreStats = cpus.map((cpu, index) => {
-      const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
-      const idle = cpu.times.idle;
-      const used = total - idle;
-      const usagePercent = total > 0 ? ((used / total) * 100).toFixed(2) : '0.00';
-      
-      return {
+    // Get current CPU times
+    const currentTimes = cpus.map(cpu => ({
+      idle: cpu.times.idle,
+      total: Object.values(cpu.times).reduce((a, b) => a + b, 0),
+    }));
+
+    let coreStats = [];
+    
+    if (previousCpuTimes) {
+      // Calculate per-core usage from difference
+      coreStats = cpus.map((cpu, index) => {
+        const current = currentTimes[index];
+        const previous = previousCpuTimes[index];
+        
+        const idleDiff = current.idle - previous.idle;
+        const totalDiff = current.total - previous.total;
+        
+        const usagePercent = totalDiff > 0 
+          ? (((totalDiff - idleDiff) / totalDiff) * 100).toFixed(1)
+          : '0.0';
+        
+        return {
+          core: index,
+          model: cpu.model.replace(/\s+/g, ' ').trim(),
+          speed: cpu.speed,
+          usagePercent,
+        };
+      });
+    } else {
+      // First call - use load average as estimate
+      coreStats = cpus.map((cpu, index) => ({
         core: index,
-        model: cpu.model,
+        model: cpu.model.replace(/\s+/g, ' ').trim(),
         speed: cpu.speed,
-        usagePercent,
-      };
-    });
+        usagePercent: cpuPercent,
+      }));
+    }
+
+    // Store current times for next request
+    previousCpuTimes = currentTimes;
 
     const totalMemory = os.totalmem();
     const freeMemory = os.freemem();
