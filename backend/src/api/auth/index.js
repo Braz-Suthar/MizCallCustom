@@ -8,6 +8,7 @@ import { peers } from "../../signaling/socket-io.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
+import logger, { logInfo, logWarn, logError, logHostAction, logUserAction } from "../../services/logger.js";
 
 const router = Router();
 
