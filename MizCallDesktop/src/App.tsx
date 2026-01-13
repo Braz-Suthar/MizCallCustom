@@ -57,6 +57,8 @@ import {
   FiPlay,
   FiPause,
   FiTrash,
+  FiInfo,
+  FiAlertCircle,
 } from "react-icons/fi";
 import {
   IoStar,
@@ -597,6 +599,17 @@ function App() {
   const [callJoinState, setCallJoinState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [callError, setCallError] = useState<string | null>(null);
   const [networkStatus, setNetworkStatus] = useState<"online" | "offline">("offline");
+  
+  // Audio device management
+  const [audioDevices, setAudioDevices] = useState<{
+    input: MediaDeviceInfo[];
+    output: MediaDeviceInfo[];
+  }>({ input: [], output: [] });
+  const [selectedInputDevice, setSelectedInputDevice] = useState<string>("default");
+  const [selectedOutputDevice, setSelectedOutputDevice] = useState<string>("default");
+  const [showAudioSettings, setShowAudioSettings] = useState(false);
+  const [hardwareMuted, setHardwareMuted] = useState(false);
+  
   const callSocketRef = useRef<Socket | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const sendTransportRef = useRef<any>(null);
@@ -615,6 +628,112 @@ function App() {
   const activeCallListenerRef = useRef<null | (() => void)>(null);
   const userWsRef = useRef<Socket | null>(null);
 
+  // Audio device enumeration
+  const enumerateAudioDevices = async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputDevices = devices.filter(d => d.kind === 'audioinput');
+      const outputDevices = devices.filter(d => d.kind === 'audiooutput');
+      
+      setAudioDevices({
+        input: inputDevices,
+        output: outputDevices
+      });
+      
+      console.log('[AudioDevices] Enumerated:', {
+        inputs: inputDevices.length,
+        outputs: outputDevices.length
+      });
+    } catch (error) {
+      console.error('[AudioDevices] Enumeration failed:', error);
+    }
+  };
+
+  // Detect hardware mute from microphone track
+  const monitorHardwareMute = (stream: MediaStream | null) => {
+    if (!stream) return;
+    
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
+
+    const checkMuteState = () => {
+      const isMuted = audioTrack.muted;
+      setHardwareMuted(isMuted);
+      
+      if (isMuted) {
+        console.log('[AudioDevices] Hardware mute detected');
+      }
+    };
+
+    audioTrack.onmute = () => {
+      console.log('[AudioDevices] Track muted event (hardware)');
+      setHardwareMuted(true);
+    };
+
+    audioTrack.onunmute = () => {
+      console.log('[AudioDevices] Track unmuted event (hardware)');
+      setHardwareMuted(false);
+    };
+
+    // Initial check
+    checkMuteState();
+  };
+
+  // Switch input device (microphone)
+  const switchInputDevice = async (deviceId: string) => {
+    try {
+      console.log('[AudioDevices] Switching input device to:', deviceId);
+      
+      // Stop current stream if exists
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      // Get new stream with selected device
+      const constraints: MediaStreamConstraints = {
+        audio: deviceId === 'default' 
+          ? true 
+          : { deviceId: { exact: deviceId } }
+      };
+
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      localStreamRef.current = newStream;
+      
+      // Monitor hardware mute on new track
+      monitorHardwareMute(newStream);
+
+      // If we have an active producer, replace the track
+      if (producerRef.current && !producerRef.current.closed) {
+        const newTrack = newStream.getAudioTracks()[0];
+        await producerRef.current.replaceTrack({ track: newTrack });
+        console.log('[AudioDevices] Producer track replaced');
+      }
+
+      setSelectedInputDevice(deviceId);
+      showToast('Microphone switched successfully', 'success');
+    } catch (error) {
+      console.error('[AudioDevices] Failed to switch input device:', error);
+      showToast('Failed to switch microphone', 'error');
+    }
+  };
+
+  // Switch output device (speaker/headphones)
+  const switchOutputDevice = async (deviceId: string) => {
+    try {
+      console.log('[AudioDevices] Switching output device to:', deviceId);
+      
+      if (remoteAudioElRef.current && 'setSinkId' in remoteAudioElRef.current) {
+        await (remoteAudioElRef.current as any).setSinkId(deviceId === 'default' ? '' : deviceId);
+        setSelectedOutputDevice(deviceId);
+        showToast('Speaker switched successfully', 'success');
+        console.log('[AudioDevices] Output device switched');
+      }
+    } catch (error) {
+      console.error('[AudioDevices] Failed to switch output device:', error);
+      showToast('Failed to switch speaker', 'error');
+    }
+  };
+
   useEffect(() => {
     // Check for biometric support
     const checkBiometrics = async () => {
@@ -625,6 +744,9 @@ function App() {
       }
     };
     checkBiometrics();
+    
+    // Enumerate audio devices on mount
+    enumerateAudioDevices();
     
     // Restore persisted theme and session
     try {
@@ -676,10 +798,19 @@ function App() {
     const offlineHandler = () => setNetworkStatus("offline");
     window.addEventListener("online", onlineHandler);
     window.addEventListener("offline", offlineHandler);
+    
+    // Listen for device changes (plug/unplug)
+    const handleDeviceChange = () => {
+      console.log('[AudioDevices] Device change detected');
+      enumerateAudioDevices();
+    };
+    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+    
     return () => {
       mql.removeEventListener("change", listener);
       window.removeEventListener("online", onlineHandler);
       window.removeEventListener("offline", offlineHandler);
+      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
     };
   }, []);
 
@@ -1619,12 +1750,22 @@ function App() {
         throw new Error("getUserMedia is not supported in this browser");
       }
       
+      // Use selected input device if available
+      const audioConstraints: MediaStreamConstraints['audio'] = selectedInputDevice === 'default' 
+        ? {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          }
+        : {
+            deviceId: { exact: selectedInputDevice },
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          };
+      
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        }, 
+        audio: audioConstraints, 
         video: false 
       });
       
@@ -1637,6 +1778,10 @@ function App() {
       })));
       
       localStreamRef.current = stream;
+      
+      // Monitor hardware mute on the track
+      monitorHardwareMute(stream);
+      
       const track = stream.getAudioTracks()[0];
       const producer = await sendTransportRef.current.produce({ track });
       producerRef.current = producer;
@@ -3311,17 +3456,19 @@ function App() {
           <div className="card call-footer">
             <button
               className="icon-btn"
-              onClick={() => showToast("Open audio settings (stub)", "info")}
+              onClick={() => setShowAudioSettings(true)}
               title="Audio settings"
             >
               <FiSettings />
             </button>
             <button
-              className={`mute-btn ${callMuted ? "muted" : "unmuted"}`}
+              className={`mute-btn ${callMuted || hardwareMuted ? "muted" : "unmuted"}`}
               onClick={() => setCallMuted((m) => !m)}
+              disabled={hardwareMuted}
+              title={hardwareMuted ? "Muted by hardware" : callMuted ? "Unmute" : "Mute"}
             >
-              {callMuted ? <FiVolumeX /> : <FiVolume2 />}
-              <span>{callMuted ? "Unmute" : "Mute"}</span>
+              {callMuted || hardwareMuted ? <FiVolumeX /> : <FiVolume2 />}
+              <span>{hardwareMuted ? "Hardware Muted" : callMuted ? "Unmute" : "Mute"}</span>
             </button>
             <div className="volume-control">
               <span className="muted small">Volume</span>
@@ -5171,6 +5318,118 @@ function App() {
                   Click to select an image from your computer • Recommended: 16:9 aspect ratio, 1920x1080px
                 </p>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Audio Settings Modal */}
+      {showAudioSettings ? (
+        <div className="modal-backdrop" onClick={() => setShowAudioSettings(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "600px" }}>
+            <div className="modal-header">
+              <p className="muted strong">Audio Settings</p>
+              <button className="icon-btn" onClick={() => setShowAudioSettings(false)}>
+                <FiX />
+              </button>
+            </div>
+            <div className="modal-body stack gap-md">
+              {/* Input Device (Microphone) */}
+              <div className="stack gap-xs">
+                <label className="muted strong">Input Device (Microphone)</label>
+                <select 
+                  className="select-field"
+                  value={selectedInputDevice}
+                  onChange={(e) => switchInputDevice(e.target.value)}
+                  style={{
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: "2px solid",
+                    borderColor: effectiveTheme === 'dark' ? '#4b5563' : '#d1d5db',
+                    background: effectiveTheme === 'dark' ? '#1f2937' : '#fff',
+                    color: effectiveTheme === 'dark' ? '#f3f4f6' : '#1f2937',
+                    fontSize: "14px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="default">System Default</option>
+                  {audioDevices.input.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
+                {hardwareMuted && (
+                  <div style={{
+                    padding: "12px",
+                    borderRadius: "8px",
+                    background: "rgba(239, 68, 68, 0.1)",
+                    border: "2px solid rgba(239, 68, 68, 0.3)",
+                    color: "#ef4444",
+                    fontSize: "14px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}>
+                    <FiAlertCircle size={18} />
+                    <span>Your microphone is muted by hardware. Please unmute it on your device.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Output Device (Speaker/Headphones) */}
+              <div className="stack gap-xs">
+                <label className="muted strong">Output Device (Speaker/Headphones)</label>
+                <select 
+                  className="select-field"
+                  value={selectedOutputDevice}
+                  onChange={(e) => switchOutputDevice(e.target.value)}
+                  style={{
+                    padding: "12px",
+                    borderRadius: "8px",
+                    border: "2px solid",
+                    borderColor: effectiveTheme === 'dark' ? '#4b5563' : '#d1d5db',
+                    background: effectiveTheme === 'dark' ? '#1f2937' : '#fff',
+                    color: effectiveTheme === 'dark' ? '#f3f4f6' : '#1f2937',
+                    fontSize: "14px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="default">System Default</option>
+                  {audioDevices.output.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Speaker ${device.deviceId.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Info about automatic switching */}
+              <div style={{
+                padding: "12px",
+                borderRadius: "8px",
+                background: effectiveTheme === 'dark' 
+                  ? 'rgba(59, 130, 246, 0.1)'
+                  : 'rgba(59, 130, 246, 0.05)',
+                border: "2px solid",
+                borderColor: effectiveTheme === 'dark' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.2)',
+                fontSize: "14px",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "8px",
+              }}>
+                <FiInfo size={18} style={{ flexShrink: 0, marginTop: "2px", color: "#3b82f6" }} />
+                <div style={{ color: effectiveTheme === 'dark' ? '#93c5fd' : '#1e40af' }}>
+                  <strong>Auto-switching enabled:</strong> Devices will automatically switch when you plug in or unplug headphones or microphones during a call.
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <Button 
+                label="Close" 
+                variant="secondary" 
+                onClick={() => setShowAudioSettings(false)} 
+              />
             </div>
           </div>
         </div>

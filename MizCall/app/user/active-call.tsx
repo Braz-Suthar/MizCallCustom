@@ -8,8 +8,10 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { AppButton } from "../../components/ui/AppButton";
 import { LeaveCallModal } from "../../components/ui/LeaveCallModal";
+import { AudioSettingsModal } from "../../components/ui/AudioSettingsModal";
 import { useAppSelector } from "../../state/store";
 import { useJoinCall } from "../../hooks/useJoinCall";
+import { useAudioDeviceManager } from "../../hooks/useAudioDeviceManager";
 import { apiFetch, API_BASE } from "../../state/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -24,11 +26,25 @@ export default function UserActiveCallScreen() {
   const activeCall = useAppSelector((s) => s.call.activeCall);
   const token = useAppSelector((s) => s.auth.token);
   const { join, leave, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket, callEnded } = useJoinCall();
+  const {
+    currentRoute,
+    availableDevices,
+    switchAudioRoute,
+    hardwareMuted,
+    monitorHardwareMute,
+  } = useAudioDeviceManager({
+    defaultRoute: 'speaker',
+    onDeviceChanged: (route) => {
+      console.log('[user-active-call] Audio route changed to:', route);
+    },
+  });
+  
   const hasJoinedRef = useRef(false);
   const [isPressing, setIsPressing] = React.useState(false);
   const [hostMuted, setHostMuted] = React.useState(false);
   const [isLeaving, setIsLeaving] = React.useState(false);
   const [showLeaveModal, setShowLeaveModal] = React.useState(false);
+  const [showAudioSettings, setShowAudioSettings] = React.useState(false);
   const [callBackgroundUrl, setCallBackgroundUrl] = React.useState<string | null>(null);
   
   // Prevent back navigation during active call (unless explicitly leaving)
@@ -146,6 +162,12 @@ export default function UserActiveCallScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={[styles.title, { color: colors.text }]}>Active Call</Text>
+        <Pressable
+          onPress={() => setShowAudioSettings(true)}
+          style={[styles.settingsButton, { backgroundColor: primaryTint, borderColor: primaryColor }]}
+        >
+          <Ionicons name="settings-outline" size={20} color={primaryColor} />
+        </Pressable>
       </View>
 
       {activeCall ? (
@@ -285,6 +307,16 @@ export default function UserActiveCallScreen() {
         onConfirm={handleConfirmLeave}
         isHost={false}
       />
+
+      {/* Audio Settings Modal */}
+      <AudioSettingsModal
+        visible={showAudioSettings}
+        onClose={() => setShowAudioSettings(false)}
+        availableDevices={availableDevices}
+        currentRoute={currentRoute}
+        onSelectDevice={switchAudioRoute}
+        hardwareMuted={hardwareMuted}
+      />
     </>
   );
 
@@ -330,7 +362,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 28,
     paddingBottom: 16,
@@ -338,6 +372,11 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: "700",
+  },
+  settingsButton: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 2,
   },
   callContainer: {
     flex: 1,

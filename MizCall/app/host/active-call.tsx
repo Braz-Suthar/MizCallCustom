@@ -8,9 +8,11 @@ import { RTCView } from "react-native-webrtc";
 
 import { AppButton } from "../../components/ui/AppButton";
 import { LeaveCallModal } from "../../components/ui/LeaveCallModal";
+import { AudioSettingsModal } from "../../components/ui/AudioSettingsModal";
 import { useAppDispatch, useAppSelector } from "../../state/store";
 import { endCall, startCall } from "../../state/callActions";
 import { useHostCallMedia } from "../../hooks/useHostCallMedia";
+import { useAudioDeviceManager } from "../../hooks/useAudioDeviceManager";
 import { apiFetch, API_BASE } from "../../state/api";
 
 const SUCCESS_GREEN = "#22c55e";
@@ -38,6 +40,21 @@ export default function ActiveCallScreen() {
   const role = useAppSelector((s) => s.auth.role);
   const [isEnding, setIsEnding] = useState(false);
   const [showEndModal, setShowEndModal] = useState(false);
+  const [showAudioSettings, setShowAudioSettings] = useState(false);
+  
+  // Audio device manager
+  const {
+    currentRoute,
+    availableDevices,
+    switchAudioRoute,
+    hardwareMuted,
+    monitorHardwareMute,
+  } = useAudioDeviceManager({
+    defaultRoute: 'speaker',
+    onDeviceChanged: (route) => {
+      console.log('[host-active-call] Audio route changed to:', route);
+    },
+  });
   
   // Prevent back navigation during active call (unless explicitly ending)
   usePreventRemove(!!activeCall && !isEnding, ({ data }) => {
@@ -258,12 +275,22 @@ export default function ActiveCallScreen() {
             </Text>
           )}
         </View>
-        {hasCall && (
-          <View style={[styles.statusBadge, { backgroundColor: SUCCESS_GREEN }]}>
-            <View style={styles.liveDot} />
-            <Text style={styles.statusText}>Live</Text>
-          </View>
-        )}
+        <View style={styles.headerActions}>
+          {hasCall && (
+            <Pressable
+              onPress={() => setShowAudioSettings(true)}
+              style={[styles.settingsButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Ionicons name="settings-outline" size={20} color={PRIMARY_BLUE} />
+            </Pressable>
+          )}
+          {hasCall && (
+            <View style={[styles.statusBadge, { backgroundColor: SUCCESS_GREEN }]}>
+              <View style={styles.liveDot} />
+              <Text style={styles.statusText}>Live</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {hasCall ? (
@@ -480,6 +507,16 @@ export default function ActiveCallScreen() {
         onConfirm={handleConfirmEnd}
         isHost={true}
       />
+
+      {/* Audio Settings Modal */}
+      <AudioSettingsModal
+        visible={showAudioSettings}
+        onClose={() => setShowAudioSettings(false)}
+        availableDevices={availableDevices}
+        currentRoute={currentRoute}
+        onSelectDevice={switchAudioRoute}
+        hardwareMuted={hardwareMuted}
+      />
     </>
   );
 
@@ -535,6 +572,11 @@ const styles = StyleSheet.create({
   headerInfo: {
     flex: 1,
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   title: {
     fontSize: 20,
     fontWeight: "700",
@@ -543,6 +585,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     opacity: 0.7,
     marginTop: 2,
+  },
+  settingsButton: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 2,
   },
   statusBadge: {
     flexDirection: "row",
