@@ -2,6 +2,7 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { query } from "../../services/db.js";
 import { requireAuth, requireHost } from "../../middleware/auth.js";
+import { requireActiveSubscription } from "../../middleware/subscription.js";
 import { signRefreshToken, verifyRefreshToken } from "../../services/auth.js";
 import { generateUserId } from "../../services/id.js";
 import { broadcastCallEvent, ensureMediasoupRoom, peers } from "../../signaling/socket-io.js";
@@ -485,7 +486,7 @@ router.get("/dashboard", requireAuth, requireHost, async (req, res) => {
 });
 
 /* CREATE USER */
-router.post("/users", requireAuth, requireHost, async (req, res) => {
+router.post("/users", requireAuth, requireHost, requireActiveSubscription, async (req, res) => {
   const id = await generateUserId();
   const username = req.body.username;
   const password = req.body.password || Math.random().toString(36).slice(2, 10);
@@ -513,6 +514,7 @@ router.patch(
   "/users/:userId",
   requireAuth,
   requireHost,
+  requireActiveSubscription,
   async (req, res) => {
     const { enabled, password, enforceSingleDevice } = req.body;
     const updates = [];
@@ -579,6 +581,7 @@ router.delete(
   "/users/:userId",
   requireAuth,
   requireHost,
+  requireActiveSubscription,
   async (req, res) => {
     await query(
       `DELETE FROM users 
@@ -808,7 +811,7 @@ router.post("/users/:userId/sessions/revoke", requireAuth, requireHost, async (r
 });
 
 /* START CALL (LOGICAL ONLY FOR NOW) */
-router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
+router.post("/calls/start", requireAuth, requireHost, requireActiveSubscription, async (req, res) => {
   const roomId = uuid();
 
   await query(

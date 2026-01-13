@@ -208,6 +208,15 @@ router.post("/host/login", async (req, res) => {
 
   logHostAction(id, "login", { sessionId, deviceLabel });
 
+  // Get subscription info
+  const subscriptionResult = await query(
+    `SELECT membership_type, membership_start_date, membership_end_date 
+     FROM hosts WHERE id = $1`,
+    [id]
+  );
+
+  const subscription = subscriptionResult.rows[0] || {};
+
   res.json({
     token,
     refreshToken,
@@ -219,6 +228,9 @@ router.post("/host/login", async (req, res) => {
     avatarUrl: avatar_url,
     twoFactorEnabled: !!two_factor_enabled,
     allowMultipleSessions: !enforce_single_session,
+    membershipType: subscription.membership_type,
+    membershipStartDate: subscription.membership_start_date,
+    membershipEndDate: subscription.membership_end_date,
   });
 });
 
@@ -250,7 +262,34 @@ router.post("/host/register", async (req, res) => {
     [hostId, deviceLabel, deviceName || headerDevice || null, deviceModel || null, platform || null, osName || null, osVersion || null, accessJti, refreshToken, userAgent]
   );
   const sessionId = sessionResult.rows[0].id;
-  res.json({ hostId, token, refreshToken, accessJti, sessionId, avatarUrl: null, name: hostName, email: hostName, twoFactorEnabled: false, allowMultipleSessions: true });
+  
+  // Set 7-day trial for new hosts
+  const trialEndDate = new Date();
+  trialEndDate.setDate(trialEndDate.getDate() + 7);
+  
+  await query(
+    `UPDATE hosts 
+     SET membership_type = 'Trial', 
+         membership_start_date = NOW(), 
+         membership_end_date = $1 
+     WHERE id = $2`,
+    [trialEndDate, hostId]
+  );
+  
+  res.json({ 
+    hostId, 
+    token, 
+    refreshToken, 
+    accessJti, 
+    sessionId, 
+    avatarUrl: null, 
+    name: hostName, 
+    email: hostName, 
+    twoFactorEnabled: false, 
+    allowMultipleSessions: true,
+    membershipType: 'Trial',
+    membershipEndDate: trialEndDate.toISOString(),
+  });
 });
 
 /* USER LOGIN (by id or username, plain text password) */

@@ -236,6 +236,10 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                             _buildHostInfoCard(),
                             const SizedBox(height: 24),
 
+                            // Subscription Details Card
+                            _buildSubscriptionCard(),
+                            const SizedBox(height: 24),
+
                             // Stats Row (Responsive)
                             LayoutBuilder(
                               builder: (context, constraints) {
@@ -499,29 +503,169 @@ class _HostDetailsScreenState extends State<HostDetailsScreen> {
                         ],
                       ),
                     ),
-
-                    // Subscription Info
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildDetailRow('Subscription', _host!.subscriptionStatus,
-                            valueColor: _host!.membershipType == 'Premium' || _host!.membershipType == 'Enterprise'
-                              ? AppTheme.successGreen 
-                              : (_host!.isSubscriptionActive ? null : AppTheme.dangerRed)),
-                          const SizedBox(height: 12),
-                          if (_host!.membershipStartDate != null)
-                            _buildDetailRow('Started', 
-                              DateFormat('MMM dd, yyyy').format(_host!.membershipStartDate!)),
-                          const SizedBox(height: 12),
-                          if (_host!.membershipEndDate != null)
-                            _buildDetailRow('Expires', 
-                              DateFormat('MMM dd, yyyy').format(_host!.membershipEndDate!)),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubscriptionCard() {
+    final theme = Theme.of(context);
+    final isMobile = MediaQuery.of(context).size.width < 800;
+    
+    final membershipType = _host!.membershipType ?? 'Free';
+    final startDate = _host!.membershipStartDate;
+    final endDate = _host!.membershipEndDate;
+    final isActive = _host!.isSubscriptionActive;
+    
+    Color planColor;
+    IconData planIcon;
+    
+    switch (membershipType) {
+      case 'Premium':
+        planColor = AppTheme.primaryBlue;
+        planIcon = Icons.star;
+        break;
+      case 'Enterprise':
+        planColor = const Color(0xFF9333EA); // Purple
+        planIcon = Icons.workspace_premium;
+        break;
+      default:
+        planColor = AppTheme.secondaryBlue;
+        planIcon = Icons.card_membership;
+    }
+
+    return Card(
+      child: Padding(
+        padding: EdgeInsets.all(isMobile ? 16 : 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Subscription Details',
+                  style: theme.textTheme.titleLarge,
+                ),
+                IconButton(
+                  onPressed: () => _showSubscriptionDialog(),
+                  icon: const Icon(Icons.edit, size: 20),
+                  tooltip: 'Manage Subscription',
+                  color: AppTheme.primaryBlue,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            
+            // Plan Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                gradient: membershipType != 'Free'
+                    ? LinearGradient(
+                        colors: [planColor, planColor.withOpacity(0.7)],
+                      )
+                    : null,
+                color: membershipType == 'Free' 
+                    ? theme.brightness == Brightness.dark
+                        ? AppTheme.darkCard
+                        : AppTheme.lightCard
+                    : null,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: membershipType != 'Free' 
+                      ? planColor.withOpacity(0.5)
+                      : (theme.brightness == Brightness.dark ? AppTheme.darkBorder : AppTheme.lightBorder),
+                  width: 2,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    planIcon,
+                    color: membershipType != 'Free' ? Colors.white : theme.textTheme.bodyMedium?.color,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    membershipType.toUpperCase(),
+                    style: TextStyle(
+                      color: membershipType != 'Free' ? Colors.white : theme.textTheme.bodyMedium?.color,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Subscription Info Grid
+            isMobile
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (startDate != null) ...[
+                        _buildDetailRow('Start Date', DateFormat('MMM dd, yyyy').format(startDate)),
+                        const SizedBox(height: 12),
+                      ],
+                      if (endDate != null) ...[
+                        _buildDetailRow(
+                          'End Date', 
+                          DateFormat('MMM dd, yyyy').format(endDate),
+                          valueColor: isActive ? null : AppTheme.dangerRed,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      _buildDetailRow(
+                        'Status',
+                        isActive ? 'Active' : 'Expired',
+                        valueColor: isActive ? AppTheme.successGreen : AppTheme.dangerRed,
+                      ),
+                      if (endDate != null && isActive) ...[
+                        const SizedBox(height: 12),
+                        _buildDetailRow(
+                          'Days Remaining',
+                          endDate.difference(DateTime.now()).inDays.toString(),
+                        ),
+                      ],
+                    ],
+                  )
+                : Row(
+                    children: [
+                      if (startDate != null)
+                        Expanded(
+                          child: _buildDetailRow('Start Date', DateFormat('MMM dd, yyyy').format(startDate)),
+                        ),
+                      if (endDate != null)
+                        Expanded(
+                          child: _buildDetailRow(
+                            'End Date', 
+                            DateFormat('MMM dd, yyyy').format(endDate),
+                            valueColor: isActive ? null : AppTheme.dangerRed,
+                          ),
+                        ),
+                      Expanded(
+                        child: _buildDetailRow(
+                          'Status',
+                          isActive ? 'Active' : 'Expired',
+                          valueColor: isActive ? AppTheme.successGreen : AppTheme.dangerRed,
+                        ),
+                      ),
+                      if (endDate != null && isActive)
+                        Expanded(
+                          child: _buildDetailRow(
+                            'Days Remaining',
+                            endDate.difference(DateTime.now()).inDays.toString(),
+                          ),
+                        ),
+                    ],
+                  ),
           ],
         ),
       ),

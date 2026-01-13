@@ -17,6 +17,9 @@ type AuthState = {
   accessJti: string | null;
   twoFactorEnabled: boolean;
   allowMultipleSessions: boolean;
+  membershipType: string | null;
+  membershipStartDate: string | null;
+  membershipEndDate: string | null;
   status: "idle" | "loading" | "authenticated";
   hydrated: boolean;
 };
@@ -36,6 +39,9 @@ const initialState: AuthState = {
   accessJti: null,
   twoFactorEnabled: false,
   allowMultipleSessions: true,
+  membershipType: null,
+  membershipStartDate: null,
+  membershipEndDate: null,
   status: "idle",
   hydrated: false,
 };
@@ -54,6 +60,9 @@ export type CredentialsPayload = {
   accessJti?: string | null;
   twoFactorEnabled?: boolean;
   allowMultipleSessions?: boolean;
+  membershipType?: string;
+  membershipStartDate?: string;
+  membershipEndDate?: string;
   role: Exclude<UserRole, null>;
 };
 
@@ -76,6 +85,9 @@ const authSlice = createSlice({
       state.accessJti = action.payload.accessJti ?? null;
       state.twoFactorEnabled = !!action.payload.twoFactorEnabled;
       state.allowMultipleSessions = action.payload.allowMultipleSessions ?? true;
+      state.membershipType = action.payload.membershipType ?? null;
+      state.membershipStartDate = action.payload.membershipStartDate ?? null;
+      state.membershipEndDate = action.payload.membershipEndDate ?? null;
       state.status = "authenticated";
     },
     logout: () => initialState,

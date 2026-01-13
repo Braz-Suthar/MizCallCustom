@@ -6,12 +6,14 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Fab } from "../../../components/ui/Fab";
 import { ActiveCallModal } from "../../../components/ui/ActiveCallModal";
+import { SubscriptionExpiredModal } from "../../../components/ui/SubscriptionExpiredModal";
 import { WaveLoader } from "../../../components/WaveLoader";
 import { socketManager } from "../../../services/socketManager";
 import { useAppDispatch, useAppSelector } from "../../../state/store";
 import { startCall } from "../../../state/callActions";
 import { setThemeMode } from "../../../state/themeSlice";
 import { apiFetch, API_BASE } from "../../../state/api";
+import { Alert } from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -51,12 +53,26 @@ export default function HostDashboard() {
   const [networkLatency, setNetworkLatency] = useState<number | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
   const themeMode = useAppSelector((state) => state.theme.mode);
-  const { token, role } = useAppSelector((state) => state.auth);
+  const auth = useAppSelector((state) => state.auth);
+  const { token, role, membershipType, membershipEndDate } = auth;
   const activeCall = useAppSelector((state) => state.call.activeCall);
   const callStatus = useAppSelector((state) => state.call.status);
   const [callLogs, setCallLogs] = useState<Array<{ id: string; status: string }>>([]);
   const [showActiveCallModal, setShowActiveCallModal] = useState(false);
+  const [showSubscriptionExpired, setShowSubscriptionExpired] = useState(false);
   const [isStartingCall, setIsStartingCall] = useState(false);
+  
+  // Calculate subscription status
+  const subscriptionExpired = useMemo(() => {
+    if (!membershipEndDate) return false;
+    return new Date(membershipEndDate) < new Date();
+  }, [membershipEndDate]);
+  
+  const daysRemaining = useMemo(() => {
+    if (!membershipEndDate) return null;
+    const diff = new Date(membershipEndDate).getTime() - Date.now();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  }, [membershipEndDate]);
   const isDark = (() => {
     const bg = colors.background;
     const hexMatch = bg.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
@@ -443,6 +459,13 @@ export default function HostDashboard() {
         cancelText="Cancel"
       />
 
+      {/* Subscription Expired Modal */}
+      <SubscriptionExpiredModal
+        visible={showSubscriptionExpired}
+        membershipType={membershipType}
+        onClose={() => setShowSubscriptionExpired(false)}
+      />
+
       <Fab
         icon="logo-whatsapp"
         accessibilityLabel="Contact via WhatsApp"
@@ -629,5 +652,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     opacity: 0.7,
   },
+  subscriptionBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginHorizontal: 20,
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  subscriptionBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+  },
 });
-
