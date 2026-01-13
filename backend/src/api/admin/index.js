@@ -879,31 +879,51 @@ router.post("/database/backup", requireAuth, requireAdmin, async (req, res) => {
       : path.join(process.cwd(), 'scripts', 'backup-database.sh');
 
     if (fs.existsSync(scriptPath)) {
-      const backupProcess = spawn(scriptPath, [filename], {
-        env: {
-          ...process.env,
-          DB_HOST: process.env.DB_HOST || 'postgres',
-          DB_PORT: process.env.DB_PORT || '5432',
-          DB_NAME: process.env.DB_NAME || 'mizcallcustom',
-          DB_USER: process.env.DB_USER || 'miz',
-          DB_PASSWORD: process.env.DB_PASSWORD || 'mizpass',
-          BACKUP_DIR: process.env.BACKUP_DIR || '/var/app/backups',
-        },
-        detached: true,
-        stdio: 'ignore',
-      });
+      try {
+        const backupProcess = spawn(scriptPath, [filename], {
+          env: {
+            ...process.env,
+            DB_HOST: process.env.DB_HOST || 'postgres',
+            DB_PORT: process.env.DB_PORT || '5432',
+            DB_NAME: process.env.DB_NAME || 'mizcallcustom',
+            DB_USER: process.env.DB_USER || 'miz',
+            DB_PASSWORD: process.env.DB_PASSWORD || 'mizpass',
+            BACKUP_DIR: process.env.BACKUP_DIR || '/var/app/backups',
+          },
+          detached: true,
+          stdio: 'ignore',
+        });
 
-      backupProcess.unref(); // Allow process to run independently
-      
-      logInfo("Backup process started", 'admin', { filename, backupId: result.rows[0].id });
+        backupProcess.unref(); // Allow process to run independently
+        
+        backupProcess.on('error', (err) => {
+          logError("Backup process spawn error", 'admin', { error: err.message, filename });
+          query(
+            `UPDATE database_backups SET status = 'failed', error_message = $1 WHERE id = $2`,
+            [err.message, result.rows[0].id]
+          ).catch(() => {});
+        });
+        
+        logInfo("Backup process started", 'admin', { filename, backupId: result.rows[0].id });
+      } catch (spawnError) {
+        logError("Failed to spawn backup process", 'admin', { error: spawnError.message, filename });
+        await query(
+          `UPDATE database_backups SET status = 'failed', error_message = $1 WHERE id = $2`,
+          [spawnError.message, result.rows[0].id]
+        );
+      }
     } else {
-      // Fallback: Mark as completed but note it's manual
+      // Fallback: Mark as pending with note
       await query(
-        `UPDATE database_backups SET status = 'completed', completed_at = NOW(), error_message = 'Backup script not found - manual backup required' WHERE id = $1`,
+        `UPDATE database_backups SET error_message = 'Backup script not found - will be created on next rebuild' WHERE id = $1`,
         [result.rows[0].id]
       );
       
-      logWarn("Backup script not found", 'admin', { filename });
+      logWarn("Backup script not found", 'admin', { 
+        filename, 
+        searchedPath: scriptPath,
+        note: 'Rebuild backend container to enable automatic backups'
+      });
     }
     
     res.json({ 
