@@ -554,12 +554,6 @@ export function handleSocket({ socket, io }) {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
         const room = await ensureMediasoupRoom(roomId);
         
-        // Removed verbose produce log
-        /* console.log("[Socket.IO] PRODUCE request:", { 
-          roomId, 
-          owner: peer.id,
-          ownerRole: peer.role
-        });
         
         try {
           const res = await sendMediasoup({
@@ -569,30 +563,15 @@ export function handleSocket({ socket, io }) {
             rtpParameters: msg.rtpParameters,
             ownerId: peer.id,
           });
-          
-          /* console.log("[Socket.IO] PRODUCE response from mediasoup:", {
-            producerId: res.producerId,
-            ownerId: peer.id
-          });
+
           
           peer.producer = { id: res.producerId };
           room.producerIdToOwner.set(res.producerId, peer.id);
-          
-          /* console.log("[Socket.IO] Producer mapping created:", {
-            producerId: res.producerId,
-            ownerId: peer.id,
-            totalMappings: room.producerIdToOwner.size,
-            allMappings: Array.from(room.producerIdToOwner.entries())
-          });
+
           
           if (peer.role === "host") {
             room.hostProducerId = res.producerId;
-            
-            logInfo("Host started streaming", "signaling", { hostId: peer.id, roomId, producerId: res.id });
-            /* console.log("[Socket.IO] Host producer set:", {
-              hostProducerId: res.producerId,
-              hostId: peer.id
-            });
+            logInfo("Host started streaming", "signaling", { hostId: peer.id, roomId, producerId: res.producerId });
             
             // Notify all users about host producer
             for (const other of room.peers.values()) {
@@ -638,7 +617,7 @@ export function handleSocket({ socket, io }) {
           });
           
         } catch (e) {
-          console.error("[Socket.IO] PRODUCE failed:", e?.message || e);
+          logError("PRODUCE failed", "signaling", { error: e?.message, roomId: msg.roomId });
           socket.emit("PRODUCE_ERROR", { 
             type: "PRODUCE_ERROR", 
             error: e?.message || "produce failed" 
@@ -652,25 +631,14 @@ export function handleSocket({ socket, io }) {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
         const room = getRoom(roomId);
         
-        /* console.log("[Socket.IO] CONSUME request received:", {
-          roomId,
-          requestedProducerId: msg.producerId,
-          peerId: peer?.id,
-          peerRole: peer?.role
-        });
-        
         // Get the owner ID from the producer ID
         const producerOwnerId = room.producerIdToOwner.get(msg.producerId);
         
-        /* console.log("[Socket.IO] Producer lookup:", {
-          requestedProducerId: msg.producerId,
-          foundOwnerId: producerOwnerId,
-          allProducerMappings: Array.from(room.producerIdToOwner.entries())
-        });
-        
         if (!producerOwnerId) {
-          console.error("[Socket.IO] CONSUME failed: producer owner not found for producerId:", msg.producerId);
-          console.error("[Socket.IO] Available producer mappings:", Array.from(room.producerIdToOwner.entries()));
+          logError("CONSUME failed - producer not found", "signaling", { 
+            producerId: msg.producerId, 
+            roomId 
+          });
           socket.emit("CONSUME_ERROR", {
             type: "CONSUME_ERROR",
             error: "Producer not found"
@@ -679,13 +647,6 @@ export function handleSocket({ socket, io }) {
         }
         
         try {
-          /* console.log("[Socket.IO] Sending CONSUME request to mediasoup:", {
-            roomId,
-            transportId: requirePeer().recvTransport.id,
-            producerOwnerId: producerOwnerId,
-            hasRtpCapabilities: !!msg.rtpCapabilities
-          });
-          
           const res = await sendMediasoup({
             type: MS.CONSUME,
             roomId,
@@ -693,8 +654,6 @@ export function handleSocket({ socket, io }) {
             producerOwnerId: producerOwnerId,  // Send owner ID, not producer ID
             rtpCapabilities: msg.rtpCapabilities,
           });
-          
-          // Removed verbose consume response logs */
           
           // Mediasoup returns: { id, producerId, kind, rtpParameters }
           const consumerId = res.id || res.consumerId;
@@ -710,17 +669,6 @@ export function handleSocket({ socket, io }) {
           }
           
           requirePeer().consumers.set(consumerId, { id: consumerId });
-          
-          /* console.log("[Socket.IO] Consumer stored in peer:", {
-            consumerId: consumerId,
-            totalConsumers: requirePeer().consumers.size
-          });
-          
-          /* console.log("[Socket.IO] CONSUME successful:", {
-            consumerId: consumerId,
-            producerId: msg.producerId,
-            kind: kind
-          });
           
           // Send both message types for compatibility
           const consumeResponse = {
@@ -739,18 +687,10 @@ export function handleSocket({ socket, io }) {
             }
           };
           
-          // Removed verbose consume response log */
-          
           socket.emit("CONSUMED", consumeResponse);
           socket.emit("CONSUMER_CREATED", consumeResponse);
-          
-          /* console.log("[Socket.IO] CONSUMED successfully:", {
-            consumerId: consumerId,
-            producerId: msg.producerId,
-            kind: kind
-          });
         } catch (e) {
-          console.error("[Socket.IO] CONSUME failed:", e?.message || e);
+          logError("CONSUME failed", "signaling", { error: e?.message, roomId });
           socket.emit("CONSUME_ERROR", {
             type: "CONSUME_ERROR",
             error: e?.message || "consume failed"
