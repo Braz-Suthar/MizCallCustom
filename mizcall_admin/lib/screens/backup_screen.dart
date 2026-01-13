@@ -396,6 +396,7 @@ class _BackupScreenState extends State<BackupScreen> {
 
   Future<void> _downloadBackup(Map<String, dynamic> backup) async {
     final filename = backup['filename'];
+    final scaffoldContext = context; // Capture scaffold context
     
     try {
       // Get auth token
@@ -405,29 +406,6 @@ class _BackupScreenState extends State<BackupScreen> {
       if (token == null) {
         throw Exception('Not authenticated');
       }
-
-      // Show downloading dialog
-      if (!mounted) return;
-      
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              Text('Downloading $filename...'),
-              const SizedBox(height: 8),
-              const Text(
-                'This may take a few moments',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-      );
 
       // Determine save location based on platform
       Directory? directory;
@@ -445,6 +423,29 @@ class _BackupScreenState extends State<BackupScreen> {
       }
 
       final savePath = '${directory.path}/$filename';
+
+      // Show downloading snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Downloading $filename...')),
+              ],
+            ),
+            duration: const Duration(minutes: 2),
+          ),
+        );
+      }
       
       // Download file using dio
       final dio = Dio();
@@ -464,59 +465,52 @@ class _BackupScreenState extends State<BackupScreen> {
         },
       );
 
+      // Download complete
       if (mounted) {
-        Navigator.pop(context); // Close downloading dialog
-        
-        // Show success with option to open
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
+        ScaffoldMessenger.of(scaffoldContext).hideCurrentSnackBar();
+        ScaffoldMessenger.of(scaffoldContext).showSnackBar(
+          SnackBar(
+            content: Row(
               children: [
-                Icon(Icons.check_circle, color: AppTheme.successGreen),
-                SizedBox(width: 8),
-                Text('Download Complete'),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('File saved to:'),
-                const SizedBox(height: 8),
-                SelectableText(
-                  savePath,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11,
+                const Icon(Icons.check_circle, color: Colors.white, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Download Complete', style: TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        savePath,
+                        style: const TextStyle(fontSize: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
-              ),
-              if (Platform.isAndroid || Platform.isIOS || Platform.isMacOS)
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    await OpenFile.open(savePath);
-                  },
-                  icon: const Icon(Icons.folder_open, size: 18),
-                  label: const Text('Open File'),
-                ),
-            ],
+            backgroundColor: AppTheme.successGreen,
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'OPEN',
+              textColor: Colors.white,
+              onPressed: () async {
+                await OpenFile.open(savePath);
+              },
+            ),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context); // Close downloading dialog if open
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(scaffoldContext).hideCurrentSnackBar();
+        ScaffoldMessenger.of(scaffoldContext).showSnackBar(
           SnackBar(
             content: Text('Download failed: ${e.toString()}'),
             backgroundColor: AppTheme.dangerRed,
+            duration: const Duration(seconds: 5),
           ),
         );
       }

@@ -86,9 +86,11 @@ class _SystemMetricsCardState extends State<SystemMetricsCard> {
     final cpu = _metrics!['cpu'] ?? {};
     final memory = _metrics!['memory'] ?? {};
     final uptime = _metrics!['uptime'] ?? {};
+    final coreStats = cpu['coreStats'] as List? ?? [];
     
     final memoryUsedPercent = double.tryParse(memory['usedPercent']?.toString() ?? '0') ?? 0;
-    final cpuLoad = double.tryParse(cpu['load1min']?.toString() ?? '0') ?? 0;
+    final cpuPercent = double.tryParse(cpu['percentage']?.toString() ?? '0') ?? 0;
+    final cpuCores = cpu['cores'] ?? 1;
 
     return Card(
       child: Padding(
@@ -149,12 +151,77 @@ class _SystemMetricsCardState extends State<SystemMetricsCard> {
 
             // CPU Usage
             _buildMetricBar(
-              'CPU Load',
-              cpuLoad,
-              cpu['cores'] ?? 1,
+              'CPU Usage',
+              cpuPercent,
+              100,
               Icons.memory,
               AppTheme.primaryBlue,
             ),
+            
+            // Per-core stats (collapsed by default, expandable)
+            if (coreStats.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              ExpansionTile(
+                title: Text(
+                  '$cpuCores Cores',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                dense: true,
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(left: 8, top: 8),
+                children: coreStats.map<Widget>((core) {
+                  final coreIndex = core['core'] ?? 0;
+                  final coreUsage = double.tryParse(core['usagePercent']?.toString() ?? '0') ?? 0;
+                  
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 60,
+                          child: Text(
+                            'Core $coreIndex',
+                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                          ),
+                        ),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: coreUsage / 100,
+                              minHeight: 6,
+                              backgroundColor: theme.brightness == Brightness.dark
+                                  ? AppTheme.darkBorder
+                                  : AppTheme.lightBorder,
+                              valueColor: AlwaysStoppedAnimation(
+                                coreUsage > 80 ? AppTheme.dangerRed : AppTheme.primaryBlue,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 45,
+                          child: Text(
+                            '${coreUsage.toStringAsFixed(1)}%',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: coreUsage > 80 ? AppTheme.dangerRed : null,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+            
             const SizedBox(height: 16),
 
             // Memory Usage
@@ -202,8 +269,8 @@ class _SystemMetricsCardState extends State<SystemMetricsCard> {
 
   Widget _buildMetricBar(String label, double value, num max, IconData icon, Color color) {
     final theme = Theme.of(context);
-    final percentage = max > 0 ? (value / max * 100).clamp(0, 100) : 0;
-    final displayValue = max == 100 ? '${value.toStringAsFixed(1)}%' : value.toStringAsFixed(2);
+    final percentage = max == 100 ? value.clamp(0, 100) : (max > 0 ? (value / max * 100).clamp(0, 100) : 0);
+    final displayValue = '${value.toStringAsFixed(1)}%';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

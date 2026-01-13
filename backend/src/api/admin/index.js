@@ -77,6 +77,29 @@ router.post("/login", async (req, res) => {
 router.get("/system-metrics", requireAuth, requireAdmin, async (req, res) => {
   try {
     const cpuUsage = os.loadavg();
+    const cpus = os.cpus();
+    const cores = cpus.length;
+    
+    // Calculate CPU percentage from load average
+    // Load average represents processes waiting to run
+    // Approximate percentage: (load / cores) * 100, capped at 100%
+    const cpuPercent = Math.min(100, (cpuUsage[0] / cores) * 100).toFixed(2);
+    
+    // Get per-core information
+    const coreStats = cpus.map((cpu, index) => {
+      const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+      const idle = cpu.times.idle;
+      const used = total - idle;
+      const usagePercent = total > 0 ? ((used / total) * 100).toFixed(2) : '0.00';
+      
+      return {
+        core: index,
+        model: cpu.model,
+        speed: cpu.speed,
+        usagePercent,
+      };
+    });
+
     const totalMemory = os.totalmem();
     const freeMemory = os.freemem();
     const usedMemory = totalMemory - freeMemory;
@@ -86,7 +109,9 @@ router.get("/system-metrics", requireAuth, requireAdmin, async (req, res) => {
         load1min: cpuUsage[0].toFixed(2),
         load5min: cpuUsage[1].toFixed(2),
         load15min: cpuUsage[2].toFixed(2),
-        cores: os.cpus().length,
+        cores,
+        percentage: cpuPercent,
+        coreStats,
       },
       memory: {
         total: totalMemory,
