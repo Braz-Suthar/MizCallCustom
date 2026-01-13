@@ -67,7 +67,6 @@ export function sendMediasoup(cmd) {
                 resolve(response);
             });
             
-            console.log("[mediasoup-client] Sending command:", cmd.type, "with requestId:", requestId);
             socket.send(JSON.stringify({ ...cmd, requestId }));
         });
     });

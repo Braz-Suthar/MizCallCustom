@@ -6,6 +6,7 @@ import { signRefreshToken, verifyRefreshToken } from "../../services/auth.js";
 import { generateUserId } from "../../services/id.js";
 import { broadcastCallEvent, ensureMediasoupRoom, peers } from "../../signaling/socket-io.js";
 import { notifyHostUsers } from "../../services/firebase.js";
+import { logInfo, logError, logWarn } from "../../services/logger.js";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -226,7 +227,7 @@ router.post("/two-factor-settings/mobile/send-otp", requireAuth, requireHost, as
   );
 
   // TODO: Send OTP via SMS service (Twilio, AWS SNS, etc.)
-  console.log(`[2FA] OTP for ${phoneNumber}: ${otp}`);
+  logInfo("2FA OTP generated", "host", { phoneNumber: phoneNumber.slice(-4) }); // Only log last 4 digits for privacy
   
   // For development, just return success
   // In production, integrate with SMS service
@@ -597,7 +598,7 @@ router.get("/users", requireAuth, requireHost, async (req, res) => {
      ORDER BY username`,
     [req.hostId]
   );
-  console.log("[host/users] returning", result.rows.length, "users");
+  // Removed verbose user list log
   res.json({ users: result.rows });
 });
 
@@ -686,7 +687,7 @@ router.post("/users/:userId/sessions/approve", requireAuth, requireHost, async (
   // Notify user via Socket.IO that their session was revoked
   const peer = peers.get(userId);
   if (peer?.socket) {
-    console.log("[HOST] Notifying user", userId, "of session revocation (new device approved)");
+    logInfo("User session revoked - new device approved", "host", { userId, hostId: req.hostId });
     peer.socket.emit("SESSION_REVOKED", {
       type: "SESSION_REVOKED",
       reason: "new_device_approved",
@@ -791,7 +792,7 @@ router.post("/users/:userId/sessions/revoke", requireAuth, requireHost, async (r
   // Notify user via Socket.IO that their session was revoked by host
   const peer = peers.get(userId);
   if (peer?.socket) {
-    console.log("[HOST] Notifying user", userId, "of session revocation by host");
+    logInfo("User session revoked by host", "host", { userId, hostId: req.hostId });
     peer.socket.emit("SESSION_REVOKED", {
       type: "SESSION_REVOKED",
       reason: "revoked_by_host",
@@ -845,7 +846,12 @@ router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
       hostId: req.hostId,
     },
   }).then((result) => {
-    console.log("[Call Start] Notifications sent:", result);
+    logInfo("Call started - notifications sent", "host", { 
+      hostId: req.hostId, 
+      roomId,
+      successCount: result.successCount,
+      failureCount: result.failureCount
+    });
     
     // Log the notification
     query(
@@ -861,9 +867,9 @@ router.post("/calls/start", requireAuth, requireHost, async (req, res) => {
         result.successCount || 0,
         result.failureCount || 0,
       ]
-    ).catch((err) => console.error("[Call Start] Failed to log notification:", err));
+    ).catch((err) => logError("Failed to log notification", "host", { error: err.message }));
   }).catch((err) => {
-    console.error("[Call Start] Failed to send notifications:", err);
+    logError("Failed to send call notifications", "host", { error: err.message, roomId });
   });
 });
 
@@ -927,7 +933,7 @@ router.get("/calls/:roomId/participants", requireAuth, requireHost, async (req, 
     
     res.json({ participants });
   } catch (error) {
-    console.error("Error fetching participants:", error);
+    logError("Failed to fetch call participants", "host", { error: error.message, roomId: req.params.roomId });
     res.status(500).json({ error: "Failed to fetch participants" });
   }
 });
@@ -977,17 +983,12 @@ router.get(
     try {
       const backgroundsDir = path.join(process.cwd(), "public", "inbuilt_call_background_images");
       
-      console.log("[Host] Looking for inbuilt backgrounds at:", backgroundsDir);
-      
       if (!fs.existsSync(backgroundsDir)) {
-        console.warn("[Host] Inbuilt backgrounds directory not found");
         return res.json({ backgrounds: [] });
       }
       
       const files = fs.readdirSync(backgroundsDir);
       const imageFiles = files.filter(file => /\.(jpg|jpeg|png|webp)$/i.test(file));
-      
-      console.log("[Host] Found", imageFiles.length, "inbuilt backgrounds:", imageFiles);
       
       const backgrounds = imageFiles.map(file => ({
         id: file,
@@ -1019,7 +1020,7 @@ router.get(
       
       res.json({ backgrounds: result.rows });
     } catch (error) {
-      console.error("[Host] Failed to list custom backgrounds:", error);
+      logError("Failed to list custom backgrounds", "host", { error: error.message, hostId: req.hostId });
       res.json({ backgrounds: [] });
     }
   }
@@ -1048,7 +1049,7 @@ router.post(
       [relativePath, req.hostId]
     );
     
-    console.log("[Host] Custom background uploaded and saved to library:", req.file.filename);
+    logInfo("Custom background uploaded", "host", { hostId: req.hostId, filename: req.file.filename });
     res.json({ backgroundUrl: relativePath });
   }
 );
@@ -1219,9 +1220,9 @@ router.delete(
     if (fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
-        console.log("[Host] Deleted background file:", bgUrl);
+        logInfo("Background file deleted", "host", { hostId: req.hostId, filename: bgUrl });
       } catch (e) {
-        console.warn("[Host] Failed to delete background file:", e.message);
+        logWarn("Failed to delete background file", "host", { error: e.message });
       }
     }
     

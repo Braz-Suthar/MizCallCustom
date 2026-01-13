@@ -350,7 +350,6 @@ router.post("/user/login", async (req, res) => {
 
   // No existing session or setting disabled - proceed with login
   // ALWAYS enforce single session per user: revoke all existing sessions before creating new one
-  console.log("[AUTH] Revoking any existing sessions for user:", resolvedId);
   const revokeResult = await query(
     `UPDATE user_sessions 
      SET revoked_at = NOW() 
@@ -360,13 +359,14 @@ router.post("/user/login", async (req, res) => {
   );
   
   if (revokeResult.rowCount > 0) {
-    console.log("[AUTH] Revoked", revokeResult.rowCount, "existing session(s):", 
-      revokeResult.rows.map(r => r.device_label || r.id).join(", "));
+    logInfo("User session revoked (new login)", "auth", { 
+      userId: resolvedId, 
+      revokedCount: revokeResult.rowCount 
+    });
     
     // Notify user via Socket.IO that their session was revoked
     const peer = peers.get(resolvedId);
     if (peer?.socket) {
-      console.log("[AUTH] Notifying user", resolvedId, "of session revocation");
       peer.socket.emit("SESSION_REVOKED", {
         type: "SESSION_REVOKED",
         reason: "logged_in_elsewhere",

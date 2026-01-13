@@ -116,8 +116,7 @@ logInfo('WebSocket server started', 'backend');
 const PORT = Number(process.env.API_PORT) || 3100;
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`MizCallCustom API + WS running on :${PORT}`);
-  logInfo(`MizCallCustom API started on port ${PORT}`, 'backend');
+  logInfo(`MizCall API + WebSocket server started on port ${PORT}`, 'backend');
   
   // Update Prometheus metrics every 30 seconds
   setInterval(() => {

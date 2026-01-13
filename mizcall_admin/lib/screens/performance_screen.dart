@@ -234,8 +234,8 @@ class _PerformanceScreenState extends State<PerformanceScreen> {
   Widget _buildErrorRateCard() {
     final theme = Theme.of(context);
     final errorRate = _performanceData?['errorRate'] ?? {};
-    final errors = errorRate['errors'] ?? 0;
-    final total = errorRate['total'] ?? 1;
+    final errors = int.tryParse(errorRate['errors']?.toString() ?? '0') ?? 0;
+    final total = int.tryParse(errorRate['total']?.toString() ?? '1') ?? 1;
     final errorPercent = total > 0 ? (errors / total * 100).toStringAsFixed(2) : '0.00';
 
     return Card(

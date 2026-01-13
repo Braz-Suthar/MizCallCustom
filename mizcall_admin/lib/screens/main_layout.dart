@@ -157,29 +157,22 @@ class _MainLayoutState extends State<MainLayout> {
 
                 // Navigation Items
                 Expanded(
-                  child: ListView.builder(
+                  child: ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    itemCount: _navItems.length + 2, // +2 for dividers
+                    itemCount: _navItems.length,
+                    separatorBuilder: (context, index) {
+                      // Add divider after Users (index 2) and Logs (index 5)
+                      if (index == 2 || index == 5) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Divider(height: 1),
+                        );
+                      }
+                      return const SizedBox(height: 6);
+                    },
                     itemBuilder: (context, index) {
-                      // Add divider after Users (index 2)
-                      if (index == 3) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Divider(height: 1),
-                        );
-                      }
-                      // Add divider after Logs (index 6 accounting for first divider)
-                      if (index == 7) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Divider(height: 1),
-                        );
-                      }
-                      
-                      // Adjust item index for dividers
-                      final itemIndex = index > 7 ? index - 2 : (index > 3 ? index - 1 : index);
-                      final item = _navItems[itemIndex];
-                      final isSelected = _selectedIndex == itemIndex;
+                      final item = _navItems[index];
+                      final isSelected = _selectedIndex == index;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 6),

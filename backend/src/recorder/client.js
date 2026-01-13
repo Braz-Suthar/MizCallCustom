@@ -11,11 +11,11 @@ export function connectRecorder() {
   socket = new WebSocket(RECORDER_WS);
 
   socket.on("open", () => {
-    console.log("🔗 Connected to recorder");
+    logInfo("Recorder service connected", "recorder");
   });
 
   socket.on("error", (err) => {
-    console.error("Recorder WS error:", err.message);
+    logError("Recorder connection error", "recorder", { error: err.message });
   });
 
   socket.on("message", async (raw) => {

@@ -206,7 +206,8 @@ export function handleSocket({ socket, io }) {
       });
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log("[Socket.IO] START_USER attempt", attempt, {
+      // Removed verbose recorder start log
+      /* console.log("[Socket.IO] START_USER attempt", attempt, {
         userId: peer.id,
       });
 
@@ -265,7 +266,7 @@ export function handleSocket({ socket, io }) {
   // Handle all message types
   socket.on("message", async (msg) => {
     try {
-      console.log("[Socket.IO]", msg.type, "from", peer?.id || "unauth");
+      // Removed verbose message logging
     } catch {
       // Ignore log errors
     }
@@ -319,7 +320,7 @@ export function handleSocket({ socket, io }) {
         }
         
         socket.emit("PONG", responsePayload);
-        console.log("[Socket.IO] Received PING from", peer?.id, "- sent PONG");
+        // PING/PONG is normal - no logging needed
         break;
       }
 
@@ -340,7 +341,7 @@ export function handleSocket({ socket, io }) {
       case "auth":
       case "AUTH": {
         if (peer) {
-          console.log("[Socket.IO] AUTH: Already authenticated as:", peer.id, peer.role);
+          // Already authenticated - no logging needed
           break; // Already authed
         }
         try {
@@ -350,7 +351,7 @@ export function handleSocket({ socket, io }) {
           const hostId = decoded.hostId;
           const id = role === "host" ? hostId : userId;
           
-          console.log("[Socket.IO] AUTH success:", { id, role, hostId, userId, socketId: socket.id });
+          logInfo("User authenticated", "signaling", { id, role: role });
           
           peer = new Peer({
             id,
@@ -391,7 +392,7 @@ export function handleSocket({ socket, io }) {
           room.hostId = peer.hostId;
         }
         
-        console.log("[Socket.IO] CALL_STARTED: Broadcasting to users of host:", peer.hostId);
+        logInfo("Call started", "signaling", { hostId: peer.hostId, roomId: msg.roomId });
         
         broadcastCallEvent(peer.hostId, {
           type: "call-started",
@@ -438,12 +439,12 @@ export function handleSocket({ socket, io }) {
         const hostId = decoded.hostId;
         const id = role === "host" ? hostId : userId;
         
-        console.log("[Socket.IO] JOIN:", { id, role, hostId, userId });
+        // Removed verbose join log
 
         const roomId = msg.roomId || msg.roomID || peer?.roomId || hostId || "main-room";
         const room = await ensureMediasoupRoom(roomId);
         
-        console.log("[Socket.IO] JOIN resolved room:", { id, role, roomId });
+        logInfo("User joined call", "signaling", { userId: id, roomId, role });
 
         peer = new Peer({
           id,
@@ -528,7 +529,7 @@ export function handleSocket({ socket, io }) {
       /* -------- CONNECT SEND TRANSPORT -------- */
       case "CONNECT_SEND_TRANSPORT": {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
-        console.log("[Socket.IO] CONNECT_SEND_TRANSPORT:", { roomId, id: requirePeer().id });
+        // Removed transport connection log
         
         await sendMediasoup({
           type: MS.CONNECT_TRANSPORT,
@@ -542,7 +543,7 @@ export function handleSocket({ socket, io }) {
       /* -------- CONNECT RECV TRANSPORT -------- */
       case "CONNECT_RECV_TRANSPORT": {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
-        console.log("[Socket.IO] CONNECT_RECV_TRANSPORT:", { roomId, id: requirePeer().id });
+        // Removed transport connection log
         
         await sendMediasoup({
           type: MS.CONNECT_TRANSPORT,
@@ -558,7 +559,8 @@ export function handleSocket({ socket, io }) {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
         const room = await ensureMediasoupRoom(roomId);
         
-        console.log("[Socket.IO] PRODUCE request:", { 
+        // Removed verbose produce log
+        /* console.log("[Socket.IO] PRODUCE request:", { 
           roomId, 
           owner: peer.id,
           ownerRole: peer.role
@@ -573,7 +575,7 @@ export function handleSocket({ socket, io }) {
             ownerId: peer.id,
           });
           
-          console.log("[Socket.IO] PRODUCE response from mediasoup:", {
+          /* console.log("[Socket.IO] PRODUCE response from mediasoup:", {
             producerId: res.producerId,
             ownerId: peer.id
           });
@@ -581,7 +583,7 @@ export function handleSocket({ socket, io }) {
           peer.producer = { id: res.producerId };
           room.producerIdToOwner.set(res.producerId, peer.id);
           
-          console.log("[Socket.IO] Producer mapping created:", {
+          /* console.log("[Socket.IO] Producer mapping created:", {
             producerId: res.producerId,
             ownerId: peer.id,
             totalMappings: room.producerIdToOwner.size,
@@ -591,7 +593,8 @@ export function handleSocket({ socket, io }) {
           if (peer.role === "host") {
             room.hostProducerId = res.producerId;
             
-            console.log("[Socket.IO] Host producer set:", {
+            logInfo("Host started streaming", "signaling", { hostId: peer.id, roomId, producerId: res.id });
+            /* console.log("[Socket.IO] Host producer set:", {
               hostProducerId: res.producerId,
               hostId: peer.id
             });
@@ -654,7 +657,7 @@ export function handleSocket({ socket, io }) {
         const roomId = peer?.roomId || msg.roomId || peer?.hostId || "main-room";
         const room = getRoom(roomId);
         
-        console.log("[Socket.IO] CONSUME request received:", {
+        /* console.log("[Socket.IO] CONSUME request received:", {
           roomId,
           requestedProducerId: msg.producerId,
           peerId: peer?.id,
@@ -664,7 +667,7 @@ export function handleSocket({ socket, io }) {
         // Get the owner ID from the producer ID
         const producerOwnerId = room.producerIdToOwner.get(msg.producerId);
         
-        console.log("[Socket.IO] Producer lookup:", {
+        /* console.log("[Socket.IO] Producer lookup:", {
           requestedProducerId: msg.producerId,
           foundOwnerId: producerOwnerId,
           allProducerMappings: Array.from(room.producerIdToOwner.entries())
@@ -681,7 +684,7 @@ export function handleSocket({ socket, io }) {
         }
         
         try {
-          console.log("[Socket.IO] Sending CONSUME request to mediasoup:", {
+          /* console.log("[Socket.IO] Sending CONSUME request to mediasoup:", {
             roomId,
             transportId: requirePeer().recvTransport.id,
             producerOwnerId: producerOwnerId,
@@ -696,10 +699,7 @@ export function handleSocket({ socket, io }) {
             rtpCapabilities: msg.rtpCapabilities,
           });
           
-          console.log("[Socket.IO] Mediasoup CONSUME response (raw):", JSON.stringify(res, null, 2));
-          console.log("[Socket.IO] Response keys:", Object.keys(res));
-          console.log("[Socket.IO] Response.id:", res.id);
-          console.log("[Socket.IO] Response.consumerId:", res.consumerId);
+          // Removed verbose consume response logs */
           
           // Mediasoup returns: { id, producerId, kind, rtpParameters }
           const consumerId = res.id || res.consumerId;
@@ -716,12 +716,12 @@ export function handleSocket({ socket, io }) {
           
           requirePeer().consumers.set(consumerId, { id: consumerId });
           
-          console.log("[Socket.IO] Consumer stored in peer:", {
+          /* console.log("[Socket.IO] Consumer stored in peer:", {
             consumerId: consumerId,
             totalConsumers: requirePeer().consumers.size
           });
           
-          console.log("[Socket.IO] CONSUME successful:", {
+          /* console.log("[Socket.IO] CONSUME successful:", {
             consumerId: consumerId,
             producerId: msg.producerId,
             kind: kind
@@ -744,12 +744,12 @@ export function handleSocket({ socket, io }) {
             }
           };
           
-          console.log("[Socket.IO] Sending CONSUMED response:", JSON.stringify(consumeResponse, null, 2));
+          // Removed verbose consume response log */
           
           socket.emit("CONSUMED", consumeResponse);
           socket.emit("CONSUMER_CREATED", consumeResponse);
           
-          console.log("[Socket.IO] CONSUMED successfully:", {
+          /* console.log("[Socket.IO] CONSUMED successfully:", {
             consumerId: consumerId,
             producerId: msg.producerId,
             kind: kind
@@ -769,7 +769,7 @@ export function handleSocket({ socket, io }) {
         if (!peer || peer.role !== "host") break;
         
         const roomId = msg.roomId || peer.roomId || peer.hostId || "main-room";
-        console.log("[Socket.IO] HOST_MIC_STATUS:", { hostId: peer.id, muted: msg.muted, roomId });
+        // Removed verbose mic status log */
         
         // Notify all users in the room about host mic status
         const room = getRoom(roomId);
@@ -794,7 +794,7 @@ export function handleSocket({ socket, io }) {
         }
         
         const roomId = peer.roomId || peer.hostId || "main-room";
-        console.log("[Socket.IO] USER_SPEAKING_START:", { userId: peer.id, roomId });
+        // Removed verbose speaking status log
         
         // Start a clip for this speaking burst
         sendRecorder({ type: "START_CLIP", userId: peer.id });
@@ -805,7 +805,7 @@ export function handleSocket({ socket, io }) {
           let notifiedHosts = 0;
           for (const [peerId, otherPeer] of room.peers) {
             if (otherPeer.role === "host") {
-              console.log("[Socket.IO] Notifying host:", peerId, "about user speaking:", peer.id);
+              // Removed verbose notification log
               
               const statusPayload = {
                 type: "USER_SPEAKING_STATUS",
@@ -819,11 +819,11 @@ export function handleSocket({ socket, io }) {
               notifiedHosts++;
             }
           }
-          console.log("[Socket.IO] USER_SPEAKING_START: Notified", notifiedHosts, "hosts");
+          // Removed notification count log
           
           if (notifiedHosts === 0) {
             console.warn("[Socket.IO] No hosts found in room to notify about speaking");
-            console.log("[Socket.IO] Room peers:", Array.from(room.peers.entries()).map(([id, p]) => ({ id, role: p.role })));
+            // Removed room peers debug log
           }
         }
         break;
@@ -836,7 +836,7 @@ export function handleSocket({ socket, io }) {
         }
         
         const roomId = peer.roomId || peer.hostId || "main-room";
-        console.log("[Socket.IO] USER_SPEAKING_STOP:", { userId: peer.id, roomId });
+        // Removed verbose speaking stop log
         
         // Stop current clip for this speaking burst
         sendRecorder({ type: "STOP_CLIP", userId: peer.id });
@@ -847,7 +847,7 @@ export function handleSocket({ socket, io }) {
           let notifiedHosts = 0;
           for (const [peerId, otherPeer] of room.peers) {
             if (otherPeer.role === "host") {
-              console.log("[Socket.IO] Notifying host:", peerId, "about user stopped speaking:", peer.id);
+              // Removed verbose notification log
               
               const statusPayload = {
                 type: "USER_SPEAKING_STATUS",
@@ -861,7 +861,7 @@ export function handleSocket({ socket, io }) {
               notifiedHosts++;
             }
           }
-          console.log("[Socket.IO] USER_SPEAKING_STOP: Notified", notifiedHosts, "hosts");
+          // Removed notification count log
           
           if (notifiedHosts === 0) {
             console.warn("[Socket.IO] No hosts found in room to notify about stop speaking");
@@ -876,7 +876,7 @@ export function handleSocket({ socket, io }) {
         if (!peer || peer.role !== "host") break;
         
         const roomId = peer.roomId || peer.hostId || "main-room";
-        console.log("[Socket.IO] CALL_STOPPED:", { roomId, hostId: peer.hostId });
+        logInfo("Call stopped", "signaling", { hostId: peer.hostId, roomId });
         
         broadcastCallEvent(peer.hostId, {
           type: "call-stopped",
@@ -897,7 +897,7 @@ export function handleSocket({ socket, io }) {
       }
 
       default:
-        console.log("[Socket.IO] Unknown message type:", msg.type);
+        logWarn("Unknown WebSocket message type", "signaling", { type: msg.type });
     }
   }
 }

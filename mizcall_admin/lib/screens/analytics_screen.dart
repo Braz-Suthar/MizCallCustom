@@ -200,8 +200,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget _buildRetentionCard() {
     final theme = Theme.of(context);
     final retention = _analyticsData?['retention'] ?? {};
-    final totalUsers = retention['total_users'] ?? 0;
-    final activeUsers = retention['active_users'] ?? 0;
+    final totalUsers = int.tryParse(retention['total_users']?.toString() ?? '0') ?? 0;
+    final activeUsers = int.tryParse(retention['active_users']?.toString() ?? '0') ?? 0;
     final retentionRate = totalUsers > 0 
         ? ((activeUsers / totalUsers) * 100).toStringAsFixed(1)
         : '0.0';
@@ -420,13 +420,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     bottomTitles: AxisTitles(
                       sideTitles: SideTitles(
                         showTitles: true,
-                        interval: 3,
+                        interval: 4,
                         getTitlesWidget: (value, meta) {
-                          return Text(
-                            '${value.toInt()}h',
-                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 10),
-                          );
+                          if (value.toInt() % 4 == 0) {
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                '${value.toInt()}h',
+                                style: theme.textTheme.bodySmall?.copyWith(fontSize: 9),
+                              ),
+                            );
+                          }
+                          return const Text('');
                         },
+                        reservedSize: 24,
                       ),
                     ),
                     leftTitles: AxisTitles(

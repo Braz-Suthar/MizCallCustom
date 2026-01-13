@@ -41,27 +41,18 @@ router.post("/login", async (req, res) => {
   const adminUsername = process.env.ADMIN_USERNAME || "admin";
   const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH;
 
-  console.log("[Admin] Environment check:", {
-    hasUsername: !!process.env.ADMIN_USERNAME,
-    hasPasswordHash: !!adminPasswordHash,
-    usernameMatch: username === adminUsername,
-    expectedUsername: adminUsername,
-  });
-
   if (!adminPasswordHash) {
-    console.error("[Admin] ADMIN_PASSWORD_HASH not set in environment variables");
+    logError("Admin password hash not configured", "admin");
     return res.status(500).json({ error: "Admin authentication not configured" });
   }
 
   if (username !== adminUsername) {
-    console.log("[Admin] Username mismatch - expected:", adminUsername, "got:", username);
+    logWarn("Admin login failed - invalid username", "admin", { attempted: username });
     return res.status(401).json({ error: "Invalid credentials" });
   }
 
   // Verify password
-  console.log("[Admin] Verifying password...");
   const match = await bcrypt.compare(password, adminPasswordHash);
-  console.log("[Admin] Password match:", match);
   
   if (!match) {
     return res.status(401).json({ error: "Invalid credentials" });
@@ -83,8 +74,6 @@ router.post("/login", async (req, res) => {
 /* SYSTEM METRICS */
 router.get("/system-metrics", requireAuth, requireAdmin, async (req, res) => {
   try {
-    console.log("[SystemMetrics] Request received from admin");
-    
     const cpuUsage = os.loadavg();
     const totalMemory = os.totalmem();
     const freeMemory = os.freemem();
@@ -114,10 +103,8 @@ router.get("/system-metrics", requireAuth, requireAdmin, async (req, res) => {
       },
     };
 
-    console.log("[SystemMetrics] Sending response");
     res.json(metrics);
   } catch (error) {
-    console.error("[SystemMetrics] Error:", error);
     logError("System metrics error", "admin", { error: error.message });
     res.status(500).json({ error: "Failed to fetch system metrics" });
   }
