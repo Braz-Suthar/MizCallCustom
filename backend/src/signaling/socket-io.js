@@ -206,55 +206,50 @@ export function handleSocket({ socket, io }) {
       });
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      // Removed verbose recorder start log
-      /* console.log("[Socket.IO] START_USER attempt", attempt, {
+      sendRecorder({
+        type: "START_USER",
+        hostId: peer.hostId,
         userId: peer.id,
-      });
-
-    sendRecorder({
-      type: "START_USER",
-      hostId: peer.hostId,
-      userId: peer.id,
-      meetingId: roomId,
+        meetingId: roomId,
         userPreSeconds: 3,
         hostPreSeconds: 3,
         userPostSeconds: 3,
         hostPostSeconds: 3,
-    });
-    
+      });
+      
       const result = await waitForResult(peer.id);
       if (!result.ok) {
-        console.error("[Socket.IO] START_USER failed attempt", attempt, result.reason);
+        logWarn("START_USER failed, retrying", "signaling", { attempt, userId: peer.id, reason: result.reason });
         continue;
       }
 
-    try {
-      await sendMediasoup({
-        type: MS.CREATE_RECORDER,
-        roomId,
-        producerOwnerId: peer.id,
-          remotePort: result.userPort,
-          remoteIp,
-      });
-
-      if (room.hostProducerId) {
+      try {
         await sendMediasoup({
           type: MS.CREATE_RECORDER,
           roomId,
-          producerOwnerId: peer.hostId,
+          producerOwnerId: peer.id,
+          remotePort: result.userPort,
+          remoteIp,
+        });
+
+        if (room.hostProducerId) {
+          await sendMediasoup({
+            type: MS.CREATE_RECORDER,
+            roomId,
+            producerOwnerId: peer.hostId,
             remotePort: result.hostPort,
             remoteIp,
-        });
-      }
-    } catch (err) {
-        console.error("[Socket.IO] CREATE_RECORDER failed attempt", attempt, err?.message || err);
+          });
+        }
+      } catch (err) {
+        logError("CREATE_RECORDER failed", "signaling", { attempt, userId: peer.id, error: err?.message });
         continue;
       }
 
       return true;
     }
 
-    console.error("[Socket.IO] START_USER exhausted retries for", peer.id);
+    logError("START_USER exhausted retries", "signaling", { userId: peer.id });
     return false;
   }
 
