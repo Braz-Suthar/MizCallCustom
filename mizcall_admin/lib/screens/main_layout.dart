@@ -38,10 +38,28 @@ class _MainLayoutState extends State<MainLayout> {
       route: '/users',
     ),
     _NavItem(
+      label: 'Analytics',
+      icon: Icons.insights_outlined,
+      selectedIcon: Icons.insights,
+      route: '/analytics',
+    ),
+    _NavItem(
+      label: 'Performance',
+      icon: Icons.speed_outlined,
+      selectedIcon: Icons.speed,
+      route: '/performance',
+    ),
+    _NavItem(
       label: 'Logs',
       icon: Icons.article_outlined,
       selectedIcon: Icons.article,
       route: '/logs',
+    ),
+    _NavItem(
+      label: 'Backups',
+      icon: Icons.backup_outlined,
+      selectedIcon: Icons.backup,
+      route: '/backup',
     ),
   ];
 
@@ -141,10 +159,27 @@ class _MainLayoutState extends State<MainLayout> {
                 Expanded(
                   child: ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    itemCount: _navItems.length,
+                    itemCount: _navItems.length + 2, // +2 for dividers
                     itemBuilder: (context, index) {
-                              final item = _navItems[index];
-                      final isSelected = _selectedIndex == index;
+                      // Add divider after Users (index 2)
+                      if (index == 3) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Divider(height: 1),
+                        );
+                      }
+                      // Add divider after Logs (index 6 accounting for first divider)
+                      if (index == 7) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Divider(height: 1),
+                        );
+                      }
+                      
+                      // Adjust item index for dividers
+                      final itemIndex = index > 7 ? index - 2 : (index > 3 ? index - 1 : index);
+                      final item = _navItems[itemIndex];
+                      final isSelected = _selectedIndex == itemIndex;
 
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 6),

@@ -21,12 +21,16 @@ import { initializeFirebase } from "./services/firebase.js";
 import { query } from "./services/db.js";
 import logger, { logInfo } from "./services/logger.js";
 import { register as metricsRegister, metricsMiddleware, updateMetrics } from "./services/metrics.js";
+import { performanceMiddleware } from "./middleware/performance.js";
 
 const app = express();
 app.use(express.json());
 
 // Add metrics middleware
 app.use(metricsMiddleware);
+
+// Add performance tracking
+app.use(performanceMiddleware);
 
 // Static uploads
 const uploadsDir = path.join(process.cwd(), "uploads");

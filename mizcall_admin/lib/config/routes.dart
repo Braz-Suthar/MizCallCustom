@@ -8,6 +8,9 @@ import '../screens/hosts_screen.dart';
 import '../screens/host_details_screen.dart';
 import '../screens/users_screen.dart';
 import '../screens/logs_screen.dart';
+import '../screens/performance_screen.dart';
+import '../screens/analytics_screen.dart';
+import '../screens/backup_screen.dart';
 import '../screens/main_layout.dart';
 import '../services/auth_service.dart';
 
@@ -61,6 +64,18 @@ class AppRouter {
           GoRoute(
             path: '/logs',
             builder: (context, state) => const LogsScreen(),
+          ),
+          GoRoute(
+            path: '/performance',
+            builder: (context, state) => const PerformanceScreen(),
+          ),
+          GoRoute(
+            path: '/analytics',
+            builder: (context, state) => const AnalyticsScreen(),
+          ),
+          GoRoute(
+            path: '/backup',
+            builder: (context, state) => const BackupScreen(),
           ),
         ],
       ),

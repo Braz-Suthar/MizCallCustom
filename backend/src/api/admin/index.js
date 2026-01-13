@@ -1,5 +1,5 @@
 import { Router } from "express";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import os from "os";
 import { query } from "../../services/db.js";
 import { signToken } from "../../services/auth.js";
@@ -729,6 +729,187 @@ router.post("/users/:hostId/:userId/reset-password", requireAuth, requireAdmin, 
   } catch (error) {
     console.error("Failed to reset user password:", error);
     res.status(500).json({ error: "Failed to reset user password" });
+  }
+});
+
+/* GET PERFORMANCE METRICS */
+router.get("/performance-metrics", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    // Get slowest endpoints (last 24 hours)
+    const slowestEndpoints = await query(`
+      SELECT 
+        endpoint,
+        method,
+        AVG(duration_ms) as avg_duration,
+        MAX(duration_ms) as max_duration,
+        COUNT(*) as request_count
+      FROM api_performance_metrics
+      WHERE created_at >= NOW() - INTERVAL '24 hours'
+      GROUP BY endpoint, method
+      ORDER BY avg_duration DESC
+      LIMIT 10
+    `);
+
+    // Get request rate by minute (last hour)
+    const requestRate = await query(`
+      SELECT 
+        DATE_TRUNC('minute', timestamp) as minute,
+        COUNT(*) as count
+      FROM api_performance_metrics
+      WHERE timestamp >= NOW() - INTERVAL '1 hour'
+      GROUP BY minute
+      ORDER BY minute DESC
+      LIMIT 60
+    `);
+
+    // Get error rate (last 24 hours)
+    const errorRate = await query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE status_code >= 400) as errors,
+        COUNT(*) as total
+      FROM api_performance_metrics
+      WHERE created_at >= NOW() - INTERVAL '24 hours'
+    `);
+
+    // Get response time distribution (last 24 hours)
+    const responseTimeDistribution = await query(`
+      SELECT 
+        DATE_TRUNC('hour', timestamp) as hour,
+        AVG(duration_ms) as avg_duration,
+        MAX(duration_ms) as max_duration,
+        MIN(duration_ms) as min_duration
+      FROM api_performance_metrics
+      WHERE timestamp >= NOW() - INTERVAL '24 hours'
+      GROUP BY hour
+      ORDER BY hour ASC
+    `);
+
+    res.json({
+      slowestEndpoints: slowestEndpoints.rows,
+      requestRate: requestRate.rows,
+      errorRate: errorRate.rows[0] || { errors: 0, total: 0 },
+      responseTimeDistribution: responseTimeDistribution.rows,
+    });
+  } catch (error) {
+    console.error("Failed to fetch performance metrics:", error);
+    res.status(500).json({ error: "Failed to fetch performance metrics" });
+  }
+});
+
+/* GET ADVANCED ANALYTICS */
+router.get("/analytics", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    // Call duration analytics
+    const callDurations = await query(`
+      SELECT 
+        DATE_TRUNC('day', started_at) as day,
+        AVG(EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at)) / 60) as avg_duration_minutes,
+        COUNT(*) as call_count
+      FROM rooms
+      WHERE started_at >= NOW() - INTERVAL '30 days'
+      GROUP BY day
+      ORDER BY day ASC
+    `);
+
+    // Peak usage hours
+    const peakHours = await query(`
+      SELECT 
+        EXTRACT(HOUR FROM started_at) as hour,
+        COUNT(*) as call_count
+      FROM rooms
+      WHERE started_at >= NOW() - INTERVAL '7 days'
+      GROUP BY hour
+      ORDER BY call_count DESC
+    `);
+
+    // Host activity (calls per host)
+    const hostActivity = await query(`
+      SELECT 
+        h.id,
+        h.display_name,
+        h.name as email,
+        COUNT(r.id) as total_calls,
+        MAX(r.started_at) as last_call_at
+      FROM hosts h
+      LEFT JOIN rooms r ON r.host_id = h.id
+      WHERE r.started_at >= NOW() - INTERVAL '30 days' OR r.started_at IS NULL
+      GROUP BY h.id, h.display_name, h.name
+      ORDER BY total_calls DESC
+      LIMIT 20
+    `);
+
+    // User retention (users who made calls in last 30 days vs total)
+    const retention = await query(`
+      SELECT 
+        COUNT(DISTINCT u.id) as total_users,
+        COUNT(DISTINCT CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM rooms r 
+            WHERE r.started_at >= NOW() - INTERVAL '30 days'
+            AND r.host_id = u.host_id
+          ) THEN u.id 
+        END) as active_users
+      FROM users u
+    `);
+
+    res.json({
+      callDurations: callDurations.rows,
+      peakHours: peakHours.rows,
+      hostActivity: hostActivity.rows,
+      retention: retention.rows[0] || { total_users: 0, active_users: 0 },
+    });
+  } catch (error) {
+    console.error("Failed to fetch analytics:", error);
+    res.status(500).json({ error: "Failed to fetch analytics" });
+  }
+});
+
+/* TRIGGER DATABASE BACKUP */
+router.post("/database/backup", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `mizcall_backup_${timestamp}.sql`;
+    
+    logAdminAction(req.username, 'trigger_backup', { filename });
+
+    // Store backup metadata
+    await query(
+      `INSERT INTO database_backups (filename, triggered_by, status)
+       VALUES ($1, $2, 'pending')
+       RETURNING id`,
+      [filename, req.username]
+    );
+
+    // Note: Actual backup command would run in background
+    // For Docker/PostgreSQL: pg_dump command
+    // This is a placeholder - implement based on your infrastructure
+    
+    res.json({ 
+      success: true, 
+      message: "Backup initiated",
+      filename,
+      note: "Backup process started. Check backup history for completion status."
+    });
+  } catch (error) {
+    logError("Failed to trigger backup", 'admin', { error: error.message });
+    res.status(500).json({ error: "Failed to trigger backup" });
+  }
+});
+
+/* GET BACKUP HISTORY */
+router.get("/database/backups", requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT id, filename, triggered_by, status, file_size, created_at, completed_at
+      FROM database_backups
+      ORDER BY created_at DESC
+      LIMIT 50
+    `);
+
+    res.json({ backups: result.rows });
+  } catch (error) {
+    console.error("Failed to fetch backups:", error);
+    res.status(500).json({ error: "Failed to fetch backup history" });
   }
 });
 

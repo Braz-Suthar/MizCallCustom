@@ -35,7 +35,10 @@ class DatabaseTransport extends winston.Transport {
         ipAddress || null,
       ]
     ).catch((err) => {
-      console.error('[Logger] Failed to write to database:', err);
+      // Silently fail if table doesn't exist yet (during migrations)
+      if (err.code !== '42P01') { // 42P01 = undefined_table
+        console.error('[Logger] Failed to write to database:', err);
+      }
     });
 
     callback();
