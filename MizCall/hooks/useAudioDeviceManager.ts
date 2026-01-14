@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Platform, AppState, AppStateStatus } from 'react-native';
+import { Platform, AppState, AppStateStatus, NativeEventEmitter, NativeModules } from 'react-native';
 import { mediaDevices, MediaStream } from 'react-native-webrtc';
 
 // InCall Manager types
@@ -10,15 +10,26 @@ interface InCallManagerModule {
   setSpeakerphoneOn(enable: boolean): void;
   checkRecordPermission(): Promise<'granted' | 'denied' | 'unknow'>;
   requestRecordPermission(): Promise<'granted' | 'denied' | 'unknow'>;
-  addEventListener(event: string, callback: (data: any) => void): void;
-  removeEventListener(event: string): void;
 }
 
 let InCallManager: InCallManagerModule | null = null;
+let InCallManagerEventEmitter: NativeEventEmitter | null = null;
 
 if (Platform.OS === 'ios' || Platform.OS === 'android') {
   try {
-    InCallManager = require('react-native-incall-manager').default;
+    const InCallManagerModule = require('react-native-incall-manager');
+    InCallManager = InCallManagerModule.default || InCallManagerModule;
+    
+    // Try to get the event emitter
+    try {
+      const { InCallManager: InCallManagerNative } = NativeModules;
+      if (InCallManagerNative) {
+        InCallManagerEventEmitter = new NativeEventEmitter(InCallManagerNative);
+      }
+    } catch {
+      // Event emitter might not be available, that's okay
+      console.log('[AudioDeviceManager] NativeEventEmitter not available for InCallManager');
+    }
   } catch {
     console.warn('[AudioDeviceManager] InCallManager not available');
   }
@@ -169,7 +180,10 @@ export const useAudioDeviceManager = ({ onDeviceChanged, defaultRoute = 'speaker
 
   // Listen for InCallManager events (device plug/unplug)
   useEffect(() => {
-    if (!InCallManager) return;
+    if (!InCallManager) {
+      console.log('[AudioDeviceManager] InCallManager not available, skipping event listeners');
+      return;
+    }
 
     const onWiredHeadsetPlugged = () => {
       console.log('[AudioDeviceManager] Wired headset plugged in');
@@ -191,45 +205,54 @@ export const useAudioDeviceManager = ({ onDeviceChanged, defaultRoute = 'speaker
       setIsBluetoothConnected(false);
     };
 
-    // Register event listeners
+    // Register event listeners using NativeEventEmitter if available
+    // Note: RNInCallManager only supports 'Proximity' and 'WiredHeadset' events
+    const subscriptions: Array<{ remove: () => void }> = [];
+
     try {
-      InCallManager.addEventListener('WiredHeadset', (data: { isPlugged: boolean }) => {
-        if (data.isPlugged) {
-          onWiredHeadsetPlugged();
-        } else {
-          onWiredHeadsetUnplugged();
-        }
-      });
-
-      InCallManager.addEventListener('NearbyDeviceList', (data: { state: string }) => {
-        // InCallManager uses this event for Bluetooth on Android
-        if (data.state === 'bluetooth') {
-          onBluetoothConnected();
-        } else if (data.state === 'disconnect') {
-          onBluetoothDisconnected();
-        }
-      });
-
-      if (Platform.OS === 'ios') {
-        // iOS-specific audio route change
-        InCallManager.addEventListener('Proximity', (data: { isNear: boolean }) => {
-          console.log('[AudioDeviceManager] Proximity sensor:', data.isNear ? 'near' : 'far');
+      if (InCallManagerEventEmitter) {
+        // Use NativeEventEmitter for event listening
+        // Supported events: 'WiredHeadset' and 'Proximity'
+        const wiredHeadsetSub = InCallManagerEventEmitter.addListener('WiredHeadset', (data: { isPlugged: boolean }) => {
+          if (data.isPlugged) {
+            onWiredHeadsetPlugged();
+          } else {
+            onWiredHeadsetUnplugged();
+          }
         });
+        subscriptions.push(wiredHeadsetSub);
+
+        // Note: 'NearbyDeviceList' is NOT supported by RNInCallManager
+        // Bluetooth detection is not available via InCallManager events
+        // Users can still manually switch to Bluetooth via switchAudioRoute()
+        console.log('[AudioDeviceManager] Bluetooth auto-detection not available via InCallManager events');
+
+        if (Platform.OS === 'ios') {
+          // iOS-specific audio route change
+          const proximitySub = InCallManagerEventEmitter.addListener('Proximity', (data: { isNear: boolean }) => {
+            console.log('[AudioDeviceManager] Proximity sensor:', data.isNear ? 'near' : 'far');
+          });
+          subscriptions.push(proximitySub);
+        }
+
+        console.log('[AudioDeviceManager] Event listeners registered via NativeEventEmitter');
+      } else {
+        console.warn('[AudioDeviceManager] NativeEventEmitter not available, device change detection will be limited');
+        console.log('[AudioDeviceManager] Audio device switching will still work, but auto-detection of plug/unplug is disabled');
       }
     } catch (error) {
       console.error('[AudioDeviceManager] Failed to register event listeners:', error);
     }
 
     return () => {
-      try {
-        InCallManager.removeEventListener('WiredHeadset');
-        InCallManager.removeEventListener('NearbyDeviceList');
-        if (Platform.OS === 'ios') {
-          InCallManager.removeEventListener('Proximity');
+      // Remove all event listeners
+      subscriptions.forEach(sub => {
+        try {
+          sub.remove();
+        } catch (error) {
+          console.log('[AudioDeviceManager] Error removing event listener:', error);
         }
-      } catch (error) {
-        console.error('[AudioDeviceManager] Failed to remove event listeners:', error);
-      }
+      });
     };
   }, []);
 

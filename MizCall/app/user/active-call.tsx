@@ -96,11 +96,16 @@ export default function UserActiveCallScreen() {
   }, [activeCall?.roomId]);
 
   useEffect(() => {
-    if (!hasJoinedRef.current && activeCall?.routerRtpCapabilities) {
+    // Only join if we haven't joined yet AND we have the necessary call data
+    // Don't rejoin if already connected (e.g., returning from background)
+    if (!hasJoinedRef.current && activeCall?.routerRtpCapabilities && state !== "connected") {
       hasJoinedRef.current = true;
       join();
+    } else if (state === "connected" && activeCall?.routerRtpCapabilities) {
+      // Already connected - mark as joined to prevent re-joining
+      hasJoinedRef.current = true;
     }
-  }, [activeCall?.routerRtpCapabilities, join, activeCall]);
+  }, [activeCall?.routerRtpCapabilities, join, activeCall, state]);
 
   // Fetch host's call background (users see the same background as host)
   useEffect(() => {

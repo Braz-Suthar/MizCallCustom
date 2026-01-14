@@ -1,36 +1,3 @@
-  const handleOtpDigitChange = (
-    index: number,
-    value: string,
-    setter: React.Dispatch<React.SetStateAction<string[]>>,
-    refs: React.MutableRefObject<Array<HTMLInputElement | null>>
-  ) => {
-    const v = value.replace(/\D/g, "").slice(0, 1);
-    setter((prev) => {
-      const next = [...prev];
-      next[index] = v;
-      return next;
-    });
-    if (v && refs.current[index + 1]) {
-      refs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (
-    e: React.KeyboardEvent<HTMLInputElement>,
-    index: number,
-    values: string[],
-    setter: React.Dispatch<React.SetStateAction<string[]>>,
-    refs: React.MutableRefObject<Array<HTMLInputElement | null>>
-  ) => {
-    if (e.key === "Backspace" && !values[index] && refs.current[index - 1]) {
-      setter((prev) => {
-        const next = [...prev];
-        next[index - 1] = "";
-        return next;
-      });
-      refs.current[index - 1]?.focus();
-    }
-  };
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { Device } from "mediasoup-client";
@@ -74,402 +41,49 @@ import {
   IoLogoWindows,
   IoDesktopOutline,
 } from "react-icons/io5";
+
+// Import modular components and utilities
+import { Button, Input, Pill, ToggleSwitch } from "./components/common";
+import { Login, Register } from "./components/auth";
+import { useToast, useTheme, useAudioDevices } from "./hooks";
+import { authService, userService, callService, recordingService, settingsService } from "./services";
+import { formatDateTime, formatDateShort, copyToClipboard, handleOtpDigitChange, handleOtpKeyDown, handleOtpPaste } from "./utils";
+import { API_BASE, DEVICE_LABEL, logoWhite, logoBlack, logo360, platformIconAndroid, platformIconApple, platformIconLinux, platformIconUbuntu, platformIconMenu } from "./constants";
+import type { Screen, Mode, NavTab, Session } from "./types";
+
+// Import asset icons
 import iconHome from "../assets/ui_icons/home.svg";
 import iconUsers from "../assets/ui_icons/users.svg";
 import iconCalls from "../assets/ui_icons/calls.svg";
 import iconRecordings from "../assets/ui_icons/recordings.svg";
 import iconSettings from "../assets/ui_icons/settings.svg";
 
-const API_BASE = "https://custom.mizcall.com";
-const DEVICE_LABEL = "Desktop";
-const logoWhite = new URL("../assets/Icons_and_logos_4x/white_logo.png", import.meta.url).href;
-const logoBlack = new URL("../assets/Icons_and_logos_4x/black_logo.png", import.meta.url).href;
-const logo360 = new URL("../assets/Icons_and_logos_4x/360.png", import.meta.url).href;
-const platformIconAndroid = new URL("../assets/ui_icons/android.png", import.meta.url).href;
-const platformIconApple = new URL("../assets/ui_icons/apple.png", import.meta.url).href;
-const platformIconLinux = new URL("../assets/ui_icons/linux.png", import.meta.url).href;
-const platformIconUbuntu = new URL("../assets/ui_icons/ubuntu.png", import.meta.url).href;
-const platformIconMenu = new URL("../assets/ui_icons/menu.png", import.meta.url).href;
-
-type Screen = "login" | "register";
-type Mode = "host" | "user";
-type NavTab = "dashboard" | "users" | "calls" | "recordings" | "settings" | "call-active";
-
-const Pill = ({ children }: { children: ReactNode }) => (
-  <span className="pill">{children}</span>
-);
-
-const Button = ({
-  label,
-  onClick,
-  variant = "primary",
-  loading,
-  disabled,
-  icon,
-}: {
-  label: string;
-  onClick?: () => void;
-  variant?: "primary" | "ghost" | "secondary" | "danger";
-  loading?: boolean;
-  disabled?: boolean;
-  icon?: ReactNode;
-}) => (
-  <button
-    className={`btn btn-${variant}`}
-    onClick={onClick}
-    disabled={disabled || loading}
-  >
-    {loading ? "…" : (
-      <span className="btn-content">
-        {icon ? <span className="btn-icon">{icon}</span> : null}
-        <span>{label}</span>
-      </span>
-    )}
-  </button>
-);
-
-const Input = ({
-  label,
-  type = "text",
-  value,
-  onChange,
-  placeholder,
-  autoFocus,
-}: {
-  label: string;
-  type?: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  autoFocus?: boolean;
-}) => (
-  <label className="field">
-    <span>{label}</span>
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      autoFocus={autoFocus}
-    />
-  </label>
-);
-
-const ToggleSwitch = ({ checked, onToggle }: { checked: boolean; onToggle: () => void }) => (
-  <label className="switch">
-    <input type="checkbox" checked={checked} onChange={onToggle} />
-    <span className="slider" />
-  </label>
-);
-
-const Login = ({
-  goRegister,
-  onBack,
-  onSubmit,
-  loading,
-  error,
-  onForgot,
-}: {
-  goRegister: () => void;
-  onBack: () => void;
-  onSubmit: (payload: { identifier: string; password: string }) => void;
-  loading: boolean;
-  error: string | null;
-  onForgot: () => void;
-}) => {
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
-
-  const disable = useMemo(
-    () =>
-      !password.trim() || !identifier.trim(),
-    [identifier, password],
-  );
-
-  return (
-    <div className="auth-shell">
-      <div className="auth-left single">
-        <div className="logo-wrap">
-          <img src={logoWhite} alt="MizCall" className="logo-img" />
-        </div>
-        <div className="auth-card flat">
-          <div className="stack gap-xxs center">
-            <h2 className="title auth-title">Sign in to your account</h2>
-            <p className="muted small">
-              Or <button className="linklike" onClick={goRegister}>create a new account</button>
-            </p>
-          </div>
-
-          <Input
-            label="Email or User ID"
-            value={identifier}
-            onChange={setIdentifier}
-            placeholder="Email or User ID"
-            autoFocus
-          />
-
-          <Input
-            label="Password"
-            value={password}
-            onChange={setPassword}
-            placeholder="Password"
-            type="password"
-          />
-
-          <div className="flex between">
-            <span />
-            <button className="linklike" onClick={onForgot}>Forgot your password?</button>
-          </div>
-
-          {error ? <p className="error">{error}</p> : null}
-
-          <Button
-            label={loading ? "Signing in…" : "Sign in"}
-            disabled={disable || loading}
-            onClick={() =>
-              onSubmit({
-                identifier,
-                password,
-              })
-            }
-          />
-        </div>
-      </div>
-      <div className="auth-right">
-        <div className="auth-hero">
-          <h2 className="title auth-title">Welcome back to mizcall</h2>
-          <p className="muted">
-            Connect with your team and clients through high-quality video calls.
-            Experience seamless communication with our advanced features.
-          </p>
-          <ul className="hero-list">
-            <li><span className="tick">✓</span> High-quality video and audio</li>
-            <li><span className="tick">✓</span> Screen sharing and collaboration</li>
-            <li><span className="tick">✓</span> Secure and reliable connection</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const Register = ({ goLogin, onBack }: { goLogin: () => void; onBack: () => void }) => {
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [verifying, setVerifying] = useState(false);
-  const [otp, setOtp] = useState<string[]>(["", "", "", "", "", ""]);
-  const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const [resendTimer, setResendTimer] = useState(0);
-  const passwordsMatch = password === confirm && password.trim().length >= 6;
-  const disable = !fullName.trim() || !email.trim() || !passwordsMatch;
-
-  useEffect(() => {
-    if (!verifying) return;
-    setResendTimer(25);
-    const timer = setInterval(() => {
-      setResendTimer((t) => (t > 0 ? t - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [verifying]);
-
-  const handleOtpChange = (idx: number, value: string) => {
-    if (!/^\d?$/.test(value)) return;
-    const next = [...otp];
-    next[idx] = value;
-    setOtp(next);
-    if (value && idx < otpRefs.current.length - 1) {
-      otpRefs.current[idx + 1]?.focus();
-    }
-  };
-
-  const handleOtpKey = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace" && !otp[idx] && idx > 0) {
-      otpRefs.current[idx - 1]?.focus();
-    }
-  };
-
-  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
-    if (!text) return;
-    e.preventDefault();
-    const next = Array(6).fill("");
-    for (let i = 0; i < text.length; i += 1) {
-      next[i] = text[i];
-    }
-    setOtp(next);
-    const focusIdx = Math.min(text.length, 5);
-    otpRefs.current[focusIdx]?.focus();
-  };
-
-  const onVerify = () => {
-    // Hook to real verification later
-    // showToast could be lifted via props; for now just return
-  };
-
-  if (verifying) {
-    return (
-      <div className="auth-shell">
-        <div className="auth-left single">
-          <div className="logo-wrap">
-            <img src={logoWhite} alt="MizCall" className="logo-img" />
-          </div>
-          <div className="auth-card flat verify-card">
-            <div className="stack gap-xxs center">
-              <h2 className="title auth-title">Verify your email</h2>
-              <p className="muted small">Enter the 6-digit code sent to {email || "your email"}</p>
-              <button className="linklike" onClick={() => setVerifying(false)}>Edit details</button>
-            </div>
-            <div className="otp-row">
-              {[...Array(6)].map((_, i) => (
-                <input
-                  key={i}
-                  ref={(el) => {
-                    otpRefs.current[i] = el;
-                  }}
-                  className="otp-input"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={otp[i]}
-                  onChange={(e) => handleOtpChange(i, e.target.value)}
-                  onKeyDown={(e) => handleOtpKey(i, e)}
-                  onPaste={handleOtpPaste}
-                />
-              ))}
-            </div>
-            <div className="full-width">
-              <Button label="Verify" onClick={onVerify} />
-            </div>
-            <div className="resend-row">
-              <span className="muted small">Didn’t receive the code?</span>
-              <button
-                className="linklike"
-                disabled={resendTimer > 0}
-                onClick={() => {
-                  if (resendTimer > 0) return;
-                  setOtp(["", "", "", "", "", ""]);
-                  otpRefs.current[0]?.focus();
-                  setResendTimer(25);
-                }}
-              >
-                Resend OTP {resendTimer > 0 ? `(${resendTimer}s)` : ""}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div className="auth-right">
-          <div className="auth-hero">
-            <h2 className="title auth-title">Start your journey with MizCall</h2>
-            <p className="muted">
-              Join thousands of businesses that trust MizCall for their video communication needs. Get started with our easy setup process.
-            </p>
-            <ul className="hero-list">
-              <li><span className="tick">✓</span> Easy team management</li>
-              <li><span className="tick">✓</span> Flexible pricing plans</li>
-              <li><span className="tick">✓</span> Dedicated support</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="auth-shell">
-      <div className="auth-left single">
-        <div className="logo-wrap">
-          <img src={logoWhite} alt="MizCall" className="logo-img" />
-        </div>
-        <div className="auth-card flat">
-          <div className="stack gap-xxs center">
-            <h2 className="title auth-title">Create host account</h2>
-            <p className="muted small">
-              Already have an account? <button className="linklike" onClick={goLogin}>Login</button>
-            </p>
-          </div>
-
-          <Input
-            label="Full Name"
-            value={fullName}
-            onChange={setFullName}
-            placeholder="John Doe"
-            autoFocus
-          />
-
-          <Input
-            label="Email Address"
-            value={email}
-            onChange={setEmail}
-            placeholder="host@example.com"
-          />
-
-          <Input
-            label="Password"
-            value={password}
-            onChange={setPassword}
-            placeholder="Minimum 6 characters"
-            type="password"
-          />
-
-          <Input
-            label="Confirm Password"
-            value={confirm}
-            onChange={setConfirm}
-            placeholder="Re-enter password"
-            type="password"
-          />
-
-          {!passwordsMatch && (password.length > 0 || confirm.length > 0) ? (
-            <p className="error">Passwords must match and be at least 6 characters.</p>
-          ) : null}
-
-          <div className="full-width">
-            <Button label="Continue" disabled={disable} onClick={() => setVerifying(true)} />
-          </div>
-        </div>
-      </div>
-      <div className="auth-right">
-        <div className="auth-hero">
-          <h2 className="title auth-title">Start your journey with MizCall</h2>
-          <p className="muted">
-            Join thousands of businesses that trust MizCall for their video communication needs.
-            Get started with our easy setup process.
-          </p>
-          <ul className="hero-list">
-            <li><span className="tick">✓</span> Easy team management</li>
-            <li><span className="tick">✓</span> Flexible pricing plans</li>
-            <li><span className="tick">✓</span> Dedicated support</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  );
-};
+// All inline components (Button, Input, ToggleSwitch, Login, Register) have been moved to separate files
+// and are now imported from ./components/*
 
 function App() {
+  // Use custom hooks for cleaner state management
+  const { toasts, showToast } = useToast();
+  const { theme, setTheme, effectiveTheme } = useTheme();
+  const {
+    audioDevices,
+    selectedInputDevice,
+    selectedOutputDevice,
+    hardwareMuted,
+    switchInputDevice,
+    switchOutputDevice,
+    monitorHardwareMute,
+    setSelectedInputDevice,
+    setSelectedOutputDevice,
+  } = useAudioDevices();
+
+  // App state
   const [screen, setScreen] = useState<Screen>("login");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [session, setSession] = useState<{
-    role: Mode;
-    token: string;
-    refreshToken?: string;
-    sessionId?: string | null;
-    accessJti?: string | null;
-    hostId?: string;
-    userId?: string;
-    name?: string;
-    email?: string;
-    avatarUrl?: string;
-    password?: string;
-    twoFactorEnabled?: boolean;
-    allowMultipleSessions?: boolean;
-  } | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [tab, setTab] = useState<NavTab>("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark" | "system">("system");
-  const [systemPref, setSystemPref] = useState<"light" | "dark">("light");
   const [hostOtpPending, setHostOtpPending] = useState<{ hostId: string; email?: string; password: string } | null>(null);
   const [loginOtpCode, setLoginOtpCode] = useState("");
   const [loginOtpError, setLoginOtpError] = useState<string | null>(null);
@@ -484,8 +98,6 @@ function App() {
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
   const [forgotError, setForgotError] = useState<string | null>(null);
   const [forgotLoading, setForgotLoading] = useState(false);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [toast, setToast] = useState<{ message: string; kind: "info" | "success" | "error" } | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const bgInputRef = useRef<HTMLInputElement | null>(null);
   const [customBg, setCustomBg] = useState<string | null>(null);
@@ -599,17 +211,14 @@ function App() {
   const [callJoinState, setCallJoinState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [callError, setCallError] = useState<string | null>(null);
   const [networkStatus, setNetworkStatus] = useState<"online" | "offline">("offline");
+  const [networkLatency, setNetworkLatency] = useState<number | null>(null);
+  const dashboardSocketRef = useRef<Socket | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
-  // Audio device management
-  const [audioDevices, setAudioDevices] = useState<{
-    input: MediaDeviceInfo[];
-    output: MediaDeviceInfo[];
-  }>({ input: [], output: [] });
-  const [selectedInputDevice, setSelectedInputDevice] = useState<string>("default");
-  const [selectedOutputDevice, setSelectedOutputDevice] = useState<string>("default");
+  // Audio settings modal state
   const [showAudioSettings, setShowAudioSettings] = useState(false);
-  const [hardwareMuted, setHardwareMuted] = useState(false);
   
+  // WebRTC refs
   const callSocketRef = useRef<Socket | null>(null);
   const deviceRef = useRef<Device | null>(null);
   const sendTransportRef = useRef<any>(null);
@@ -629,109 +238,16 @@ function App() {
   const userWsRef = useRef<Socket | null>(null);
 
   // Audio device enumeration
-  const enumerateAudioDevices = async () => {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const inputDevices = devices.filter(d => d.kind === 'audioinput');
-      const outputDevices = devices.filter(d => d.kind === 'audiooutput');
-      
-      setAudioDevices({
-        input: inputDevices,
-        output: outputDevices
-      });
-      
-      console.log('[AudioDevices] Enumerated:', {
-        inputs: inputDevices.length,
-        outputs: outputDevices.length
-      });
-    } catch (error) {
-      console.error('[AudioDevices] Enumeration failed:', error);
-    }
+  // Audio device functions are now provided by useAudioDevices hook
+  // Wrap them to match the expected signature for the App.tsx usage
+  const handleSwitchInputDevice = async (deviceId: string) => {
+    const result = await switchInputDevice(deviceId, localStreamRef, producerRef);
+    showToast(result.message, result.success ? 'success' : 'error');
   };
 
-  // Detect hardware mute from microphone track
-  const monitorHardwareMute = (stream: MediaStream | null) => {
-    if (!stream) return;
-    
-    const audioTrack = stream.getAudioTracks()[0];
-    if (!audioTrack) return;
-
-    const checkMuteState = () => {
-      const isMuted = audioTrack.muted;
-      setHardwareMuted(isMuted);
-      
-      if (isMuted) {
-        console.log('[AudioDevices] Hardware mute detected');
-      }
-    };
-
-    audioTrack.onmute = () => {
-      console.log('[AudioDevices] Track muted event (hardware)');
-      setHardwareMuted(true);
-    };
-
-    audioTrack.onunmute = () => {
-      console.log('[AudioDevices] Track unmuted event (hardware)');
-      setHardwareMuted(false);
-    };
-
-    // Initial check
-    checkMuteState();
-  };
-
-  // Switch input device (microphone)
-  const switchInputDevice = async (deviceId: string) => {
-    try {
-      console.log('[AudioDevices] Switching input device to:', deviceId);
-      
-      // Stop current stream if exists
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => track.stop());
-      }
-
-      // Get new stream with selected device
-      const constraints: MediaStreamConstraints = {
-        audio: deviceId === 'default' 
-          ? true 
-          : { deviceId: { exact: deviceId } }
-      };
-
-      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = newStream;
-      
-      // Monitor hardware mute on new track
-      monitorHardwareMute(newStream);
-
-      // If we have an active producer, replace the track
-      if (producerRef.current && !producerRef.current.closed) {
-        const newTrack = newStream.getAudioTracks()[0];
-        await producerRef.current.replaceTrack({ track: newTrack });
-        console.log('[AudioDevices] Producer track replaced');
-      }
-
-      setSelectedInputDevice(deviceId);
-      showToast('Microphone switched successfully', 'success');
-    } catch (error) {
-      console.error('[AudioDevices] Failed to switch input device:', error);
-      showToast('Failed to switch microphone', 'error');
-    }
-  };
-
-  // Switch output device (speaker/headphones)
-  const switchOutputDevice = async (deviceId: string) => {
-    try {
-      console.log('[AudioDevices] Switching output device to:', deviceId);
-      
-      if (remoteAudioElRef.current && 'setSinkId' in remoteAudioElRef.current) {
-        await (remoteAudioElRef.current as any).setSinkId(deviceId === 'default' ? '' : deviceId);
-        setSelectedOutputDevice(deviceId);
-        showToast('Speaker switched successfully', 'success');
-        console.log('[AudioDevices] Output device switched');
-      }
-    } catch (error) {
-      console.error('[AudioDevices] Failed to switch output device:', error);
-      showToast('Failed to switch speaker', 'error');
-    }
+  const handleSwitchOutputDevice = async (deviceId: string) => {
+    const result = await switchOutputDevice(deviceId, remoteAudioElRef);
+    showToast(result.message, result.success ? 'success' : 'error');
   };
 
   useEffect(() => {
@@ -745,8 +261,7 @@ function App() {
     };
     checkBiometrics();
     
-    // Enumerate audio devices on mount
-    enumerateAudioDevices();
+    // Audio device enumeration is now handled by useAudioDevices hook
     
     // Restore persisted theme and session
     try {
@@ -790,34 +305,24 @@ function App() {
       localStorage.removeItem("mizcall.session");
     }
 
-    const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const listener = (e: MediaQueryListEvent) => setSystemPref(e.matches ? "dark" : "light");
-    setSystemPref(mql.matches ? "dark" : "light");
-    mql.addEventListener("change", listener);
+    // Theme management is now handled by useTheme hook
     const onlineHandler = () => setNetworkStatus("online");
     const offlineHandler = () => setNetworkStatus("offline");
     window.addEventListener("online", onlineHandler);
     window.addEventListener("offline", offlineHandler);
     
-    // Listen for device changes (plug/unplug)
-    const handleDeviceChange = () => {
-      console.log('[AudioDevices] Device change detected');
-      enumerateAudioDevices();
-    };
-    navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+    // Device change listening is now handled by useAudioDevices hook
     
     return () => {
-      mql.removeEventListener("change", listener);
       window.removeEventListener("online", onlineHandler);
       window.removeEventListener("offline", offlineHandler);
-      navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
     };
   }, []);
 
-  const effectiveTheme = theme === "system" ? systemPref : theme;
+  // effectiveTheme is now provided by useTheme hook
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+    setTheme(theme === "dark" ? "light" : "dark");
   };
 
   useEffect(() => {
@@ -914,7 +419,7 @@ function App() {
           // Start polling for approval
           const pollInterval = setInterval(async () => {
             try {
-              const retryData = await window.mizcall?.loginUser?.(payload.identifier, payload.password);
+              const retryData = await window.mizcall?.loginUser?.(payload.identifier, payload.password) as any;
               if (retryData && !retryData.pending && retryData.token) {
                 // Approved! Login successful
                 clearInterval(pollInterval);
@@ -1296,6 +801,28 @@ function App() {
     }
   };
 
+  // Fetch a single user's username from backend
+  const fetchUserUsername = async (userId: string): Promise<string | null> => {
+    if (!session?.token || session.role !== "host") return null;
+    try {
+      const res = await authFetch(`${API_BASE}/host/users`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      const user = (data.users || []).find((u: any) => u.id === userId);
+      if (user?.username) {
+        // Also update the users list
+        setUsers((prev) => {
+          const exists = prev.find((u) => u.id === userId);
+          if (exists) return prev;
+          return [...prev, { id: userId, username: user.username, enabled: true }];
+        });
+      }
+      return user?.username || null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     if (!session?.token) return;
     try {
@@ -1522,7 +1049,7 @@ function App() {
     cleanupCallMedia();
     setActiveCall(null);
     setActiveParticipants([]);
-    setTab("calls");
+    setTab("dashboard");
   };
 
   const cleanupCallMedia = () => {
@@ -2043,14 +1570,34 @@ function App() {
 
         if (msg.type === "NEW_PRODUCER") {
           if (session.role === "host" && msg.ownerRole === "user") {
+            const userId = msg.userId || msg.producerId;
+            
+            // Look up username from users list
+            const user = users.find((u) => u.id === userId);
+            let displayName = user?.username || userId || "User";
+            
+            // If not found in users list, fetch from backend
+            if (!user?.username && userId) {
+              fetchUserUsername(userId).then((username) => {
+                if (username) {
+                  setActiveParticipants((prev) =>
+                    prev.map((p) =>
+                      p.id === userId ? { ...p, name: username } : p
+                    )
+                  );
+                }
+              });
+            }
+            
             setActiveParticipants((prev) => {
-              const exists = prev.some((p) => p.id === (msg.userId || "unknown"));
+              const exists = prev.some((p) => p.id === userId);
               if (exists) return prev;
+              
               return [
                 ...prev,
                 {
-                  id: msg.userId || msg.producerId,
-                  name: msg.userId || "User",
+                  id: userId,
+                  name: displayName,
                   role: "User" as const,
                   status: "connected" as const,
                   muted: false,
@@ -2103,13 +1650,33 @@ function App() {
         }
 
         if (msg.type === "USER_JOINED") {
+          const userId = msg.userId;
+          
+          // Look up username from users list
+          const user = users.find((u) => u.id === userId);
+          let displayName = user?.username || userId || "User";
+          
+          // If not found in users list, fetch from backend
+          if (!user?.username && userId) {
+            fetchUserUsername(userId).then((username) => {
+              if (username) {
+                setActiveParticipants((prev) =>
+                  prev.map((p) =>
+                    p.id === userId ? { ...p, name: username } : p
+                  )
+                );
+              }
+            });
+          }
+          
           setActiveParticipants((prev) => {
-            if (prev.some((p) => p.id === msg.userId)) return prev;
+            if (prev.some((p) => p.id === userId)) return prev;
+            
             return [
               ...prev,
               {
-                id: msg.userId,
-                name: msg.userId,
+                id: userId,
+                name: displayName,
                 role: "User" as const,
                 status: "connected" as const,
                 muted: true,
@@ -2712,6 +2279,10 @@ function App() {
     // Load call background when entering call screen (for both host and user)
     if (tab === "call-active" && session?.token) {
       loadCallBackground();
+      // Also load users list for host to display usernames in participant grid
+      if (session?.role === "host") {
+        fetchUsers();
+      }
     }
 
     if (!activeCallListenerRef.current && window.mizcall?.onActiveCallContext) {
@@ -2736,6 +2307,23 @@ function App() {
       }
     };
   }, [tab, session?.token, session?.role]);
+
+  // Update participant names when users list is loaded
+  useEffect(() => {
+    if (users.length > 0 && activeParticipants.length > 0) {
+      setActiveParticipants((prev) =>
+        prev.map((p) => {
+          if (p.role === "User") {
+            const user = users.find((u) => u.id === p.id);
+            if (user && user.username !== p.name) {
+              return { ...p, name: user.username };
+            }
+          }
+          return p;
+        })
+      );
+    }
+  }, [users]);
 
   useEffect(() => {
     if (!session || session.role !== "user") {
@@ -2834,6 +2422,114 @@ function App() {
     };
   }, [session?.token, session?.role]);
 
+  // Host dashboard socket with ping/latency tracking
+  useEffect(() => {
+    if (!session || session.role !== "host") {
+      if (dashboardSocketRef.current) {
+        dashboardSocketRef.current.disconnect();
+        dashboardSocketRef.current = null;
+      }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+      setNetworkLatency(null);
+      setNetworkStatus("offline");
+      return;
+    }
+    
+    // Reuse existing socket if connected
+    if (dashboardSocketRef.current?.connected) {
+      console.log("[desktop:host-dashboard] Socket already connected, reusing");
+      return;
+    }
+
+    console.log("[desktop:host-dashboard] Initializing socket connection...");
+    const ws: Socket = io("https://custom.mizcall.com", {
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
+      withCredentials: true,
+    });
+    dashboardSocketRef.current = ws;
+
+    ws.on("connect", () => {
+      console.log("[desktop:host-dashboard] Socket connected:", ws.id);
+      setNetworkStatus("online");
+      ws.emit("AUTH", { token: session.token });
+      
+      // Start ping interval
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+      }
+      
+      pingIntervalRef.current = setInterval(() => {
+        if (ws.connected) {
+          const timestamp = Date.now();
+          console.log("[desktop:host-dashboard] 📤 Sending PING with timestamp:", timestamp);
+          ws.emit("PING", { type: "PING", clientTimestamp: timestamp });
+        } else {
+          console.log("[desktop:host-dashboard] ⚠️ Socket not connected, skipping ping");
+        }
+      }, 2000); // Ping every 2 seconds
+    });
+
+    ws.on("disconnect", () => {
+      console.log("[desktop:host-dashboard] Socket disconnected");
+      setNetworkStatus("offline");
+      setNetworkLatency(null);
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+    });
+
+    ws.on("connect_error", (err) => {
+      console.warn("[desktop:host-dashboard] Socket connection error:", err);
+      setNetworkStatus("offline");
+      setNetworkLatency(null);
+    });
+
+    // Handle PONG response for latency calculation
+    ws.on("PONG", (data: any) => {
+      console.log("[desktop:host-dashboard] 📥 Received PONG response:", data);
+      if (data.clientTimestamp) {
+        const latency = Date.now() - data.clientTimestamp;
+        console.log("[desktop:host-dashboard] ⚡ Calculated latency:", latency, "ms");
+        setNetworkLatency(latency);
+        setNetworkStatus("online");
+      }
+    });
+
+    // Handle server-initiated PING
+    ws.on("PING", (data: any) => {
+      console.log("[desktop:host-dashboard] 📥 Received server PING, sending PONG");
+      ws.emit("PONG", { type: "PONG", timestamp: data.timestamp });
+    });
+
+    // Handle latency updates from server
+    ws.on("LATENCY_UPDATE", (data: any) => {
+      console.log("[desktop:host-dashboard] 📥 Received LATENCY_UPDATE:", data);
+      if (data.latency !== undefined) {
+        setNetworkLatency(data.latency);
+        setNetworkStatus("online");
+      }
+    });
+
+    return () => {
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
+      }
+      if (dashboardSocketRef.current) {
+        dashboardSocketRef.current.disconnect();
+        dashboardSocketRef.current = null;
+      }
+    };
+  }, [session?.token, session?.role]);
+
   useEffect(() => {
     if (!session || !activeCall || tab !== "call-active") {
       if (tab !== "call-active") {
@@ -2882,11 +2578,7 @@ function App() {
     }
   }, [callMuted, session?.role]);
 
-  const showToast = (message: string, kind: "info" | "success" | "error" = "info") => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ message, kind });
-    toastTimer.current = setTimeout(() => setToast(null), 2000);
-  };
+  // showToast is now provided by useToast hook
 
   const handleAvatarClick = () => {
     avatarInputRef.current?.click();
@@ -3406,11 +3098,20 @@ function App() {
                         </div>
                       )}
                       
-                      <div className="participant-header">
+                      {/* Avatar at top */}
+                      <div style={{ 
+                        display: "flex", 
+                        justifyContent: "center", 
+                        marginBottom: "8px" 
+                      }}>
                         <div 
                           className="avatar-sm" 
                           style={{ 
-                            backgroundColor: isSpeaking ? "#22c55e" : undefined 
+                            backgroundColor: isSpeaking ? "#22c55e" : undefined,
+                            width: "48px",
+                            height: "48px",
+                            fontSize: "18px",
+                            flexShrink: 0
                           }}
                         >
                           {p.avatarUrl ? (
@@ -3419,31 +3120,90 @@ function App() {
                                 ? p.avatarUrl 
                                 : `${API_BASE}${p.avatarUrl}`
                               } 
-                              alt={p.name} 
+                              alt={p.name}
+                              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
                             />
                           ) : initials}
                         </div>
-                        <div className="stack gap-xxs">
-                          <strong>{p.name}</strong>
+                      </div>
+                      
+                      {/* Centered display name - properly sized */}
+                      <div style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        textAlign: "center",
+                        marginBottom: "6px",
+                        minHeight: "40px",
+                        flex: "1 1 auto"
+                      }}>
+                        <strong style={{
+                          fontSize: "15px",
+                          fontWeight: "600",
+                          color: "var(--text-primary, #f3f4f6)",
+                          lineHeight: "1.3",
+                          wordBreak: "break-word",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          maxWidth: "100%"
+                        }}>
+                          {p.name}
+                        </strong>
+                      </div>
+                      
+                      {/* Status and actions row - compact */}
+                      <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        marginTop: "auto",
+                        paddingTop: "4px",
+                        flexWrap: "wrap"
+                      }}>
+                        <div style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "2px"
+                        }}>
+                          {isSpeaking ? (
+                            <span style={{ color: "#22c55e", fontWeight: "600", fontSize: "11px" }}>Speaking</span>
+                          ) : p.muted ? (
+                            <span className="muted small" style={{ fontSize: "11px" }}>Muted</span>
+                          ) : (
+                            <span className="muted small" style={{ fontSize: "11px" }}>Idle</span>
+                          )}
                         </div>
-                        <button className="icon-btn" onClick={() => showToast("More actions (stub)", "info")} title="More">
-                          <FiMoreVertical />
+                        <button 
+                          className="icon-btn" 
+                          onClick={() => toggleMuteParticipant(p.id)} 
+                          title={p.muted ? "Unmute" : "Mute"}
+                          style={{ 
+                            padding: "4px",
+                            width: "24px",
+                            height: "24px",
+                            minWidth: "24px"
+                          }}
+                        >
+                          {p.muted ? <FiVolumeX size={14} /> : <FiVolume2 size={14} />}
                         </button>
-                      </div>
-                      <div className="participant-meta" />
-                      <div className="participant-actions">
-                        <button className="icon-btn" onClick={() => toggleMuteParticipant(p.id)} title={p.muted ? "Unmute" : "Mute"}>
-                          {p.muted ? <FiVolumeX /> : <FiVolume2 />}
+                        <button 
+                          className="icon-btn" 
+                          onClick={() => showToast("More actions (stub)", "info")} 
+                          title="More"
+                          style={{ 
+                            padding: "4px",
+                            width: "24px",
+                            height: "24px",
+                            minWidth: "24px"
+                          }}
+                        >
+                          <FiMoreVertical size={14} />
                         </button>
-                      </div>
-                      <div className="participant-status">
-                        {isSpeaking ? (
-                          <span style={{ color: "#22c55e", fontWeight: "600" }}>Speaking</span>
-                        ) : p.muted ? (
-                          <span className="muted small">Muted</span>
-                        ) : (
-                          <span className="muted small">Idle</span>
-                        )}
                       </div>
                     </div>
                   );
@@ -3533,12 +3293,58 @@ function App() {
               </div>
               <div className="card stat-card highlight-card">
                 <p className="muted strong">Network Status</p>
-                <p className="muted small">Excellent · 99ms</p>
+                <p className="muted small">
+                  {networkLatency !== null ? (
+                    <>
+                      <span
+                        style={{
+                          color:
+                            networkLatency < 100
+                              ? "#22c55e" // Green for Excellent
+                              : networkLatency < 200
+                              ? "#3b82f6" // Blue for Good
+                              : networkLatency < 500
+                              ? "#f59e0b" // Orange for Fair
+                              : "#ef4444", // Red for Poor
+                          fontWeight: "600",
+                        }}
+                      >
+                        {networkLatency < 100
+                          ? "Excellent"
+                          : networkLatency < 200
+                          ? "Good"
+                          : networkLatency < 500
+                          ? "Fair"
+                          : "Poor"}
+                      </span>
+                      {" · "}
+                      <span
+                        style={{
+                          color:
+                            networkLatency < 100
+                              ? "#22c55e"
+                              : networkLatency < 200
+                              ? "#3b82f6"
+                              : networkLatency < 500
+                              ? "#f59e0b"
+                              : "#ef4444",
+                          fontWeight: "600",
+                        }}
+                      >
+                        {networkLatency}ms
+                      </span>
+                    </>
+                  ) : networkStatus === "online" ? (
+                    <span style={{ color: "#f59e0b", fontWeight: "600" }}>Connecting...</span>
+                  ) : (
+                    <span style={{ color: "#ef4444", fontWeight: "600" }}>Disconnected</span>
+                  )}
+                </p>
               </div>
-              <div className="card stat-card highlight-card">
+              {/* <div className="card stat-card highlight-card">
                 <p className="muted strong">Connection</p>
                 <p className="muted small">Connected</p>
-              </div>
+              </div> */}
             </div>
 
             <div className="grid-2">
@@ -4386,10 +4192,30 @@ function App() {
                 {effectiveTheme === "dark" ? <FiSun /> : <FiMoon />}
               </button>
               <div
-                className={`icon-btn ${networkStatus === "online" ? "status-ok" : "status-bad"}`}
-                title={networkStatus === "online" ? "Connected" : "Disconnected"}
+                className={`icon-btn ${networkStatus === "online" && networkLatency !== null ? "status-ok" : "status-bad"}`}
+                title={
+                  networkStatus === "online" && networkLatency !== null
+                    ? `Connected · ${networkLatency}ms latency`
+                    : networkStatus === "online"
+                    ? "Connecting..."
+                    : "Disconnected"
+                }
+                style={{
+                  color:
+                    networkStatus === "online" && networkLatency !== null
+                      ? networkLatency < 100
+                        ? "#22c55e" // Green for Excellent
+                        : networkLatency < 200
+                        ? "#3b82f6" // Blue for Good
+                        : networkLatency < 500
+                        ? "#f59e0b" // Orange for Fair
+                        : "#ef4444" // Red for Poor
+                      : networkStatus === "online"
+                      ? "#f59e0b" // Orange for Connecting
+                      : "#ef4444", // Red for Disconnected
+                }}
               >
-                {networkStatus === "online" ? <FiWifi /> : <FiWifiOff />}
+                {networkStatus === "online" && networkLatency !== null ? <FiWifi /> : <FiWifiOff />}
               </div>
             </div>
           </div>
@@ -4408,11 +4234,11 @@ function App() {
           renderAuthShell()
         ) : null}
       </main>
-      {toast ? (
-        <div className={`toast toast-${toast.kind}`}>
+      {toasts.map((toast) => (
+        <div key={toast.id} className={`toast toast-${toast.kind}`}>
           {toast.message}
         </div>
-      ) : null}
+      ))}
       {showNotifModal ? (
         <div className="modal-backdrop" onClick={() => setShowNotifModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -5340,7 +5166,7 @@ function App() {
                 <select 
                   className="select-field"
                   value={selectedInputDevice}
-                  onChange={(e) => switchInputDevice(e.target.value)}
+                  onChange={(e) => handleSwitchInputDevice(e.target.value)}
                   style={{
                     padding: "12px",
                     borderRadius: "8px",
@@ -5383,7 +5209,7 @@ function App() {
                 <select 
                   className="select-field"
                   value={selectedOutputDevice}
-                  onChange={(e) => switchOutputDevice(e.target.value)}
+                  onChange={(e) => handleSwitchOutputDevice(e.target.value)}
                   style={{
                     padding: "12px",
                     borderRadius: "8px",

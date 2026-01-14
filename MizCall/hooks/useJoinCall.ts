@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, AppStateStatus } from "react-native";
 import { Device } from "mediasoup-client";
 type RtpCapabilities = any;
 import { MediaStream, mediaDevices } from "react-native-webrtc";
@@ -40,8 +41,18 @@ export function useJoinCall() {
   const zeroLevelCountRef = useRef(0);
   const localStreamRef = useRef<MediaStream | null>(null);
   const creatingConsumerRef = useRef(false); // Guard against simultaneous consumer creation
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const isInBackgroundRef = useRef(false);
+  const shouldCleanupRef = useRef(true); // Flag to control cleanup behavior
 
-  const cleanupCallMedia = useCallback(() => {
+  const cleanupCallMedia = useCallback((forceCleanup = false) => {
+    // Don't cleanup if app is in background and we want to keep connections alive
+    if (!forceCleanup && isInBackgroundRef.current) {
+      console.log("[useJoinCall] Skipping cleanup - app is in background, keeping connections alive");
+      return;
+    }
+    
+    console.log("[useJoinCall] Starting cleanup...", { forceCleanup, isInBackground: isInBackgroundRef.current });
     console.log("[useJoinCall] Starting cleanup...");
     
     // Stop call audio
@@ -115,13 +126,17 @@ export function useJoinCall() {
     setAudioLevel(0);
     zeroLevelCountRef.current = 0;
     
-    // Cleanup socket - DISCONNECT IT (like desktop does)
-    if (socketRef.current) {
+    // Cleanup socket - Only disconnect if force cleanup
+    if (socketRef.current && forceCleanup) {
       console.log("[useJoinCall] Cleaning up socket");
       socketRef.current.removeAllListeners();
       socketRef.current.disconnect?.();
+      socketRef.current = null;
+    } else if (socketRef.current && !forceCleanup) {
+      console.log("[useJoinCall] Keeping socket alive (background mode)");
+      // Keep socket but remove listeners that might cause issues
+      // Don't disconnect - keep connection alive
     }
-    socketRef.current = null;
     
     // Clear device and refs
     deviceRef.current = null;
@@ -139,11 +154,102 @@ export function useJoinCall() {
     console.log("[useJoinCall] ✅ Cleanup complete");
   }, []);
 
-  useEffect(() => cleanupCallMedia, [cleanupCallMedia]);
+  // Handle app state changes (background/foreground)
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
+      console.log("[useJoinCall] App state changed:", previousState, "->", nextAppState);
+
+      if (previousState.match(/active/) && nextAppState.match(/inactive|background/)) {
+        // App going to background
+        console.log("[useJoinCall] App going to background - keeping connections alive");
+        isInBackgroundRef.current = true;
+        shouldCleanupRef.current = false;
+        
+        // Keep socket connected but pause audio level monitoring to save battery
+        if (meterIntervalRef.current) {
+          clearInterval(meterIntervalRef.current);
+          meterIntervalRef.current = null;
+        }
+      } else if (previousState.match(/inactive|background/) && nextAppState.match(/active/)) {
+        // App coming to foreground
+        console.log("[useJoinCall] App coming to foreground - resuming connections");
+        isInBackgroundRef.current = false;
+        shouldCleanupRef.current = true;
+        
+        // Resume audio level monitoring if we have a consumer
+        if (consumerRef.current && !meterIntervalRef.current && state === "connected") {
+          meterIntervalRef.current = setInterval(async () => {
+            try {
+              const stats = await consumerRef.current?.getStats?.();
+              if (!stats) return;
+              let level = 0;
+              stats.forEach((report: any) => {
+                if (report.type === "inbound-rtp" || report.type === "track" || report.type === "remote-inbound-rtp") {
+                  if (typeof report.audioLevel === "number") {
+                    level = Math.max(level, report.audioLevel);
+                  }
+                  if (
+                    typeof report.totalAudioEnergy === "number" &&
+                    typeof report.totalSamplesDuration === "number" &&
+                    report.totalSamplesDuration > 0
+                  ) {
+                    const energy = report.totalAudioEnergy / report.totalSamplesDuration;
+                    level = Math.max(level, Math.sqrt(energy));
+                  }
+                }
+              });
+              if (level === 0) {
+                zeroLevelCountRef.current += 1;
+              } else {
+                zeroLevelCountRef.current = 0;
+              }
+              setAudioLevel(level);
+            } catch {}
+          }, 700);
+        }
+        
+        // Re-enable audio routing
+        try {
+          if (remoteStream && state === "connected") {
+            startCallAudio();
+            enableSpeakerphone();
+            if (isMobilePlatform) {
+              (mediaDevices as any).setSpeakerphoneOn?.(true).catch(() => {});
+            }
+            console.log("[useJoinCall] Audio routing resumed after foreground");
+          }
+        } catch (e) {
+          console.warn("[useJoinCall] Error resuming audio after foreground:", e);
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [state, remoteStream]);
+
+  // Only cleanup on unmount if explicitly leaving, not when going to background
+  useEffect(() => {
+    return () => {
+      // Only cleanup if we're not in background mode
+      if (shouldCleanupRef.current && !isInBackgroundRef.current) {
+        console.log("[useJoinCall] Component unmounting - cleaning up");
+        cleanupCallMedia(true);
+      } else {
+        console.log("[useJoinCall] Component unmounting but keeping connections alive (background mode)");
+      }
+    };
+  }, []);
 
   const leave = useCallback(() => {
-    console.log("[useJoinCall] leave() called");
-    cleanupCallMedia();
+    console.log("[useJoinCall] leave() called - force cleanup");
+    shouldCleanupRef.current = true;
+    isInBackgroundRef.current = false;
+    cleanupCallMedia(true);
   }, [cleanupCallMedia]);
 
   const join = useCallback(async () => {
@@ -164,8 +270,13 @@ export function useJoinCall() {
       return;
     }
 
-    // DESKTOP PATTERN: Clean up first, then create fresh socket
-    cleanupCallMedia();
+    // Only cleanup if we're not already connected (don't cleanup when reconnecting from background)
+    if (state !== "connected" || !socketRef.current?.connected) {
+      console.log("[useJoinCall] Cleaning up before join (not connected)");
+      cleanupCallMedia(true);
+    } else {
+      console.log("[useJoinCall] Already connected, skipping cleanup (likely returning from background)");
+    }
     
     setState("connecting");
     setError(null);
@@ -181,26 +292,55 @@ export function useJoinCall() {
       hostProducer: hostProducerIdRef.current,
     });
 
-    // Create NEW socket for this call session (like desktop)
-    const ws: Socket = io(SOCKET_URL, {
-      transports: ["websocket", "polling"],
-      reconnection: false,  // Desktop doesn't auto-reconnect
-    });
-    socketRef.current = ws;
+    // Reuse existing socket if connected, otherwise create new one
+    let ws: Socket;
+    if (socketRef.current?.connected) {
+      console.log("[useJoinCall] Reusing existing socket connection");
+      ws = socketRef.current;
+    } else {
+      console.log("[useJoinCall] Creating new socket connection");
+      ws = io(SOCKET_URL, {
+        transports: ["websocket", "polling"],
+        reconnection: true,  // Enable reconnection to keep connection alive
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: Infinity,
+      });
+      socketRef.current = ws;
+    }
 
-    ws.on("connect", () => {
-      console.log("[useJoinCall] Socket connected:", ws.id);
+    // Only set up connect handler if socket is not already connected
+    if (!ws.connected) {
+      ws.on("connect", () => {
+        console.log("[useJoinCall] Socket connected:", ws.id);
+        ws.emit("AUTH", { token });
+        ws.emit("CALL_STARTED", { roomId });
+        ws.emit("GET_ROUTER_CAPS", { roomId });
+        ws.emit("JOIN", { token, roomId });
+        ws.emit("REQUEST_HOST_PRODUCER", { roomId });
+        
+        try {
+          startCallAudio();
+          enableSpeakerphone();
+        } catch {}
+      });
+    } else {
+      // Socket already connected - just re-authenticate and rejoin
+      console.log("[useJoinCall] Socket already connected, re-authenticating");
       ws.emit("AUTH", { token });
       ws.emit("CALL_STARTED", { roomId });
-      ws.emit("GET_ROUTER_CAPS", { roomId });
       ws.emit("JOIN", { token, roomId });
-      ws.emit("REQUEST_HOST_PRODUCER", { roomId });
       
-      try {
-        startCallAudio();
-        enableSpeakerphone();
-      } catch {}
-    });
+      // If we already have transports and consumer, we're good
+      if (recvTransportRef.current && consumerRef.current && state === "connected") {
+        console.log("[useJoinCall] Already have active connection, resuming audio");
+        try {
+          startCallAudio();
+          enableSpeakerphone();
+        } catch {}
+        setState("connected");
+      }
+    }
 
     ws.on("connect_error", (err) => {
       console.warn("[useJoinCall] Socket error:", err);
@@ -551,7 +691,8 @@ export function useJoinCall() {
     };
 
     // Listen ONLY to specific events (not "message") to avoid duplicates
-    [
+    // Remove existing listeners first to avoid duplicates when reusing socket
+    const events = [
       "ROUTER_CAPS",
       "SEND_TRANSPORT_CREATED",
       "RECV_TRANSPORT_CREATED",
@@ -561,7 +702,15 @@ export function useJoinCall() {
       "CONSUMED",
       "CALL_STOPPED",
       "call-stopped",
-    ].forEach((event) => {
+    ];
+    
+    // Remove old listeners if socket was reused
+    events.forEach((event) => {
+      ws.off(event);
+    });
+    
+    // Register new listeners
+    events.forEach((event) => {
       ws.on(event, (payload) => handleMsg(payload ?? { type: event }));
     });
   }, [token, role, activeCall?.routerRtpCapabilities, activeCall?.hostProducerId, dispatch, roomId, activeCall, cleanupCallMedia]);

@@ -70,6 +70,8 @@ const createWindow = (opts = {}) => {
   const win = new BrowserWindow({
     width: 1100,
     height: 720,
+    minWidth: 900,
+    minHeight: 600,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -257,7 +259,13 @@ app.whenReady().then(async () => {
   createWindow();
 
   ipcMain.on("open-active-call-window", (_event, payload) => {
-    const callWin = createWindow({ width: 1280, height: 800, title: "MizCall - Active Call" });
+    const callWin = createWindow({ 
+      width: 1280, 
+      height: 800, 
+      minWidth: 900,
+      minHeight: 600,
+      title: "MizCall - Active Call" 
+    });
     callWin.webContents.once("did-finish-load", () => {
       callWin.webContents.send("active-call-context", payload);
     });

@@ -387,10 +387,7 @@ export default function ActiveCallScreen() {
 
                     {/* User Info */}
                     <Text style={[styles.userName, { color: colors.text }]} numberOfLines={1}>
-                      {item.username}
-                    </Text>
-                    <Text style={[styles.userId, { color: colors.text }]} numberOfLines={1}>
-                      ID: {item.userId}
+                      {item.username || item.userId}
                     </Text>
 
                     {/* Status */}
