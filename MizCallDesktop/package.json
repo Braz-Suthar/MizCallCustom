@@ -9,22 +9,72 @@
   "build": {
     "appId": "com.mizcall.desktop",
     "productName": "MizCall Desktop",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "!**/*.map"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/logo512.png",
+      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MizCall Desktop"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Windows-Portable.exe"
+    },
     "mac": {
       "category": "public.app-category.social-networking",
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.plist",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
+      "target": ["dmg", "zip"],
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-${version}-macOS-${arch}.${ext}",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "MizCall needs access to your microphone for voice calls.",
         "NSCameraUsageDescription": "MizCall needs access to your camera for video calls."
       }
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Network",
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-${version}-Linux-${arch}.${ext}"
     }
   },
   "scripts": {
     "dev": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "start": "electron-forge start",
     "build": "vite build",
+    "build:win": "npm run build && electron-builder --win --x64",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:linux": "npm run build && electron-builder --linux",
+    "build:all": "npm run build && electron-builder -mwl",
     "test": "echo \"No tests yet\"",
     "lint": "echo \"No lint configured\"",
     "package": "electron-forge package",
@@ -53,6 +103,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "concurrently": "^9.0.1",
     "electron": "^39.2.7",
+    "electron-builder": "^26.4.0",
     "typescript": "^5.4.0",
     "vite": "^5.4.0",
     "wait-on": "^7.2.0"
