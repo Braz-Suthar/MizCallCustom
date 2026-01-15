@@ -277,14 +277,14 @@ export function useJoinCall() {
     } else {
       console.log("[useJoinCall] Already connected, skipping cleanup (likely returning from background)");
     }
-    
+
     setState("connecting");
     setError(null);
     
     // Store router caps from activeCall state (like desktop)
     routerCapsRef.current = activeCall.routerRtpCapabilities ?? null;
     hostProducerIdRef.current = activeCall.hostProducerId || null;
-    
+
     console.log("[useJoinCall] joinActiveCall", {
       role,
       roomId,
@@ -318,7 +318,7 @@ export function useJoinCall() {
         ws.emit("GET_ROUTER_CAPS", { roomId });
         ws.emit("JOIN", { token, roomId });
         ws.emit("REQUEST_HOST_PRODUCER", { roomId });
-        
+
         try {
           startCallAudio();
           enableSpeakerphone();
@@ -334,9 +334,9 @@ export function useJoinCall() {
       // If we already have transports and consumer, we're good
       if (recvTransportRef.current && consumerRef.current && state === "connected") {
         console.log("[useJoinCall] Already have active connection, resuming audio");
-        try {
-          startCallAudio();
-          enableSpeakerphone();
+      try {
+        startCallAudio();
+        enableSpeakerphone();
         } catch {}
         setState("connected");
       }
@@ -441,8 +441,8 @@ export function useJoinCall() {
             try {
               console.log("[useJoinCall] Send transport connecting...");
               ws.emit("CONNECT_SEND_TRANSPORT", { 
-                type: "CONNECT_SEND_TRANSPORT",
-                dtlsParameters, 
+                  type: "CONNECT_SEND_TRANSPORT",
+                  dtlsParameters,
                 roomId 
               });
               callback();
@@ -456,9 +456,9 @@ export function useJoinCall() {
             try {
               console.log("[useJoinCall] Producing", kind, "for room:", roomId);
               ws.emit("PRODUCE", { 
-                type: "PRODUCE",
+                  type: "PRODUCE",
                 kind, 
-                rtpParameters, 
+                  rtpParameters,
                 roomId 
               });
               const randomId = `${Date.now()}-${Math.random()}`;
@@ -482,16 +482,16 @@ export function useJoinCall() {
           
           const device = await ensureDeviceLoaded();
           const transport = device.createRecvTransport(msg.params);
-          
+
           transport.on("connect", ({ dtlsParameters }, callback, errback) => {
             try {
               console.log("[useJoinCall] Recv transport connecting...");
               ws.emit("CONNECT_RECV_TRANSPORT", { 
-                type: "CONNECT_RECV_TRANSPORT",
-                dtlsParameters, 
+              type: "CONNECT_RECV_TRANSPORT",
+              dtlsParameters,
                 roomId 
-              });
-              callback();
+            });
+            callback();
             } catch (err) {
               console.error("[useJoinCall] Recv transport connect error:", err);
               errback?.(err as Error);
@@ -501,7 +501,7 @@ export function useJoinCall() {
           transport.on("connectionstatechange", (state) => {
             console.log("[useJoinCall] recv transport state:", state);
           });
-          
+
           recvTransportRef.current = transport;
           
           if (hostProducerIdRef.current) {
@@ -732,13 +732,13 @@ export function useJoinCall() {
       // Create producer if doesn't exist
       if (!producerRef.current) {
         console.log("[useJoinCall] Creating NEW producer for speaking");
-        const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
-        localStreamRef.current = stream;
+      const stream = await mediaDevices.getUserMedia({ audio: true, video: false });
+      localStreamRef.current = stream;
         const track = stream.getAudioTracks()[0] as any;
         track.enabled = true;
         
         console.log("[useJoinCall] Calling transport.produce()...");
-        producerRef.current = await sendTransportRef.current.produce({ track });
+      producerRef.current = await sendTransportRef.current.produce({ track });
         console.log("[useJoinCall] ✅ Producer created successfully:", producerRef.current.id);
       } else {
         // Enable existing track

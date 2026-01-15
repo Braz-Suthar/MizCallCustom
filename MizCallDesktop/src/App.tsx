@@ -26,6 +26,23 @@ import {
   FiTrash,
   FiInfo,
   FiAlertCircle,
+  FiDownload,
+  FiFolder,
+  FiFile,
+  FiSearch,
+  FiFilter,
+  FiArrowUp,
+  FiArrowDown,
+  FiEye,
+  FiEdit,
+  FiUser,
+  FiUserPlus,
+  FiActivity,
+  FiBell,
+  FiClock,
+  FiTrendingUp,
+  FiRefreshCw,
+  FiCheck,
 } from "react-icons/fi";
 import {
   IoStar,
@@ -142,10 +159,16 @@ function App() {
   >([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [notifText, setNotifText] = useState("");
   const [users, setUsers] = useState<Array<{ id: string; username: string; enabled: boolean; password?: string | null; enforce_single_device?: boolean | null }>>([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
+  const [usersSearchQuery, setUsersSearchQuery] = useState("");
+  const [usersCurrentPage, setUsersCurrentPage] = useState(1);
+  const [usersPerPage, setUsersPerPage] = useState(10);
+  const [usersSortField, setUsersSortField] = useState<"username" | "id" | "status">("username");
+  const [usersSortOrder, setUsersSortOrder] = useState<"asc" | "desc">("asc");
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [createUsername, setCreateUsername] = useState("");
   const [createPassword, setCreatePassword] = useState("");
@@ -165,6 +188,11 @@ function App() {
   const [calls, setCalls] = useState<Array<{ id: string; status: string; started_at: string; ended_at: string | null }>>([]);
   const [callsLoading, setCallsLoading] = useState(false);
   const [callsError, setCallsError] = useState<string | null>(null);
+  const [callsSearchQuery, setCallsSearchQuery] = useState("");
+  const [callsCurrentPage, setCallsCurrentPage] = useState(1);
+  const [callsPerPage, setCallsPerPage] = useState(10);
+  const [callsSortField, setCallsSortField] = useState<"started_at" | "ended_at">("started_at");
+  const [callsSortOrder, setCallsSortOrder] = useState<"asc" | "desc">("desc");
   const [startCallLoading, setStartCallLoading] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [pwCurrent, setPwCurrent] = useState("");
@@ -187,8 +215,14 @@ function App() {
   const [recordingsError, setRecordingsError] = useState<string | null>(null);
   const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const [audioPlaying, setAudioPlaying] = useState(false);
   const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [recordingsSearchQuery, setRecordingsSearchQuery] = useState("");
+  const [showRecordingsFilter, setShowRecordingsFilter] = useState(false);
+  const [showRecordingsSort, setShowRecordingsSort] = useState(false);
   const [activeCall, setActiveCall] = useState<{ id: string; started_at: string; routerRtpCapabilities?: any } | null>(null);
   const [activeParticipants, setActiveParticipants] = useState<
     Array<{
@@ -814,7 +848,7 @@ function App() {
           id: u.id,
           username: u.username,
           enabled: u.enabled,
-          password: null,
+          password: u.password || null,
           enforce_single_device: u.enforce_single_device ?? null,
         }))
       );
@@ -849,13 +883,24 @@ function App() {
 
   const handleDeleteUser = async (userId: string) => {
     if (!session?.token) return;
+    
+    // Get user info for confirmation message
+    const user = users.find(u => u.id === userId);
+    const confirmMessage = user 
+      ? `Are you sure you want to delete user "${user.username}"? This action cannot be undone.`
+      : "Are you sure you want to delete this user? This action cannot be undone.";
+    
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+    
     try {
       const res = await authFetch(`${API_BASE}/host/users/${userId}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       setUsers((prev) => prev.filter((u) => u.id !== userId));
-      showToast("User deleted", "success");
+      showToast("User deleted successfully", "success");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Delete failed", "error");
     }
@@ -2522,8 +2567,11 @@ function App() {
       if (data.clientTimestamp) {
         const latency = Date.now() - data.clientTimestamp;
         console.log("[desktop:host-dashboard] ⚡ Calculated latency:", latency, "ms");
-        setNetworkLatency(latency);
-        setNetworkStatus("online");
+        // Use requestAnimationFrame to batch state updates and prevent flickering
+        requestAnimationFrame(() => {
+          setNetworkLatency(latency);
+          setNetworkStatus("online");
+        });
       }
     });
 
@@ -2691,10 +2739,57 @@ function App() {
 
   const playRecording = async (recId: string) => {
     if (!session?.token || session.role !== "host") return;
+    
+    // If already playing this recording, pause it
+    if (playingRecordingId === recId && audioPlaying) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        setAudioPlaying(false);
+      }
+      return;
+    }
+    
+    // If playing and clicking same recording, resume
+    if (playingRecordingId === recId && !audioPlaying) {
+      if (audioRef.current) {
+        audioRef.current.play();
+        setAudioPlaying(true);
+      }
+      return;
+    }
+    
     try {
       if (!audioRef.current) {
         audioRef.current = new Audio();
+        
+        // Add event listeners for audio player
+        audioRef.current.addEventListener("timeupdate", () => {
+          if (audioRef.current) {
+            setAudioCurrentTime(audioRef.current.currentTime);
+          }
+        });
+        
+        audioRef.current.addEventListener("loadedmetadata", () => {
+          if (audioRef.current) {
+            setAudioDuration(audioRef.current.duration);
+          }
+        });
+        
+        audioRef.current.addEventListener("ended", () => {
+          setAudioPlaying(false);
+          setPlayingRecordingId(null);
+          setAudioCurrentTime(0);
+        });
+        
+        audioRef.current.addEventListener("play", () => {
+          setAudioPlaying(true);
+        });
+        
+        audioRef.current.addEventListener("pause", () => {
+          setAudioPlaying(false);
+        });
       }
+      
       let playbackToken = session.token;
       if (session.refreshToken) {
         try {
@@ -2707,11 +2802,12 @@ function App() {
       audioRef.current.src = src;
       await audioRef.current.play();
       setPlayingRecordingId(recId);
-      audioRef.current.onended = () => setPlayingRecordingId((current) => (current === recId ? null : current));
+      setAudioPlaying(true);
     } catch (err) {
       console.error("[desktop] play recording error", err);
       showToast("Playback failed", "error");
       setPlayingRecordingId(null);
+      setAudioPlaying(false);
     }
   };
 
@@ -2721,6 +2817,22 @@ function App() {
       audioRef.current.currentTime = 0;
     }
     setPlayingRecordingId(null);
+    setAudioPlaying(false);
+    setAudioCurrentTime(0);
+  };
+
+  const seekAudio = (time: number) => {
+    if (audioRef.current) {
+      audioRef.current.currentTime = time;
+      setAudioCurrentTime(time);
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    if (isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const deleteRecording = async (recId: string) => {
@@ -3273,75 +3385,112 @@ function App() {
     const renderContent = () => {
       if (tab === "dashboard") {
         return (
-          <div className="stack gap-sm">
-            {session.role === "host" ? (
-              <div className="card row gap-sm quick-actions">
-                <div className="muted strong">Quick Actions</div>
-                <div className="actions-grid">
-                  <Button label="Start New Call" variant="primary" onClick={startCall} loading={startCallLoading} />
-                  <Button label="Create New User" variant="primary" />
-                </div>
+          <div className="dashboard-container">
+            {/* Welcome Section */}
+            <div className="dashboard-welcome">
+              <div>
+                <h2 className="dashboard-title">
+                  Welcome back, {session.role === "host" ? "Host" : session.username || "User"}
+                </h2>
+                <p className="dashboard-subtitle">
+                  {session.role === "host" 
+                    ? "Manage your calls, users, and recordings from here"
+                    : "Join active calls and stay connected"}
+                </p>
               </div>
-            ) : null}
-
-            {session.role === "user" && activeCall ? (
-              <div className="card stack gap-sm">
-                <p className="muted strong">Active call</p>
-                <div className="row-inline between">
-                  <div className="stack gap-xxs">
-                    <strong>Room: {activeCall.id}</strong>
-                    <span className="muted small">Host: {session.hostId ?? "Host"}</span>
-                    <span className="muted small">Status: {callJoinState === "connected" ? "Connected" : "Ready"}</span>
-                  </div>
-                  <Button label="Join call" variant="primary" onClick={() => setTab("call-active")} />
+              {session.role === "host" && (
+                <div className="dashboard-quick-actions">
+                  <button 
+                    className="quick-action-btn primary" 
+                    onClick={startCall}
+                    disabled={startCallLoading}
+                  >
+                    <FiPhoneCall />
+                    <span>{startCallLoading ? "Starting..." : "Start Call"}</span>
+                  </button>
+                  <button 
+                    className="quick-action-btn secondary" 
+                    onClick={() => setShowCreateUser(true)}
+                  >
+                    <FiUserPlus />
+                    <span>Create User</span>
+                  </button>
                 </div>
-              </div>
-            ) : null}
+              )}
+            </div>
 
-            <div className="stats-grid">
-              {session.role === "host" ? (
+            {/* Active Call Banner for Users */}
+            {session.role === "user" && activeCall && (
+              <div className="active-call-banner">
+                <div className="banner-icon">
+                  <FiPhoneCall />
+                </div>
+                <div className="banner-content">
+                  <strong className="banner-title">Active Call Available</strong>
+                  <p className="banner-text">
+                    Room: {activeCall.id} • Status: {callJoinState === "connected" ? "Connected" : "Ready to join"}
+                  </p>
+                </div>
+                <button 
+                  className="banner-action-btn" 
+                  onClick={() => setTab("call-active")}
+                >
+                  <span>Join Call</span>
+                  <FiChevronRight />
+                </button>
+              </div>
+            )}
+
+            {/* Stats Grid */}
+            <div className="dashboard-stats-grid">
+              {session.role === "host" && (
                 <>
-              <div className="card stat-card">
-                <p className="muted strong">Total Users</p>
-                <h3 className="stat-number">120</h3>
-              </div>
-              <div className="card stat-card">
-                <p className="muted strong">Active Users</p>
-                <h3 className="stat-number">18</h3>
-              </div>
+                  <div className="stat-card-modern">
+                    <div className="stat-icon users-icon">
+                      <FiUsers />
+                    </div>
+                    <div className="stat-content">
+                      <p className="stat-label">Total Users</p>
+                      <h3 className="stat-value">{users.length}</h3>
+                      <p className="stat-change neutral">
+                        Registered users
+                      </p>
+                    </div>
+                  </div>
+                  <div className="stat-card-modern">
+                    <div className="stat-icon active-icon">
+                      <FiActivity />
+                    </div>
+                    <div className="stat-content">
+                      <p className="stat-label">Active Users</p>
+                      <h3 className="stat-value">{users.filter(u => u.enabled).length}</h3>
+                      <p className="stat-change neutral">
+                        Enabled accounts
+                      </p>
+                    </div>
+                  </div>
                 </>
-              ) : null}
-              <div className="card stat-card highlight-card">
-                <p className="muted strong">Total Calls</p>
-                <h3 className="stat-number">71</h3>
+              )}
+              <div className="stat-card-modern">
+                <div className="stat-icon calls-icon">
+                  <FiPhoneCall />
+                </div>
+                <div className="stat-content">
+                  <p className="stat-label">Total Calls</p>
+                  <h3 className="stat-value">{calls.length}</h3>
+                  <p className="stat-change neutral">
+                    Call history
+                  </p>
+                </div>
               </div>
-              <div className="card stat-card highlight-card">
-                <p className="muted strong">Network Status</p>
-                <p className="muted small">
-                  {networkLatency !== null ? (
-                    <>
-                      <span
-                        style={{
-                          color:
-                            networkLatency < 100
-                              ? "#22c55e" // Green for Excellent
-                              : networkLatency < 200
-                              ? "#3b82f6" // Blue for Good
-                              : networkLatency < 500
-                              ? "#f59e0b" // Orange for Fair
-                              : "#ef4444", // Red for Poor
-                          fontWeight: "600",
-                        }}
-                      >
-                        {networkLatency < 100
-                          ? "Excellent"
-                          : networkLatency < 200
-                          ? "Good"
-                          : networkLatency < 500
-                          ? "Fair"
-                          : "Poor"}
-                      </span>
-                      {" · "}
+              <div className="stat-card-modern">
+                <div className="stat-icon network-icon">
+                  <FiWifi />
+                </div>
+                <div className="stat-content">
+                  <p className="stat-label">Network Status</p>
+                  <h3 className="stat-value">
+                    {networkLatency !== null ? (
                       <span
                         style={{
                           color:
@@ -3352,57 +3501,103 @@ function App() {
                               : networkLatency < 500
                               ? "#f59e0b"
                               : "#ef4444",
-                          fontWeight: "600",
                         }}
                       >
-                        {networkLatency}ms
+                        {networkLatency < 100
+                          ? "Excellent"
+                          : networkLatency < 200
+                          ? "Good"
+                          : networkLatency < 500
+                          ? "Fair"
+                          : "Poor"}
                       </span>
-                    </>
-                  ) : networkStatus === "online" ? (
-                    <span style={{ color: "#f59e0b", fontWeight: "600" }}>Connecting...</span>
-                  ) : (
-                    <span style={{ color: "#ef4444", fontWeight: "600" }}>Disconnected</span>
-                  )}
-                </p>
+                    ) : networkStatus === "online" ? (
+                      <span style={{ color: "#f59e0b" }}>Connecting...</span>
+                    ) : (
+                      <span style={{ color: "#ef4444" }}>Offline</span>
+                    )}
+                  </h3>
+                  <p className="stat-change neutral">
+                    {networkLatency !== null ? `${networkLatency}ms latency` : "Checking connection..."}
+                  </p>
+                </div>
               </div>
-              {/* <div className="card stat-card highlight-card">
-                <p className="muted strong">Connection</p>
-                <p className="muted small">Connected</p>
-              </div> */}
             </div>
 
-            <div className="grid-2">
-              <div className="card list-card stack gap-sm">
-                <p className="muted strong">Recent Activity</p>
-                <div className="activity-list">
+            {/* Activity & Notifications */}
+            <div className="dashboard-grid-2">
+              <div className="dashboard-card">
+                <div className="card-header">
+                  <div className="card-header-left">
+                    <div className="card-icon activity-icon">
+                      <FiActivity />
+                    </div>
+                    <h3 className="card-title">Recent Activity</h3>
+                  </div>
+                  <button className="card-action-btn">
+                    <span>View All</span>
+                    <FiChevronRight />
+                  </button>
+                </div>
+                <div className="activity-list-modern">
                   {["M642025", "M650583", "M0080694", "M591073", "M780347"].map((id, idx) => (
-                    <div key={id} className="activity-item">
-                      <span className="activity-icon">📞</span>
-                      <div className="stack gap-xxs">
-                        <strong>{`Call ${id} ended`}</strong>
-                        <span className="muted small">27/12/2025, 4:2{idx} PM</span>
+                    <div key={id} className="activity-item-modern">
+                      <div className="activity-item-icon call-icon">
+                        <FiPhoneCall />
+                      </div>
+                      <div className="activity-item-content">
+                        <p className="activity-item-title">Call {id} ended</p>
+                        <p className="activity-item-time">
+                          <FiClock /> 27/12/2025, 4:2{idx} PM
+                        </p>
+                      </div>
+                      <div className="activity-item-badge">
+                        Completed
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="card list-card stack gap-sm">
-                <div className="row-inline between">
-                  <p className="muted strong">Notifications</p>
-                  {session.role === "host" ? (
-                    <Button label="Add notification" variant="secondary" onClick={() => setShowNotifModal(true)} />
-                  ) : null}
-                </div>
-                <div className="activity-list">
-                  {notifications.map((n) => (
-                    <div key={n.id} className="activity-item">
-                      <span className="activity-icon">🔔</span>
-                      <div className="stack gap-xxs">
-                        <strong>{n.message}</strong>
-                        <span className="muted small">{n.time}</span>
-                      </div>
+
+              <div className="dashboard-card">
+                <div className="card-header">
+                  <div className="card-header-left">
+                    <div className="card-icon notification-icon">
+                      <FiBell />
                     </div>
-                  ))}
+                    <h3 className="card-title">Notifications</h3>
+                  </div>
+                  {session.role === "host" && (
+                    <button 
+                      className="card-action-btn primary"
+                      onClick={() => setShowNotifModal(true)}
+                    >
+                      <FiPlus />
+                      <span>Add</span>
+                    </button>
+                  )}
+                </div>
+                <div className="activity-list-modern">
+                  {notifications.length > 0 ? (
+                    notifications.map((n) => (
+                      <div key={n.id} className="activity-item-modern">
+                        <div className="activity-item-icon notification-icon-item">
+                          <FiBell />
+                        </div>
+                        <div className="activity-item-content">
+                          <p className="activity-item-title">{n.message}</p>
+                          <p className="activity-item-time">
+                            <FiClock /> {n.time}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="empty-state-small">
+                      <FiBell style={{ fontSize: "32px", color: "#94a3b8" }} />
+                      <p className="muted small">No notifications</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3411,144 +3606,459 @@ function App() {
       }
 
       if (tab === "users") {
+        if (session.role !== "host") {
+          return (
+            <div className="card stack gap-sm">
+              <p className="muted strong">Users</p>
+              <p className="muted">Only hosts can manage users.</p>
+            </div>
+          );
+        }
+
+        // Filter and sort users
+        const filteredUsers = users.filter((user) => {
+          if (!usersSearchQuery) return true;
+          const query = usersSearchQuery.toLowerCase();
+          return (
+            user.id.toLowerCase().includes(query) ||
+            user.username.toLowerCase().includes(query) ||
+            (user.enabled ? "enabled" : "disabled").includes(query)
+          );
+        });
+
+        const sortedUsers = [...filteredUsers].sort((a, b) => {
+          let aValue = "";
+          let bValue = "";
+          
+          if (usersSortField === "username") {
+            aValue = a.username;
+            bValue = b.username;
+          } else if (usersSortField === "id") {
+            aValue = a.id;
+            bValue = b.id;
+          } else if (usersSortField === "status") {
+            aValue = a.enabled ? "enabled" : "disabled";
+            bValue = b.enabled ? "enabled" : "disabled";
+          }
+          
+          if (usersSortOrder === "asc") {
+            return aValue.localeCompare(bValue);
+          } else {
+            return bValue.localeCompare(aValue);
+          }
+        });
+
+        // Pagination
+        const totalPages = Math.ceil(sortedUsers.length / usersPerPage);
+        const startIndex = (usersCurrentPage - 1) * usersPerPage;
+        const endIndex = startIndex + usersPerPage;
+        const paginatedUsers = sortedUsers.slice(startIndex, endIndex);
+
         return (
-          <>
-            {session.role !== "host" ? (
-              <div className="card stack gap-sm">
-                <p className="muted strong">Users</p>
-                <p className="muted">Only hosts can manage users.</p>
+          <div className="stack gap-md">
+            {/* Header with Create User Button */}
+            <div className="users-header">
+              <button className="btn btn-primary btn-no-shadow btn-with-icon" onClick={() => setShowCreateUser(true)}>
+                <FiPlus />
+                <span>Create New User</span>
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="users-toolbar">
+              <div className="search-input-wrapper">
+                <FiSearch className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search users..."
+                  className="search-input"
+                  value={usersSearchQuery}
+                  onChange={(e) => {
+                    setUsersSearchQuery(e.target.value);
+                    setUsersCurrentPage(1);
+                  }}
+                />
               </div>
-            ) : (
-              <div className="card stack gap-sm">
-                <div className="row-inline between">
-                  <div />
-                  <button className="btn btn-primary btn-no-shadow btn-with-icon" onClick={() => setShowCreateUser(true)}>
-                    <FiPlus />
-                    <span>Create New User</span>
-                  </button>
-                </div>
-                {usersError ? <p className="error">{usersError}</p> : null}
-                {usersLoading ? <p className="muted">Loading users…</p> : null}
-                <div className="table">
-                  <div className="table-row table-head">
-                    <div>User ID</div>
-                    <div>Username</div>
-                    <div>Status</div>
-                    <div>Actions</div>
-                  </div>
-                  {users.map((u) => (
-                    <div key={u.id} className="table-row">
-                      <div>{u.id}</div>
-                      <div>{u.username}</div>
-                      <div>
-                        <span className={u.enabled ? "status-enabled" : "status-disabled"}>
-                          {u.enabled ? "Enabled" : "Disabled"}
-                        </span>
-                      </div>
-                      <div className="row-inline">
-                        <Button
-                          label="View"
-                          variant="ghost"
-                          onClick={() => {
-                            setViewUser(u);
-                            setShowViewUser(true);
-                          }}
-                        />
-                        <Button
-                          label="Edit"
-                          variant="secondary"
-                          onClick={() => {
-                            setEditUser(u);
-                            setEditEnabled(u.enabled);
-                            setEditPassword("");
-                            setEditEnforceSingleDevice(u.enforce_single_device ?? null);
-                            setShowEditUser(true);
-                          }}
-                        />
-                        <Button label="Delete" variant="danger" onClick={() => handleDeleteUser(u.id)} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            </div>
+
+            {usersError && <p className="error">{usersError}</p>}
+            {usersLoading && <p className="muted">Loading users…</p>}
+
+            {!usersLoading && sortedUsers.length === 0 && !usersSearchQuery && (
+              <div className="empty-state">
+                <FiUser style={{ fontSize: "48px", color: "#94a3b8", marginBottom: "12px" }} />
+                <p className="muted strong">No users yet</p>
+                <p className="muted small">Create your first user to get started.</p>
               </div>
             )}
-          </>
+
+            {!usersLoading && sortedUsers.length === 0 && usersSearchQuery && (
+              <div className="empty-state">
+                <FiSearch style={{ fontSize: "48px", color: "#94a3b8", marginBottom: "12px" }} />
+                <p className="muted strong">No users found</p>
+                <p className="muted small">Try adjusting your search query.</p>
+              </div>
+            )}
+
+            {!usersLoading && sortedUsers.length > 0 && (
+              <>
+                {/* Users Table */}
+                <div className="users-table-container">
+                  <table className="users-table">
+                    <thead>
+                      <tr>
+                        <th className="col-number">#</th>
+                        <th 
+                          className="col-user-id sortable"
+                          onClick={() => {
+                            if (usersSortField === "id") {
+                              setUsersSortOrder(usersSortOrder === "asc" ? "desc" : "asc");
+                            } else {
+                              setUsersSortField("id");
+                              setUsersSortOrder("asc");
+                            }
+                          }}
+                        >
+                          USER ID
+                          {usersSortField === "id" && (
+                            <span className="sort-icon">
+                              {usersSortOrder === "asc" ? <FiArrowUp /> : <FiArrowDown />}
+                            </span>
+                          )}
+                        </th>
+                        <th 
+                          className="col-username sortable"
+                          onClick={() => {
+                            if (usersSortField === "username") {
+                              setUsersSortOrder(usersSortOrder === "asc" ? "desc" : "asc");
+                            } else {
+                              setUsersSortField("username");
+                              setUsersSortOrder("asc");
+                            }
+                          }}
+                        >
+                          USERNAME
+                          {usersSortField === "username" && (
+                            <span className="sort-icon">
+                              {usersSortOrder === "asc" ? <FiArrowUp /> : <FiArrowDown />}
+                            </span>
+                          )}
+                        </th>
+                        <th 
+                          className="col-status sortable"
+                          onClick={() => {
+                            if (usersSortField === "status") {
+                              setUsersSortOrder(usersSortOrder === "asc" ? "desc" : "asc");
+                            } else {
+                              setUsersSortField("status");
+                              setUsersSortOrder("asc");
+                            }
+                          }}
+                        >
+                          STATUS
+                          {usersSortField === "status" && (
+                            <span className="sort-icon">
+                              {usersSortOrder === "asc" ? <FiArrowUp /> : <FiArrowDown />}
+                            </span>
+                          )}
+                        </th>
+                        <th className="col-device">DEVICE</th>
+                        <th className="col-actions">ACTIONS</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedUsers.map((user, index) => (
+                        <tr key={user.id}>
+                          <td className="col-number">{startIndex + index + 1}</td>
+                          <td className="col-user-id">
+                            <span className="user-id">{user.id}</span>
+                          </td>
+                          <td className="col-username">
+                            <div className="user-info">
+                              <div className="user-avatar">
+                                {user.username.charAt(0).toUpperCase()}
+                              </div>
+                              <span className="username-text">{user.username}</span>
+                            </div>
+                          </td>
+                          <td className="col-status">
+                            <span className={`status-badge ${user.enabled ? "status-enabled" : "status-disabled"}`}>
+                              {user.enabled ? "enabled" : "disabled"}
+                            </span>
+                          </td>
+                          <td className="col-device">
+                            <span className={`device-badge ${user.enforce_single_device ? "device-single" : "device-multiple"}`}>
+                              {user.enforce_single_device ? "Single" : "Multiple"}
+                            </span>
+                          </td>
+                          <td className="col-actions">
+                            <div className="action-buttons">
+                              <button
+                                className="action-btn view-btn"
+                                onClick={() => {
+                                  console.log("[View User] User data:", user);
+                                  console.log("[View User] Password:", user.password);
+                                  setViewUser({ ...user });
+                                  setShowViewUser(true);
+                                }}
+                                title="View"
+                              >
+                                <FiEye />
+                              </button>
+                              <button
+                                className="action-btn edit-btn"
+                                onClick={() => {
+                                  setEditUser(user);
+                                  setEditEnabled(user.enabled);
+                                  setEditPassword("");
+                                  setEditEnforceSingleDevice(user.enforce_single_device ?? null);
+                                  setShowEditUser(true);
+                                }}
+                                title="Edit"
+                              >
+                                <FiEdit />
+                              </button>
+                              <button
+                                className="action-btn delete-btn"
+                                onClick={() => handleDeleteUser(user.id)}
+                                title="Delete"
+                              >
+                                <FiTrash />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                <div className="users-pagination">
+                  <div className="pagination-left">
+                    <span className="pagination-label">Rows per page:</span>
+                    <select
+                      className="pagination-select"
+                      value={usersPerPage}
+                      onChange={(e) => {
+                        setUsersPerPage(Number(e.target.value));
+                        setUsersCurrentPage(1);
+                      }}
+                    >
+                      <option value={5}>5</option>
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                    </select>
+                  </div>
+                  <div className="pagination-right">
+                    <button
+                      className="pagination-btn"
+                      onClick={() => setUsersCurrentPage(Math.max(1, usersCurrentPage - 1))}
+                      disabled={usersCurrentPage === 1}
+                    >
+                      Prev
+                    </button>
+                    <span className="pagination-info">
+                      Page <strong>{usersCurrentPage}</strong> of <strong>{totalPages}</strong>
+                    </span>
+                    <button
+                      className="pagination-btn"
+                      onClick={() => setUsersCurrentPage(Math.min(totalPages, usersCurrentPage + 1))}
+                      disabled={usersCurrentPage === totalPages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         );
       }
 
       if (tab === "calls") {
+        if (session.role !== "host") {
+          return (
+            <div className="card stack gap-sm">
+              <p className="muted strong">Calls</p>
+              <p className="muted">Only hosts can manage calls.</p>
+            </div>
+          );
+        }
+
+        // Filter and sort calls
+        const filteredCalls = calls.filter((call) => {
+          if (!callsSearchQuery) return true;
+          const query = callsSearchQuery.toLowerCase();
+          return (
+            call.id.toLowerCase().includes(query) ||
+            call.status.toLowerCase().includes(query) ||
+            formatDateTime(call.started_at).toLowerCase().includes(query)
+          );
+        });
+
+        const sortedCalls = [...filteredCalls].sort((a, b) => {
+          const aValue = callsSortField === "started_at" ? a.started_at : (a.ended_at || "");
+          const bValue = callsSortField === "started_at" ? b.started_at : (b.ended_at || "");
+          if (callsSortOrder === "asc") {
+            return aValue.localeCompare(bValue);
+          } else {
+            return bValue.localeCompare(aValue);
+          }
+        });
+
+        // Pagination
+        const totalPages = Math.ceil(sortedCalls.length / callsPerPage);
+        const startIndex = (callsCurrentPage - 1) * callsPerPage;
+        const endIndex = startIndex + callsPerPage;
+        const paginatedCalls = sortedCalls.slice(startIndex, endIndex);
+
+        // Count participants for each call (mock data for now)
+        const getParticipantCount = (callId: string) => {
+          return Math.floor(Math.random() * 5) + 1; // Mock data
+        };
+
         return (
-          <>
-            {session.role !== "host" ? (
-              <div className="card stack gap-sm">
-                <p className="muted strong">Calls</p>
-                <p className="muted">Only hosts can manage calls.</p>
+          <div className="stack gap-md">
+            {/* Header with New Call Button */}
+            <div className="calls-header">
+              <button className="btn btn-primary btn-no-shadow btn-with-icon" onClick={startCall} disabled={startCallLoading}>
+                <FiPlus />
+                <span>{startCallLoading ? "Starting..." : "New Call"}</span>
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="calls-toolbar">
+              <div className="search-input-wrapper">
+                <FiSearch className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search calls..."
+                  className="search-input"
+                  value={callsSearchQuery}
+                  onChange={(e) => {
+                    setCallsSearchQuery(e.target.value);
+                    setCallsCurrentPage(1);
+                  }}
+                />
               </div>
-            ) : (
-              <div className="card stack gap-sm">
-                <div className="stack gap-sm">
-                  <div className="row-inline between">
-                    <p className="muted strong">Host Call</p>
-                    <button className="btn btn-primary btn-no-shadow btn-with-icon" onClick={startCall} disabled={startCallLoading}>
-                      <FiPhoneCall />
-                      <span>{startCallLoading ? "Starting..." : "Start New Call"}</span>
-                    </button>
-                  </div>
-                  {(() => {
-                    const active = calls.find((c) => c.status !== "ended");
-                    if (!active) {
-                      return <p className="muted small">No active calls. Start a new call to begin hosting.</p>;
-                    }
-                    return (
-                      <div className="card subtle stack gap-xxs">
-                        <div className="row-inline between">
-                          <div className="stack gap-xxs">
-                            <p className="muted strong">Current Call</p>
-                            <p className="muted small">ID: {active.id}</p>
-                            <p className="muted small">Started: {formatDateTime(active.started_at)}</p>
-                          </div>
-                          <div className="row-inline gap-sm">
-                            <Button variant="ghost" label="Copy ID" onClick={() => copyToClipboard(active.id)} />
-                            <Button variant="danger" label="End Call" onClick={() => endCall(active.id)} />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-                {callsError ? <p className="error">{callsError}</p> : null}
-                {callsLoading ? <p className="muted">Loading calls…</p> : null}
-                <div className="table">
-                  <div className="table-row table-head">
-                    <div>Call ID</div>
-                    <div>Status</div>
-                    <div>Started at</div>
-                    <div>Ended at</div>
-                    <div>Actions</div>
-                  </div>
-                  {calls.map((c) => (
-                    <div key={c.id} className="table-row">
-                      <div>{c.id}</div>
-                      <div>
-                        <span className={c.status === "started" ? "status-enabled" : "status-disabled"}>
-                          {c.status}
-                        </span>
-                      </div>
-                      <div>{formatDateTime(c.started_at)}</div>
-                      <div>{formatDateTime(c.ended_at)}</div>
-                      <div className="row-inline">
-                        {c.status !== "ended" ? (
-                          <Button label="End" variant="danger" onClick={() => endCall(c.id)} />
-                        ) : (
-                          <span className="muted small">Completed</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            </div>
+
+            {callsError && <p className="error">{callsError}</p>}
+            {callsLoading && <p className="muted">Loading calls…</p>}
+
+            {!callsLoading && sortedCalls.length === 0 && !callsSearchQuery && (
+              <div className="empty-state">
+                <p className="muted strong">No calls yet</p>
+                <p className="muted small">Start a new call to begin hosting.</p>
               </div>
             )}
-          </>
+
+            {!callsLoading && sortedCalls.length === 0 && callsSearchQuery && (
+              <div className="empty-state">
+                <p className="muted strong">No calls found</p>
+                <p className="muted small">Try adjusting your search query.</p>
+              </div>
+            )}
+
+            {!callsLoading && sortedCalls.length > 0 && (
+              <>
+                {/* Calls Table */}
+                <div className="calls-table-container">
+                  <table className="calls-table">
+                    <thead>
+                      <tr>
+                        <th className="col-number">#</th>
+                        <th className="col-meeting-id">MEETING ID</th>
+                        <th className="col-status">STATUS</th>
+                        <th 
+                          className="col-start-time sortable"
+                          onClick={() => {
+                            if (callsSortField === "started_at") {
+                              setCallsSortOrder(callsSortOrder === "asc" ? "desc" : "asc");
+                            } else {
+                              setCallsSortField("started_at");
+                              setCallsSortOrder("desc");
+                            }
+                          }}
+                        >
+                          START TIME
+                          {callsSortField === "started_at" && (
+                            <span className="sort-icon">
+                              {callsSortOrder === "asc" ? <FiArrowUp /> : <FiArrowDown />}
+                            </span>
+                          )}
+                        </th>
+                        <th className="col-end-time">END TIME</th>
+                        <th className="col-participants">PARTICIPANTS</th>
+                        <th className="col-recording">RECORDING</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedCalls.map((call, index) => (
+                        <tr key={call.id}>
+                          <td className="col-number">{startIndex + index + 1}</td>
+                          <td className="col-meeting-id">
+                            <span className="meeting-id">{call.id}</span>
+                          </td>
+                          <td className="col-status">
+                            <span className={`status-badge ${call.status === "started" ? "status-active" : "status-ended"}`}>
+                              {call.status}
+                            </span>
+                          </td>
+                          <td className="col-start-time">{formatDateTime(call.started_at)}</td>
+                          <td className="col-end-time">{call.ended_at ? formatDateTime(call.ended_at) : "-"}</td>
+                          <td className="col-participants">{getParticipantCount(call.id)}</td>
+                          <td className="col-recording">-</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                <div className="calls-pagination">
+                  <div className="pagination-left">
+                    <span className="pagination-label">Rows per page:</span>
+                    <select
+                      className="pagination-select"
+                      value={callsPerPage}
+                      onChange={(e) => {
+                        setCallsPerPage(Number(e.target.value));
+                        setCallsCurrentPage(1);
+                      }}
+                    >
+                      <option value={5}>5</option>
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                    </select>
+                  </div>
+                  <div className="pagination-right">
+                    <button
+                      className="pagination-btn"
+                      onClick={() => setCallsCurrentPage(Math.max(1, callsCurrentPage - 1))}
+                      disabled={callsCurrentPage === 1}
+                    >
+                      Prev
+                    </button>
+                    <span className="pagination-info">
+                      Page <strong>{callsCurrentPage}</strong> of <strong>{totalPages}</strong>
+                    </span>
+                    <button
+                      className="pagination-btn"
+                      onClick={() => setCallsCurrentPage(Math.min(totalPages, callsCurrentPage + 1))}
+                      disabled={callsCurrentPage === totalPages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         );
       }
 
@@ -3580,108 +4090,219 @@ function App() {
 
         const empty = !recordingsLoading && recordings.length === 0;
 
+        // Filter recordings based on search query
+        const filteredRecordings = recordings.filter((user) => {
+          if (!recordingsSearchQuery) return true;
+          const query = recordingsSearchQuery.toLowerCase();
+          return (
+            user.userName.toLowerCase().includes(query) ||
+            user.dates.some((date) =>
+              date.date.toLowerCase().includes(query) ||
+              date.recordings.some((rec) => rec.time.toLowerCase().includes(query))
+            )
+          );
+        });
+
         return (
-          <div className="stack gap-sm card">
-            <div className="stack gap-sm recordings-card">
-              <div className="row-inline between">
-            <div className="stack gap-xxs">
-                  <p className="muted strong">Recordings</p>
-                  <span className="muted small">Access and play saved clips organized by date.</span>
-                </div>
-                <div className="row-inline gap-sm">
-                  <Button label="Refresh" variant="secondary" onClick={fetchRecordings} loading={recordingsLoading} />
-                </div>
+          <div className="stack gap-md">
+            {/* Search, Filter, Sort Bar */}
+            <div className="recordings-toolbar">
+              <div className="search-input-wrapper">
+                <FiSearch className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search recordings..."
+                  className="search-input"
+                  value={recordingsSearchQuery}
+                  onChange={(e) => setRecordingsSearchQuery(e.target.value)}
+                />
               </div>
+              <button
+                className="toolbar-btn"
+                onClick={() => setShowRecordingsFilter(!showRecordingsFilter)}
+              >
+                <FiFilter />
+                <span>Filter</span>
+              </button>
+              <button
+                className="toolbar-btn"
+                onClick={() => setShowRecordingsSort(!showRecordingsSort)}
+              >
+                <FiChevronRight style={{ transform: "rotate(90deg)" }} />
+                <span>Sort</span>
+              </button>
+            </div>
 
-              {recordingsError ? <p className="error">{recordingsError}</p> : null}
-              {recordingsLoading ? <p className="muted">Loading recordings…</p> : null}
+            {recordingsError ? <p className="error">{recordingsError}</p> : null}
+            {recordingsLoading ? <p className="muted">Loading recordings…</p> : null}
 
-              {empty ? (
-                <div className="card subtle stack gap-xxs borderless">
-                  <p className="muted strong">No recordings found</p>
-                  <p className="muted small">Recordings will appear here after calls are captured.</p>
-                </div>
-              ) : (
-                <div className="stack gap-xs">
-                  {recordings.map((user) => (
-                    <div key={user.userName} className="card subtle stack gap-xxs borderless">
-                      <button
-                        className="row-inline between folder-row"
-                        onClick={() => {
-                          setExpandedUsers((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(user.userName)) next.delete(user.userName);
-                            else next.add(user.userName);
-                            return next;
-                          });
-                        }}
-                      >
-                        <div className="row-inline gap-sm align-center">
-                          <span className="folder-icon">{expandedUsers.has(user.userName) ? "📂" : "📁"}</span>
-                          <strong>{user.userName}</strong>
-                        </div>
-                        <FiChevronRight
-                          className={expandedUsers.has(user.userName) ? "chevron chevron-open" : "chevron"}
-                        />
-                      </button>
+            {empty ? (
+              <div className="empty-state">
+                <p className="muted strong">No recordings found</p>
+                <p className="muted small">Recordings will appear here after calls are captured.</p>
+              </div>
+            ) : (
+              <div className="recordings-list">
+                {filteredRecordings.map((user) => (
+                  <div key={user.userName} className="recording-folder-item">
+                    <button
+                      className="recording-folder-header"
+                      onClick={() => {
+                        setExpandedUsers((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(user.userName)) next.delete(user.userName);
+                          else next.add(user.userName);
+                          return next;
+                        });
+                      }}
+                    >
+                      <div className="folder-header-left">
+                        <FiFolder className="folder-icon-new" />
+                        <strong className="folder-name">{user.userName}</strong>
+                      </div>
+                      <div className="folder-header-right">
+                        <span className="folder-count">{user.dates.reduce((sum, d) => sum + d.recordings.length, 0)}</span>
+                        <button
+                          className="icon-btn-mini delete-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Delete all user recordings
+                            if (confirm(`Delete all recordings for ${user.userName}?`)) {
+                              user.dates.forEach((date) => {
+                                date.recordings.forEach((rec) => deleteRecording(rec.id));
+                              });
+                            }
+                          }}
+                        >
+                          <FiTrash />
+                        </button>
+                      </div>
+                    </button>
 
-                      {expandedUsers.has(user.userName)
-                        ? user.dates.map((date) => (
-                            <div key={`${user.userName}-${date.date}`} className="card subtle nested borderless">
-                              <button
-                                className="row-inline between folder-row"
-                                onClick={() => {
-                                  const key = `${user.userName}-${date.date}`;
-                                  setExpandedDates((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(key)) next.delete(key);
-                                    else next.add(key);
-                                    return next;
-                                  });
-                                }}
-                              >
-                                <div className="row-inline gap-sm align-center">
-                                  <span className="folder-icon">{expandedDates.has(`${user.userName}-${date.date}`) ? "📂" : "📁"}</span>
-                                  <strong>{date.date}</strong>
-                                </div>
-                                <FiChevronRight
-                                  className={
-                                    expandedDates.has(`${user.userName}-${date.date}`) ? "chevron chevron-open" : "chevron"
-                                  }
-                                />
-                              </button>
+                    {expandedUsers.has(user.userName) && (
+                      <div className="recording-folder-content">
+                        {user.dates.map((date) => (
+                          <div key={`${user.userName}-${date.date}`} className="recording-subfolder-item">
+                            <button
+                              className="recording-subfolder-header"
+                              onClick={() => {
+                                const key = `${user.userName}-${date.date}`;
+                                setExpandedDates((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(key)) next.delete(key);
+                                  else next.add(key);
+                                  return next;
+                                });
+                              }}
+                            >
+                              <div className="folder-header-left">
+                                <FiFolder className="folder-icon-new subfolder" />
+                                <strong className="folder-name">{date.date}</strong>
+                              </div>
+                              <div className="folder-header-right">
+                                <span className="folder-count">{date.recordings.length}</span>
+                                <button
+                                  className="icon-btn-mini delete-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm(`Delete all recordings for ${date.date}?`)) {
+                                      date.recordings.forEach((rec) => deleteRecording(rec.id));
+                                    }
+                                  }}
+                                >
+                                  <FiTrash />
+                                </button>
+                              </div>
+                            </button>
 
-                              {expandedDates.has(`${user.userName}-${date.date}`) ? (
-                                <div className="table recordings-table borderless">
-                                  <div className="table-row table-head">
-                                    <div>Clip ID</div>
-                                    <div>Time</div>
-                                    <div>Actions</div>
-                                  </div>
-                                  {date.recordings.map((r) => (
-                                    <div key={r.id} className="table-row borderless">
-                                      <div className="muted small">{r.id}</div>
-                                      <div>{r.time}</div>
-                                      <div className="row-inline gap-xxs">
-                                        {playingRecordingId === r.id ? (
-                                          <Button label="Pause" variant="ghost" onClick={stopRecording} icon={<FiPause />} />
-                                        ) : (
-                                          <Button label="Play" variant="secondary" onClick={() => playRecording(r.id)} icon={<FiPlay />} />
-                                        )}
-                                        <Button label="Delete" variant="danger" onClick={() => deleteRecording(r.id)} icon={<FiTrash />} />
+                            {expandedDates.has(`${user.userName}-${date.date}`) && (
+                              <div className="recording-files-list">
+                                {date.recordings.map((r) => (
+                                  <div key={r.id} className="recording-file-item-wrapper">
+                                    <div className="recording-file-item">
+                                      <div className="file-item-left">
+                                        <FiFile className="file-icon" />
+                                        <span className="file-name">{r.time}</span>
+                                      </div>
+                                      <div className="file-item-right">
+                                        <button
+                                          className="icon-btn-mini play-btn"
+                                          onClick={() => playRecording(r.id)}
+                                          title={playingRecordingId === r.id && audioPlaying ? "Pause" : "Play"}
+                                        >
+                                          {playingRecordingId === r.id && audioPlaying ? <FiPause /> : <FiPlay />}
+                                        </button>
+                                        <button
+                                          className="icon-btn-mini download-btn"
+                                          onClick={() => {
+                                            // Download recording
+                                            const link = document.createElement("a");
+                                            link.href = `${API_BASE}/recordings/download/${r.id}`;
+                                            link.download = `recording-${r.id}.webm`;
+                                            link.click();
+                                          }}
+                                          title="Download"
+                                        >
+                                          <FiDownload />
+                                        </button>
+                                        <button
+                                          className="icon-btn-mini delete-btn"
+                                          onClick={() => deleteRecording(r.id)}
+                                          title="Delete"
+                                        >
+                                          <FiTrash />
+                                        </button>
                                       </div>
                                     </div>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-                          ))
-                        : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                                    
+                                    {/* Audio Player */}
+                                    {playingRecordingId === r.id && (
+                                      <div className="audio-player">
+                                        <button
+                                          className="audio-control-btn"
+                                          onClick={() => playRecording(r.id)}
+                                        >
+                                          {audioPlaying ? <FiPause /> : <FiPlay />}
+                                        </button>
+                                        <span className="audio-time">{formatTime(audioCurrentTime)}</span>
+                                        <div className="audio-seek-bar-container">
+                                          <input
+                                            type="range"
+                                            min="0"
+                                            max={audioDuration || 0}
+                                            value={audioCurrentTime}
+                                            onChange={(e) => seekAudio(parseFloat(e.target.value))}
+                                            className="audio-seek-bar"
+                                          />
+                                          <div
+                                            className="audio-seek-progress"
+                                            style={{
+                                              width: `${audioDuration ? (audioCurrentTime / audioDuration) * 100 : 0}%`,
+                                            }}
+                                          />
+                                        </div>
+                                        <span className="audio-time">{formatTime(audioDuration)}</span>
+                                        <button
+                                          className="audio-control-btn"
+                                          onClick={stopRecording}
+                                          title="Stop"
+                                        >
+                                          <FiX />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
       }
@@ -3862,7 +4483,7 @@ function App() {
                     <IoLogOutOutline />
                     <p className="muted strong">Account</p>
                   </div>
-                  <Button label="Log out" variant="danger" onClick={doLogout} />
+                  <Button label="Log out" variant="danger" onClick={() => setShowLogoutConfirm(true)} />
                 </div>
               </div>
 
@@ -4193,7 +4814,7 @@ function App() {
             })()}
           </nav>
           <div className="sidebar__footer">
-            <button className="btn btn-ghost full" onClick={doLogout}>
+            <button className="btn btn-ghost full logout-btn" onClick={() => setShowLogoutConfirm(true)}>
               <span className="nav-icon">
                 <FiLogOut />
               </span>
@@ -4216,7 +4837,7 @@ function App() {
                 {effectiveTheme === "dark" ? <FiSun /> : <FiMoon />}
               </button>
               <div
-                className={`icon-btn ${networkStatus === "online" && networkLatency !== null ? "status-ok" : "status-bad"}`}
+                className={`icon-btn ${networkStatus === "online" ? "status-ok" : "status-bad"}`}
                 title={
                   networkStatus === "online" && networkLatency !== null
                     ? `Connected · ${networkLatency}ms latency`
@@ -4239,7 +4860,7 @@ function App() {
                       : "#ef4444", // Red for Disconnected
                 }}
               >
-                {networkStatus === "online" && networkLatency !== null ? <FiWifi /> : <FiWifiOff />}
+                {networkStatus === "online" ? <FiWifi /> : <FiWifiOff />}
               </div>
             </div>
           </div>
@@ -4293,6 +4914,36 @@ function App() {
           </div>
         </div>
       ) : null}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="modal-backdrop" onClick={() => setShowLogoutConfirm(false)}>
+          <div className="modal logout-confirm-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="logout-modal-icon">
+              <FiLogOut />
+            </div>
+            <h3 className="logout-modal-title">Log Out</h3>
+            <p className="logout-modal-text">
+              Are you sure you want to log out? You'll need to sign in again to access your account.
+            </p>
+            <div className="modal-actions">
+              <Button 
+                label="Cancel" 
+                variant="secondary" 
+                onClick={() => setShowLogoutConfirm(false)} 
+              />
+              <Button
+                label="Log out"
+                variant="danger"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  doLogout();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {sessionsVisible ? (
         <div className="modal-backdrop" onClick={() => setSessionsVisible(false)}>
@@ -4409,61 +5060,80 @@ function App() {
       {/* Edit User Modal */}
       {showEditUser && editUser ? (
         <div className="modal-backdrop" onClick={() => setShowEditUser(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal edit-user-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <p className="muted strong">Edit User</p>
+              <h3 className="title-sm">Edit User</h3>
             </div>
-            <div className="modal-body stack gap-sm">
-              <p className="muted small">User ID: {editUser.id}</p>
-              <p className="muted small">Username: {editUser.username}</p>
-              <div className="inline-field switch-field">
-                <span>Enabled</span>
-                <label className="switch">
-                  <input type="checkbox" checked={editEnabled} onChange={(e) => setEditEnabled(e.target.checked)} />
-                  <span className="slider" />
-                </label>
+            <div className="modal-body stack gap-md">
+              <div className="user-info-summary">
+                <div className="info-row">
+                  <span className="label-muted">Username:</span>
+                  <span className="value-strong">{editUser.username}</span>
+                </div>
+                <div className="info-row">
+                  <span className="label-muted">User ID:</span>
+                  <span className="value-mono">{editUser.id}</span>
+                </div>
               </div>
-              <Input
-                label="New Password (optional)"
-                value={editPassword}
-                onChange={setEditPassword}
-                placeholder="Leave blank to keep current password"
-              />
-              <button
-                className="linklike small"
-                onClick={() => setEditPassword(Math.random().toString(36).slice(2, 10))}
-              >
-                Generate new random password
-              </button>
               
-              <div className="stack gap-xxs">
-                <label className="muted strong small">One Device Only</label>
-                <p className="muted small">Control device restriction for this user</p>
-                <div className="row-inline gap-sm">
+              <div className="form-group">
+                <div className="inline-field switch-field">
+                  <div className="switch-label-group">
+                    <span className="switch-label-text">Enable User</span>
+                    <span className="switch-label-hint">User can log in and make calls</span>
+                  </div>
+                  <label className="switch">
+                    <input type="checkbox" checked={editEnabled} onChange={(e) => setEditEnabled(e.target.checked)} />
+                    <span className="slider" />
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <Input
+                  label="New Password (optional)"
+                  value={editPassword}
+                  onChange={setEditPassword}
+                  placeholder="Leave blank to keep current password"
+                />
+                <button
+                  className="link-button"
+                  onClick={() => setEditPassword(Math.random().toString(36).slice(2, 10))}
+                >
+                  Generate random password
+                </button>
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">
+                  Device Restriction
+                  <span className="form-hint">Control device login policy for this user</span>
+                </label>
+                <div className="button-group-horizontal">
                   <button
-                    className={`btn ${editEnforceSingleDevice === null ? 'btn-primary' : 'btn-ghost'}`}
+                    className={`btn-option ${editEnforceSingleDevice === null ? 'active' : ''}`}
                     onClick={() => setEditEnforceSingleDevice(null)}
                   >
                     Inherit
                   </button>
                   <button
-                    className={`btn ${editEnforceSingleDevice === true ? 'btn-primary' : 'btn-ghost'}`}
+                    className={`btn-option ${editEnforceSingleDevice === true ? 'active' : ''}`}
                     onClick={() => setEditEnforceSingleDevice(true)}
                   >
-                    Force
+                    One Device
                   </button>
                   <button
-                    className={`btn ${editEnforceSingleDevice === false ? 'btn-primary' : 'btn-ghost'}`}
+                    className={`btn-option ${editEnforceSingleDevice === false ? 'active' : ''}`}
                     onClick={() => setEditEnforceSingleDevice(false)}
                   >
-                    Allow
+                    Multiple
                   </button>
                 </div>
               </div>
             </div>
             <div className="modal-actions">
               <Button label="Cancel" variant="ghost" onClick={() => setShowEditUser(false)} />
-              <Button label="Save" onClick={handleEditUser} />
+              <Button label="Save Changes" onClick={handleEditUser} />
             </div>
           </div>
         </div>
@@ -4472,33 +5142,55 @@ function App() {
       {/* View User Modal */}
       {showViewUser && viewUser ? (
         <div className="modal-backdrop" onClick={() => setShowViewUser(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal view-user-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <p className="muted strong">User Details</p>
+              <h3 className="title-sm">User Details</h3>
             </div>
-            <div className="modal-body stack gap-sm">
-              <p className="muted small"><strong>Username:</strong> {viewUser.username}</p>
-              <p className="muted small">
-                <strong>Status:</strong>{" "}
-                <span className={viewUser.enabled ? "status-enabled" : "status-disabled"}>
-                  {viewUser.enabled ? "Enabled" : "Disabled"}
-                </span>
-              </p>
-              <div className="row-inline gap-sm align-center">
-                <p className="muted small"><strong>Password:</strong> {viewUser.password || "Not available"}</p>
-                <button
-                  className="linklike"
-                  onClick={() => viewUser.password && copyToClipboard(viewUser.password)}
-                  disabled={!viewUser.password}
-                >
-                  Copy password
-                </button>
-              </div>
-              <div className="row-inline gap-sm align-center">
-                <p className="muted small"><strong>User ID:</strong> {viewUser.id}</p>
-                <button className="linklike" onClick={() => copyToClipboard(viewUser.id)}>
-                  Copy ID
-                </button>
+            <div className="modal-body stack gap-md">
+              <div className="user-detail-card">
+                <div className="user-detail-row">
+                  <span className="detail-label">Username</span>
+                  <span className="detail-value">{viewUser.username}</span>
+                </div>
+                <div className="user-detail-row">
+                  <span className="detail-label">Status</span>
+                  <span className={`status-badge ${viewUser.enabled ? "status-enabled" : "status-disabled"}`}>
+                    {viewUser.enabled ? "Enabled" : "Disabled"}
+                  </span>
+                </div>
+                <div className="user-detail-row">
+                  <span className="detail-label">User ID</span>
+                  <div className="detail-value-with-action">
+                    <span className="detail-value-mono">{viewUser.id}</span>
+                    <button className="copy-btn-small" onClick={() => copyToClipboard(viewUser.id)} title="Copy ID">
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                <div className="user-detail-row">
+                  <span className="detail-label">Password</span>
+                  <div className="detail-value-with-action">
+                    {(() => {
+                      console.log("[View Modal] viewUser:", viewUser);
+                      console.log("[View Modal] Password value:", viewUser.password);
+                      console.log("[View Modal] Password type:", typeof viewUser.password);
+                      return null;
+                    })()}
+                    {viewUser.password ? (
+                      <>
+                        <span className="detail-value-mono">{viewUser.password}</span>
+                        <button className="copy-btn-small" onClick={() => copyToClipboard(viewUser.password!)} title="Copy Password">
+                          Copy
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="detail-value-mono password-hidden">••••••••</span>
+                        <span className="password-note">Not available (password: {String(viewUser.password)})</span>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
             <div className="modal-actions">
@@ -4522,100 +5214,150 @@ function App() {
       {/* User Sessions Modal */}
       {showUserSessions && viewUser ? (
         <div className="modal-backdrop" onClick={() => setShowUserSessions(false)}>
-          <div className="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <p className="muted strong">User Sessions</p>
-                <p className="muted small">{viewUser.username} ({viewUser.id})</p>
+          <div className="modal modal-lg sessions-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header sessions-header">
+              <div className="sessions-header-info">
+                <h3 className="title-sm">User Sessions</h3>
+                <p className="sessions-subtitle">{viewUser.username} <span className="user-id-chip">ID: {viewUser.id}</span></p>
               </div>
-              <button className="linklike" onClick={() => loadUserSessions(viewUser.id)} disabled={userSessionsLoading}>
-                Refresh
+              <button 
+                className="refresh-btn" 
+                onClick={() => loadUserSessions(viewUser.id)} 
+                disabled={userSessionsLoading}
+                title="Refresh sessions"
+              >
+                <FiRefreshCw /> Refresh
               </button>
             </div>
-            <div className="modal-body stack gap-sm">
+            
+            <div className="modal-body sessions-body">
               {userSessionsLoading ? (
-                <p className="muted">Loading sessions...</p>
+                <div className="loading-state">
+                  <div className="loading-spinner"></div>
+                  <p>Loading sessions...</p>
+                </div>
               ) : (
                 <>
-                  {/* Pending Requests */}
+                  {/* Pending Requests Section */}
                   {userSessionRequests.length > 0 && (
-                    <div className="card stack gap-sm" style={{ borderColor: "#f59e0b", borderWidth: 2 }}>
-                      <p className="muted strong">⏳ Pending Requests ({userSessionRequests.length})</p>
-                      {userSessionRequests.map((req) => (
-                        <div key={req.id} className="card subtle stack gap-xxs">
-                          <div className="row-inline between">
-                            <div className="stack gap-xxs">
-                              <strong>{req.deviceLabel}</strong>
-                              <span className="muted small">{req.platform || "Unknown"}</span>
-                              <span className="muted small">Requested: {formatDateTime(req.requestedAt)}</span>
+                    <div className="sessions-section pending-section">
+                      <div className="section-header">
+                        <div className="section-title-group">
+                          <div className="section-icon pending-icon">⏳</div>
+                          <h4 className="section-title">Pending Requests</h4>
+                          <span className="count-badge pending-badge">{userSessionRequests.length}</span>
+                        </div>
+                      </div>
+                      
+                      <div className="sessions-list">
+                        {userSessionRequests.map((req) => (
+                          <div key={req.id} className="session-card pending-card">
+                            <div className="session-info">
+                              <div className="device-icon">📱</div>
+                              <div className="session-details">
+                                <h5 className="device-name">{req.deviceLabel}</h5>
+                                <div className="device-meta">
+                                  <span className="platform-badge">{req.platform || "Unknown"}</span>
+                                  <span className="meta-divider">•</span>
+                                  <span className="timestamp">Requested: {formatDateTime(req.requestedAt)}</span>
+                                </div>
+                              </div>
                             </div>
-                            <div className="row-inline gap-sm">
-                              <Button 
-                                label="Approve" 
-                                variant="primary" 
+                            <div className="session-actions">
+                              <button
+                                className="action-btn-modern approve-btn"
                                 onClick={() => {
                                   if (confirm("This will revoke all existing sessions. Continue?")) {
                                     approveUserSession(viewUser.id, req.id);
                                   }
-                                }} 
-                              />
-                              <Button 
-                                label="Reject" 
-                                variant="danger" 
+                                }}
+                              >
+                                <FiCheck /> Approve
+                              </button>
+                              <button
+                                className="action-btn-modern reject-btn"
                                 onClick={() => {
                                   if (confirm("Reject this session request?")) {
                                     rejectUserSession(viewUser.id, req.id);
                                   }
-                                }} 
-                              />
+                                }}
+                              >
+                                <FiX /> Reject
+                              </button>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
 
-                  {/* Active Sessions */}
-                  <div className="card stack gap-sm">
-                    <p className="muted strong">📱 Active Sessions ({userSessions.length})</p>
+                  {/* Active Sessions Section */}
+                  <div className="sessions-section active-section">
+                    <div className="section-header">
+                      <div className="section-title-group">
+                        <div className="section-icon active-icon">📱</div>
+                        <h4 className="section-title">Active Sessions</h4>
+                        <span className="count-badge active-badge">{userSessions.length}</span>
+                      </div>
+                    </div>
+                    
                     {userSessions.length === 0 ? (
-                      <p className="muted small">No active sessions</p>
+                      <div className="empty-sessions">
+                        <div className="empty-icon">📵</div>
+                        <p className="empty-text">No active sessions</p>
+                        <p className="empty-hint">User hasn't logged in yet</p>
+                      </div>
                     ) : (
-                      userSessions.map((sess) => (
-                        <div key={sess.id} className="card subtle stack gap-xxs">
-                          <div className="row-inline between">
-                            <div className="stack gap-xxs">
-                              <strong>{sess.deviceLabel || sess.deviceName || "Unknown Device"}</strong>
-                              <span className="muted small">{sess.platform || "Unknown"}</span>
-                              <span className="muted small">Created: {formatDateTime(sess.createdAt || null)}</span>
-                              {sess.lastSeenAt && (
-                                <span className="muted small">Last seen: {formatDateTime(sess.lastSeenAt)}</span>
-                              )}
+                      <div className="sessions-list">
+                        {userSessions.map((sess) => (
+                          <div key={sess.id} className="session-card active-card">
+                            <div className="session-info">
+                              <div className="device-icon active-device">📱</div>
+                              <div className="session-details">
+                                <h5 className="device-name">{sess.deviceLabel || sess.deviceName || "Unknown Device"}</h5>
+                                <div className="device-meta">
+                                  <span className="platform-badge">{sess.platform || "Unknown"}</span>
+                                  <span className="meta-divider">•</span>
+                                  <span className="timestamp">Created: {formatDateTime(sess.createdAt || null)}</span>
+                                </div>
+                                {sess.lastSeenAt && (
+                                  <div className="last-seen">
+                                    <FiActivity />
+                                    <span>Last seen: {formatDateTime(sess.lastSeenAt)}</span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                            <Button 
-                              label="Revoke" 
-                              variant="danger" 
-                              onClick={() => {
-                                if (confirm(`Log out ${sess.deviceLabel || "this device"}?`)) {
-                                  revokeUserSession(viewUser.id, sess.id);
-                                }
-                              }} 
-                            />
+                            <div className="session-actions">
+                              <button
+                                className="action-btn-modern revoke-btn"
+                                onClick={() => {
+                                  if (confirm(`Log out ${sess.deviceLabel || "this device"}?`)) {
+                                    revokeUserSession(viewUser.id, sess.id);
+                                  }
+                                }}
+                              >
+                                <FiLogOut /> Revoke
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))
+                        ))}
+                      </div>
                     )}
                   </div>
 
-                  <div className="card subtle stack gap-xxs">
-                    <p className="muted small">
-                      <strong>ℹ️ Note:</strong> When "One User, One Device" is enabled, users can only be logged in on one device. 
+                  {/* Info Note */}
+                  <div className="info-note">
+                    <div className="info-note-icon">ℹ️</div>
+                    <div className="info-note-content">
+                      <strong>Note:</strong> When "One User, One Device" is enabled, users can only be logged in on one device. 
                       New login attempts require host approval.
-                    </p>
+                    </div>
                   </div>
                 </>
               )}
             </div>
+            
             <div className="modal-actions">
               <Button label="Close" variant="ghost" onClick={() => setShowUserSessions(false)} />
             </div>
