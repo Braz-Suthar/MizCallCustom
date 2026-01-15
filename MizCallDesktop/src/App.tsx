@@ -439,8 +439,34 @@ function App() {
         });
         setScreen("login");
       } else {
-        const data = await window.mizcall?.loginUser?.(payload.identifier, payload.password);
-        if (!data) throw new Error("Bridge unavailable");
+        // Get device info for Desktop
+        const deviceInfo = {
+          deviceName: `Desktop - ${window.navigator.platform}`,
+          deviceModel: navigator.userAgent.includes('Windows') ? 'Windows PC' 
+            : navigator.userAgent.includes('Mac') ? 'Mac' 
+            : navigator.userAgent.includes('Linux') ? 'Linux PC' 
+            : 'Desktop',
+          platform: window.navigator.platform,
+          osName: navigator.userAgent.includes('Windows') ? 'Windows'
+            : navigator.userAgent.includes('Mac') ? 'macOS'
+            : navigator.userAgent.includes('Linux') ? 'Linux'
+            : 'Desktop',
+          osVersion: navigator.appVersion,
+        };
+        
+        const data = await fetch(`${API_BASE}/auth/user/login`, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "X-Device-Name": deviceInfo.deviceName 
+          },
+          body: JSON.stringify({ 
+            userId: payload.identifier, 
+            password: payload.password,
+            ...deviceInfo
+          }),
+        }).then(r => r.json());
+        
         console.log("[desktop] user login response:", data);
         const userData = data as any;
         

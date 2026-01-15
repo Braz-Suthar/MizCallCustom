@@ -43,15 +43,16 @@ export default function Login() {
         }
         router.replace("/host/dashboard");
       } else {
-        // Gather device info
+        // Gather device info with better fallbacks
         const deviceInfo = {
-          deviceName: Device.deviceName || undefined,
-          deviceModel: Device.modelName || undefined,
-          platform: Platform.OS || undefined,
-          osName: Device.osName || undefined,
-          osVersion: Device.osVersion || undefined,
+          deviceName: Device.deviceName || Device.modelName || `${Platform.OS} Device`,
+          deviceModel: Device.modelName || Device.deviceName || undefined,
+          platform: Platform.OS || 'unknown',
+          osName: Device.osName || Platform.OS || 'unknown',
+          osVersion: Device.osVersion || Platform.Version?.toString() || undefined,
         };
         
+        console.log("[Login] User device info:", deviceInfo);
         const res: any = await dispatch(loginUser(userId.trim(), password, deviceInfo));
         if (res?.pending) {
           // Session approval pending
@@ -97,7 +98,15 @@ export default function Login() {
     const pollInterval = setInterval(async () => {
       try {
         setCheckingApproval(true);
-        const res: any = await dispatch(loginUser(uid, pwd));
+        // Re-use device info when polling
+        const deviceInfo = {
+          deviceName: Device.deviceName || Device.modelName || `${Platform.OS} Device`,
+          deviceModel: Device.modelName || Device.deviceName || undefined,
+          platform: Platform.OS || 'unknown',
+          osName: Device.osName || Platform.OS || 'unknown',
+          osVersion: Device.osVersion || Platform.Version?.toString() || undefined,
+        };
+        const res: any = await dispatch(loginUser(uid, pwd, deviceInfo));
         if (res?.ok && !res?.pending) {
           // Approved! Login successful
           clearInterval(pollInterval);

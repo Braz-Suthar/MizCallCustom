@@ -621,8 +621,17 @@ router.get("/users/:userId/sessions", requireAuth, requireHost, async (req, res)
 
   // Get active sessions
   const sessionsResult = await query(
-    `SELECT id, device_label, device_name, model_name, platform, os_name, os_version, 
-            created_at, last_seen_at
+    `SELECT 
+      id, 
+      device_label, 
+      device_name, 
+      model_name, 
+      platform, 
+      os_name, 
+      os_version,
+      user_agent,
+      created_at, 
+      last_seen_at
      FROM user_sessions
      WHERE user_id = $1 AND revoked_at IS NULL
      ORDER BY last_seen_at DESC NULLS LAST, created_at DESC`,
@@ -631,17 +640,50 @@ router.get("/users/:userId/sessions", requireAuth, requireHost, async (req, res)
 
   // Get pending requests
   const requestsResult = await query(
-    `SELECT id, device_label, device_name, model_name, platform, os_name, os_version,
-            requested_at
+    `SELECT 
+      id, 
+      device_label, 
+      device_name, 
+      model_name, 
+      platform, 
+      os_name, 
+      os_version,
+      requested_at
      FROM user_session_requests
      WHERE user_id = $1 AND status = 'pending'
      ORDER BY requested_at DESC`,
     [userId]
   );
 
+  // Format sessions data with proper field names
+  const sessions = sessionsResult.rows.map(row => ({
+    id: row.id,
+    deviceLabel: row.device_label,
+    deviceName: row.device_name,
+    modelName: row.model_name,
+    platform: row.platform,
+    osName: row.os_name,
+    osVersion: row.os_version,
+    userAgent: row.user_agent,
+    createdAt: row.created_at,
+    lastSeenAt: row.last_seen_at,
+  }));
+
+  // Format pending requests with proper field names
+  const pendingRequests = requestsResult.rows.map(row => ({
+    id: row.id,
+    deviceLabel: row.device_label,
+    deviceName: row.device_name,
+    modelName: row.model_name,
+    platform: row.platform,
+    osName: row.os_name,
+    osVersion: row.os_version,
+    requestedAt: row.requested_at,
+  }));
+
   res.json({
-    sessions: sessionsResult.rows,
-    pendingRequests: requestsResult.rows,
+    sessions,
+    pendingRequests,
   });
 });
 

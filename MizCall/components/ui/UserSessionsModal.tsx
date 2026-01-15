@@ -57,6 +57,8 @@ export function UserSessionsModal({ visible, userId, username, onClose }: UserSe
         `/host/users/${userId}/sessions`
       ));
       
+      console.log('[UserSessions] Fetched sessions:', JSON.stringify(res.sessions, null, 2));
+      
       setSessions(res.sessions || []);
       setPendingRequests(res.pendingRequests || []);
     } catch (e) {
