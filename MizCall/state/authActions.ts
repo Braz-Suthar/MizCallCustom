@@ -245,6 +245,9 @@ const updateTokens =
       accessJti: extra?.accessJti ?? current.accessJti ?? null,
       twoFactorEnabled: extra?.twoFactorEnabled ?? current.twoFactorEnabled ?? false,
       allowMultipleSessions: extra?.allowMultipleSessions ?? current.allowMultipleSessions ?? true,
+      membershipType: extra?.membershipType ?? current.membershipType ?? undefined,
+      membershipStartDate: extra?.membershipStartDate ?? current.membershipStartDate ?? undefined,
+      membershipEndDate: extra?.membershipEndDate ?? current.membershipEndDate ?? undefined,
     };
     dispatch(setCredentials(updated));
     await saveSession(updated);

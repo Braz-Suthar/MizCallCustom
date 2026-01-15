@@ -775,4 +775,60 @@ router.post("/logout", requireAuth, async (req, res) => {
   }
 });
 
+/* REFRESH TOKEN */
+router.post("/refresh", async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({ error: "Refresh token required" });
+    }
+
+    // Verify refresh token
+    const decoded = verifyRefreshToken(refreshToken);
+    
+    if (!decoded || !decoded.role) {
+      return res.status(401).json({ error: "Invalid refresh token" });
+    }
+
+    // Generate new access token
+    const newAccessJti = generateJti();
+    const newToken = signToken({
+      role: decoded.role,
+      hostId: decoded.hostId,
+      userId: decoded.userId,
+    }, newAccessJti);
+
+    // Get updated subscription info for hosts
+    let subscriptionInfo = {};
+    if (decoded.role === 'host' && decoded.hostId) {
+      const subscriptionResult = await query(
+        `SELECT membership_type, membership_start_date, membership_end_date 
+         FROM hosts WHERE id = $1`,
+        [decoded.hostId]
+      );
+      if (subscriptionResult.rows.length > 0) {
+        const sub = subscriptionResult.rows[0];
+        subscriptionInfo = {
+          membershipType: sub.membership_type,
+          membershipStartDate: sub.membership_start_date,
+          membershipEndDate: sub.membership_end_date,
+        };
+      }
+    }
+
+    logInfo("Token refreshed", "auth", { role: decoded.role, id: decoded.hostId || decoded.userId });
+
+    res.json({
+      token: newToken,
+      refreshToken, // Return same refresh token
+      accessJti: newAccessJti,
+      ...subscriptionInfo,
+    });
+  } catch (error) {
+    logWarn("Token refresh failed", "auth", { error: error.message });
+    res.status(401).json({ error: "Invalid or expired refresh token" });
+  }
+});
+
 export default router;

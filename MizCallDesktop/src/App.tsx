@@ -670,31 +670,55 @@ function App() {
     if (!session?.refreshToken) {
       throw new Error("No refresh token available");
     }
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: session.refreshToken }),
-    });
-    if (!res.ok) {
-      throw new Error(`Refresh failed (${res.status})`);
+    
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: session.refreshToken }),
+      });
+      
+      if (!res.ok) {
+        console.error("[Desktop] Token refresh failed:", res.status);
+        throw new Error(`Refresh failed (${res.status})`);
+      }
+      
+      const data = await res.json();
+      
+      setSession((prev) => {
+        if (!prev) return prev;
+        
+        const updated = {
+          ...prev,
+          token: data.token,
+          refreshToken: data.refreshToken ?? prev.refreshToken,
+          sessionId: data.sessionId ?? prev.sessionId,
+          accessJti: data.accessJti ?? prev.accessJti,
+          name: data.name ?? prev.name,
+          avatarUrl: data.avatarUrl ?? prev.avatarUrl,
+          twoFactorEnabled: data.twoFactorEnabled ?? prev.twoFactorEnabled,
+          allowMultipleSessions: data.allowMultipleSessions ?? prev.allowMultipleSessions ?? true,
+          membershipType: data.membershipType ?? prev.membershipType,
+          membershipStartDate: data.membershipStartDate ?? prev.membershipStartDate,
+          membershipEndDate: data.membershipEndDate ?? prev.membershipEndDate,
+        };
+        
+        // Persist updated session
+        try {
+          localStorage.setItem("mizcall.session", JSON.stringify(updated));
+        } catch (err) {
+          console.error("[Desktop] Failed to save refreshed session:", err);
+        }
+        
+        return updated;
+      });
+      
+      console.log("[Desktop] Token refreshed successfully");
+      return data.token as string;
+    } catch (error) {
+      console.error("[Desktop] Token refresh error:", error);
+      throw error;
     }
-    const data = await res.json();
-    setSession((prev) =>
-      prev
-        ? {
-            ...prev,
-            token: data.token,
-            refreshToken: data.refreshToken ?? prev.refreshToken,
-            sessionId: data.sessionId ?? prev.sessionId,
-            accessJti: data.accessJti ?? prev.accessJti,
-            name: data.name ?? prev.name,
-            avatarUrl: data.avatarUrl ?? prev.avatarUrl,
-            twoFactorEnabled: data.twoFactorEnabled ?? prev.twoFactorEnabled,
-            allowMultipleSessions: data.allowMultipleSessions ?? prev.allowMultipleSessions ?? true,
-          }
-        : prev
-    );
-    return data.token as string;
   }, [session?.refreshToken]);
 
   const authFetch = useCallback(
