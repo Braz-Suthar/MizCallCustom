@@ -25,6 +25,7 @@ export function useJoinCall() {
   const [speaking, setSpeaking] = useState(false);
   const [pttReady, setPttReady] = useState(false);
   const [callEnded, setCallEnded] = useState(false);
+  const [hostOnline, setHostOnline] = useState(false);
 
   const roomId = activeCall?.roomId || (activeCall as any)?.id;
 
@@ -250,6 +251,7 @@ export function useJoinCall() {
     shouldCleanupRef.current = true;
     isInBackgroundRef.current = false;
     cleanupCallMedia(true);
+    setHostOnline(false);
   }, [cleanupCallMedia]);
 
   const join = useCallback(async () => {
@@ -258,6 +260,7 @@ export function useJoinCall() {
       setState("error");
       return;
     }
+    setHostOnline(false);
     if (!roomId) {
       setError("Missing room");
       setState("error");
@@ -350,6 +353,15 @@ export function useJoinCall() {
 
     ws.on("disconnect", () => {
       console.log("[useJoinCall] Socket disconnected");
+      setHostOnline(false);
+      Toast.show({
+        type: "info",
+        text1: "Host Offline",
+        text2: "Host is not available right now",
+        position: "top",
+        visibilityTime: 2500,
+        topOffset: 48,
+      });
     });
 
     const ensureDeviceLoaded = async () => {
@@ -520,6 +532,19 @@ export function useJoinCall() {
         if (msg.type === "HOST_PRODUCER") {
           hostProducerIdRef.current = msg.producerId;
           console.log("[useJoinCall] HOST_PRODUCER received", msg.producerId);
+          setHostOnline((prev) => {
+            if (!prev) {
+              Toast.show({
+                type: "success",
+                text1: "Host Back",
+                text2: "Host is back in the call",
+                position: "top",
+                visibilityTime: 2000,
+                topOffset: 48,
+              });
+            }
+            return true;
+          });
           if (msg.routerRtpCapabilities) {
             routerCapsRef.current = msg.routerRtpCapabilities;
           }
@@ -531,6 +556,19 @@ export function useJoinCall() {
         if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "host") {
           console.log("[useJoinCall] NEW_PRODUCER from host:", msg.producerId);
           hostProducerIdRef.current = msg.producerId;
+          setHostOnline((prev) => {
+            if (!prev) {
+              Toast.show({
+                type: "success",
+                text1: "Host Back",
+                text2: "Host is back in the call",
+                position: "top",
+                visibilityTime: 2000,
+                topOffset: 48,
+              });
+            }
+            return true;
+          });
           if (msg.routerRtpCapabilities) {
             routerCapsRef.current = msg.routerRtpCapabilities;
           }
@@ -797,6 +835,7 @@ export function useJoinCall() {
     stopSpeaking, 
     pttReady, 
     socket: socketRef.current, 
-    callEnded 
+    callEnded,
+    hostOnline
   };
 }

@@ -245,6 +245,7 @@ function App() {
   const [callMuted, setCallMuted] = useState(false);
   const [callVolume, setCallVolume] = useState(70);
   const [callOutputMuted, setCallOutputMuted] = useState(false);
+  const [hostOnline, setHostOnline] = useState(false);
   const [remoteAudioStream, setRemoteAudioStream] = useState<MediaStream | null>(null);
   const [callJoinState, setCallJoinState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [callError, setCallError] = useState<string | null>(null);
@@ -855,6 +856,50 @@ function App() {
     }
   }, [authFetch, session]);
 
+  const fetchHostCallParticipants = useCallback(async () => {
+    if (!session || session.role !== "host" || !activeCall?.id) return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/calls/${activeCall.id}/participants`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = data.participants || data.users || [];
+      const mapped = (Array.isArray(list) ? list : []).map((p: any) => {
+        const id = String(p.userId || p.id || "");
+        const status: "connected" | "connecting" = p.connected === false ? "connecting" : "connected";
+        return {
+          id,
+          name: String(p.username || p.name || id || "User"),
+          role: "User" as const,
+          status,
+          muted: false,
+          speaking: false,
+          avatarUrl: p.avatar_url ?? p.avatarUrl ?? undefined,
+        };
+      });
+      setActiveParticipants(mapped);
+    } catch (err) {
+      console.warn("[desktop] fetchHostCallParticipants failed", err);
+    }
+  }, [authFetch, session, activeCall?.id]);
+
+  const checkHostAlreadyInCall = useCallback(async () => {
+    if (!session || session.role !== "host" || !activeCall) return false;
+    try {
+      const res = await authFetch(`${API_BASE}/host/calls/${activeCall.id}/participants`);
+      if (!res.ok) return false;
+      const data = await res.json();
+      const participants = data.participants || data.users || [];
+      const hostId = session.hostId;
+      const hostPresent =
+        Array.isArray(participants) &&
+        participants.some((p: any) => p?.role === "host" || p?.userId === hostId || p?.id === hostId);
+      const hostActive = data.hostActive ?? data.host_active ?? data.host?.connected ?? false;
+      return Boolean(hostActive || hostPresent);
+    } catch {
+      return false;
+    }
+  }, [authFetch, session, activeCall]);
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -1172,8 +1217,15 @@ function App() {
     }
   };
 
-  const openActiveCallUi = () => {
+  const openActiveCallUi = async () => {
     if (!activeCall) return;
+    if (session?.role === "host") {
+      const alreadyInCall = await checkHostAlreadyInCall();
+      if (alreadyInCall && callJoinState !== "connected") {
+        showToast("You are already in a call on another device", "info");
+        return;
+      }
+    }
     if (window.mizcall?.openActiveCallWindow) {
       window.mizcall.openActiveCallWindow({
         session,
@@ -1195,6 +1247,9 @@ function App() {
       if (!res.ok) throw new Error(`End call failed (${res.status})`);
       const now = new Date().toISOString();
       setCalls((prev) => prev.map((c) => (c.id === id ? { ...c, status: "ended", ended_at: now } : c)));
+      if (callSocketRef.current) {
+        callSocketRef.current.emit?.("CALL_STOPPED", { roomId: id });
+      }
       leaveCall();
       showToast("Call ended", "success");
     } catch (e) {
@@ -1312,10 +1367,6 @@ function App() {
     // Cleanup socket
     if (callSocketRef.current) {
       console.log("[Desktop] Cleaning up socket");
-      // Emit CALL_STOPPED if we have an active call
-      if (activeCall?.id) {
-        callSocketRef.current.emit?.("CALL_STOPPED", { roomId: activeCall.id });
-      }
       // Remove all listeners before disconnecting
       callSocketRef.current.removeAllListeners();
       callSocketRef.current.disconnect?.();
@@ -1417,6 +1468,11 @@ function App() {
     if (!callSocketRef.current || !activeCall) return;
     if (!recvTransportRef.current || !deviceRef.current) {
       pendingConsumeRef.current.push({ producerId, ownerId: producerOwnerId });
+      // Ask server to (re)create recv transport if needed
+      if (session?.token) {
+        callSocketRef.current.emit("GET_ROUTER_CAPS", { roomId: activeCall.id });
+        callSocketRef.current.emit("JOIN", { token: session.token, roomId: activeCall.id });
+      }
       return;
     }
     callSocketRef.current.emit("CONSUME", {
@@ -1611,6 +1667,16 @@ function App() {
 
   const joinActiveCall = async () => {
     if (!session || !activeCall) return;
+    if (session.role === "host") {
+      const alreadyInCall = await checkHostAlreadyInCall();
+      if (alreadyInCall && callJoinState !== "connected") {
+        showToast("You are already in a call on another device", "info");
+        return;
+      }
+    }
+    if (session.role === "user") {
+      setHostOnline(false);
+    }
     cleanupCallMedia();
     setCallJoinState("connecting");
     setCallError(null);
@@ -1627,6 +1693,10 @@ function App() {
       withCredentials: true,
     });
     callSocketRef.current = ws;
+
+    if (session.role === "host") {
+      fetchHostCallParticipants();
+    }
 
     ws.on("connect", () => {
       console.log("[desktop] call-sio connect");
@@ -1648,6 +1718,10 @@ function App() {
     ws.on("disconnect", () => {
       console.log("[desktop] call-sio disconnect");
       setCallJoinState((prev) => (prev === "connected" ? prev : "idle"));
+      if (session.role === "user") {
+        setHostOnline(false);
+        showToast("Host is offline", "info");
+      }
     });
 
     const handleMsg = async (msgRaw: any) => {
@@ -1659,6 +1733,12 @@ function App() {
           routerCapsRef.current = msg.routerRtpCapabilities;
           if (!hostProducerIdRef.current && msg.hostProducerId) {
             hostProducerIdRef.current = msg.hostProducerId;
+            if (session.role === "user") {
+              setHostOnline((prev) => {
+                if (!prev) showToast("Host is back in the call", "success");
+                return true;
+              });
+            }
             if (session.role === "user") {
               requestConsume(msg.hostProducerId);
             }
@@ -1719,6 +1799,12 @@ function App() {
 
         if (msg.type === "HOST_PRODUCER") {
           hostProducerIdRef.current = msg.producerId;
+          if (session.role === "user") {
+            setHostOnline((prev) => {
+              if (!prev) showToast("Host is back in the call", "success");
+              return true;
+            });
+          }
           console.log("[desktop] host producer received", msg.producerId);
           if (msg.routerRtpCapabilities) {
             routerCapsRef.current = msg.routerRtpCapabilities;
@@ -1728,9 +1814,26 @@ function App() {
           }
         }
 
+        if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "host") {
+          hostProducerIdRef.current = msg.producerId;
+          if (session.role === "user") {
+            setHostOnline((prev) => {
+              if (!prev) showToast("Host is back in the call", "success");
+              return true;
+            });
+          }
+          if (msg.routerRtpCapabilities) {
+            routerCapsRef.current = msg.routerRtpCapabilities;
+          }
+          if (session.role === "user") {
+            requestConsume(msg.producerId);
+          }
+        }
+
         if (msg.type === "NEW_PRODUCER") {
           if (session.role === "host" && msg.ownerRole === "user") {
             const userId = msg.userId || msg.producerId;
+            requestConsume(msg.producerId);
             
             // Look up username from users list
             const user = users.find((u) => u.id === userId);
@@ -2473,7 +2576,8 @@ function App() {
         }
         if (payload?.clearActiveCall) {
           setActiveCall(null);
-          setActiveParticipants([]);
+    setActiveParticipants([]);
+    setHostOnline(false);
           setCallJoinState("idle");
         }
       });
@@ -2553,9 +2657,14 @@ function App() {
         if (msg.type === "call-stopped") {
           setActiveCall(null);
           setActiveParticipants([]);
+          setHostOnline(false);
         }
         if (msg.type === "NEW_PRODUCER" && msg.ownerRole === "host") {
           hostProducerIdRef.current = msg.producerId;
+          setHostOnline((prev) => {
+            if (!prev) showToast("Host is back in the call", "success");
+            return true;
+          });
           if (msg.routerRtpCapabilities) {
             routerCapsRef.current = msg.routerRtpCapabilities;
             setActiveCall((prev) => (prev ? { ...prev, routerRtpCapabilities: msg.routerRtpCapabilities } : prev));
@@ -2566,6 +2675,10 @@ function App() {
         }
         if (msg.type === "HOST_PRODUCER" && msg.producerId) {
           hostProducerIdRef.current = msg.producerId;
+          setHostOnline((prev) => {
+            if (!prev) showToast("Host is back in the call", "success");
+            return true;
+          });
            if (msg.routerRtpCapabilities) {
              routerCapsRef.current = msg.routerRtpCapabilities;
              setActiveCall((prev) => (prev ? { ...prev, routerRtpCapabilities: msg.routerRtpCapabilities } : prev));
@@ -2586,6 +2699,8 @@ function App() {
       console.log("[desktop:user-sio] close");
       setNetworkStatus("offline");
       userWsRef.current = null;
+      setHostOnline(false);
+      showToast("Host is offline", "info");
     });
     
     // Listen for session revocation as specific event
@@ -3201,9 +3316,9 @@ function App() {
                 </div>
                 <span className="muted small">
                   {callJoinState === "connected"
-                    ? hostProducerIdRef.current
-                      ? "Audio connected"
-                      : "Ready (waiting for host audio)"
+                    ? hostOnline
+                      ? "Host audio connected"
+                      : "Host offline"
                     : callJoinState === "connecting"
                     ? "Connecting…"
                     : callError || "Idle"}
@@ -3577,7 +3692,7 @@ function App() {
                 <div className="banner-content">
                   <strong className="banner-title">Active Call Available</strong>
                   <p className="banner-text">
-                    Room: {activeCall.id} • Status: {callJoinState === "connected" ? "Connected" : "Ready to join"}
+                    Room: {activeCall.id} • Status: {callJoinState === "connected" ? (hostOnline ? "Connected" : "Host offline") : "Ready to join"}
                   </p>
                 </div>
                 <button 

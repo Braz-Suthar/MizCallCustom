@@ -332,6 +332,20 @@ export function handleSocket({ socket }) {
                   }));
                 }
 
+                // If host re-joined, send existing user producers so host can consume audio
+                if (peer.role === "host") {
+                  for (const other of room.peers.values()) {
+                    if (other.role === "user" && other.producer?.id && socket.readyState === 1) {
+                      socket.send(JSON.stringify({
+                        type: "NEW_PRODUCER",
+                        producerId: other.producer.id,
+                        ownerRole: "user",
+                        userId: other.id,
+                      }));
+                    }
+                  }
+                }
+
                 // notify hosts when a user joins so UI can update
                 if (peer.role === "user") {
                   for (const other of room.peers.values()) {

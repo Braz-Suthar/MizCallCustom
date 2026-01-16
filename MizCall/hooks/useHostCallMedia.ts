@@ -4,6 +4,8 @@ import { PermissionsAndroid, Platform } from "react-native";
 import { mediaDevices, MediaStream } from "react-native-webrtc";
 import { io, Socket } from "socket.io-client";
 import { startCallAudio, enableSpeakerphone, stopCallAudio, disableSpeakerphone, isMobilePlatform } from "../utils/callAudio";
+import Toast from "react-native-toast-message";
+import { apiFetch } from "../state/api";
 
 import { ActiveCall } from "../state/callSlice";
 
@@ -133,6 +135,32 @@ export function useHostCallMedia(opts: {
 
     // DESKTOP PATTERN: Create fresh socket on every join
     const joinActiveCall = async () => {
+      // Block joining if host is already in call on another device
+      try {
+        const res = await apiFetch<{ participants?: any[]; hostActive?: boolean; host_active?: boolean; host?: { connected?: boolean } }>(
+          `/host/calls/${call.roomId}/participants`,
+          token
+        );
+        const participants = res.participants || [];
+        const hostPresent = participants.some((p: any) => p?.role === "host" || p?.userId === call.hostId || p?.id === call.hostId);
+        const hostActive = res.hostActive ?? res.host_active ?? res.host?.connected ?? false;
+        if ((hostActive || hostPresent) && state !== "connected") {
+          setState("error");
+          setError("Host already in call on another device");
+          Toast.show({
+            type: "info",
+            text1: "Already in call",
+            text2: "You are already in this call on another device",
+            position: "top",
+            visibilityTime: 2500,
+            topOffset: 48,
+          });
+          return;
+        }
+      } catch {
+        // If check fails, allow join
+      }
+
       // Clean up first (like desktop does)
       cleanupCallMedia();
       

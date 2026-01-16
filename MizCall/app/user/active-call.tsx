@@ -25,7 +25,7 @@ export default function UserActiveCallScreen() {
   const router = useRouter();
   const activeCall = useAppSelector((s) => s.call.activeCall);
   const token = useAppSelector((s) => s.auth.token);
-  const { join, leave, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket, callEnded } = useJoinCall();
+  const { join, leave, state, error, remoteStream, audioLevel, speaking, startSpeaking, stopSpeaking, pttReady, socket, callEnded, hostOnline } = useJoinCall();
   const {
     currentRoute,
     availableDevices,
@@ -187,9 +187,9 @@ export default function UserActiveCallScreen() {
                 backgroundColor: state === "connected" ? SUCCESS_GREEN : state === "connecting" ? "#FFA500" : "#64748b" 
               }]} />
               <Text style={[styles.statusText, { 
-                color: state === "connected" ? SUCCESS_GREEN : state === "connecting" ? "#FFA500" : colors.text 
+                color: state === "connected" ? (hostOnline ? SUCCESS_GREEN : DANGER_RED) : state === "connecting" ? "#FFA500" : colors.text 
               }]}>
-                {state === "connecting" ? "Connecting..." : state === "connected" ? "Connected" : "Idle"}
+                {state === "connecting" ? "Connecting..." : state === "connected" ? (hostOnline ? "Connected" : "Host Offline") : "Idle"}
               </Text>
             </View>
           </View>
