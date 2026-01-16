@@ -45,7 +45,13 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "MizCall Desktop"
+      "shortcutName": "MizCall Desktop",
+      "perMachine": false,
+      "allowElevation": true,
+      "installerIcon": "assets/Icons512/Group 6.png",
+      "uninstallerIcon": "assets/Icons512/Group 6.png",
+      "installerHeaderIcon": "assets/Icons512/Group 6.png",
+      "deleteAppDataOnUninstall": false
     },
     "portable": {
       "artifactName": "${productName}-${version}-Windows-Portable.exe"
@@ -86,6 +92,7 @@
     "start": "electron-forge start",
     "build": "vite build",
     "build:win": "npm run build && electron-builder --win --x64",
+    "build:win-nsis": "npm run build && electron-builder --win nsis --x64",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
     "build:all": "npm run build && electron-builder -mwl",
