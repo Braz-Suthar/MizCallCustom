@@ -251,8 +251,13 @@ export function UserSessionsModal({ visible, userId, username, onClose }: UserSe
                           <Text style={[styles.deviceName, { color: colors.text }]}>
                             {request.deviceLabel || request.deviceName || "Unknown Device"}
                           </Text>
+                          {request.modelName && (
+                            <Text style={[styles.deviceDetails, { color: colors.text }]}>
+                              {request.modelName}
+                            </Text>
+                          )}
                           <Text style={[styles.deviceDetails, { color: colors.text }]}>
-                            {request.platform || "Unknown"} • {request.osName || "Unknown"}
+                            {request.platform || "Unknown"}
                           </Text>
                           <Text style={[styles.timestamp, { color: colors.text }]}>
                             Requested: {formatDate(request.requestedAt)}
@@ -319,14 +324,14 @@ export function UserSessionsModal({ visible, userId, username, onClose }: UserSe
                           <Text style={[styles.deviceName, { color: colors.text }]}>
                             {session.deviceLabel || session.deviceName || "Unknown Device"}
                           </Text>
-                          <Text style={[styles.deviceDetails, { color: colors.text }]}>
-                            {session.platform || "Unknown"} • {session.osName || "Unknown"}
-                          </Text>
                           {session.modelName && (
                             <Text style={[styles.deviceDetails, { color: colors.text }]}>
                               {session.modelName}
                             </Text>
                           )}
+                          <Text style={[styles.deviceDetails, { color: colors.text }]}>
+                            {session.platform || "Unknown"}
+                          </Text>
                           <Text style={[styles.timestamp, { color: colors.text }]}>
                             Created: {formatDate(session.createdAt)}
                           </Text>
