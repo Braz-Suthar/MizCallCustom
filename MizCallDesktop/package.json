@@ -22,14 +22,18 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "icon": "assets/logo512.png",
+      "icon": "assets/Icons512/Group 6.png",
       "artifactName": "${productName}-${version}-Windows-${arch}.${ext}"
     },
     "nsis": {
@@ -48,8 +52,11 @@
       "entitlementsInherit": "entitlements.mac.plist",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "target": ["dmg", "zip"],
-      "icon": "assets/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/Icons512/Group 6.png",
       "artifactName": "${productName}-${version}-macOS-${arch}.${ext}",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "MizCall needs access to your microphone for voice calls.",
@@ -58,12 +65,15 @@
     },
     "dmg": {
       "title": "${productName} ${version}",
-      "icon": "assets/icon.png"
+      "icon": "assets/Icons512/Group 6.png"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Network",
-      "icon": "assets/icon.png",
+      "icon": "assets/Icons512/Group 6.png",
       "artifactName": "${productName}-${version}-Linux-${arch}.${ext}"
     }
   },
