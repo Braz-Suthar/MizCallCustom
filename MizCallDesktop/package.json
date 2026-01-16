@@ -37,7 +37,7 @@
           ]
         }
       ],
-      "icon": "assets/Icons512/Group 6.png",
+      "icon": "assets/Icons512/Group 6.ico",
       "artifactName": "${productName}-${version}-Windows-${arch}.${ext}"
     },
     "nsis": {
@@ -48,9 +48,9 @@
       "shortcutName": "MizCall Desktop",
       "perMachine": false,
       "allowElevation": true,
-      "installerIcon": "assets/Icons512/Group 6.png",
-      "uninstallerIcon": "assets/Icons512/Group 6.png",
-      "installerHeaderIcon": "assets/Icons512/Group 6.png",
+      "installerIcon": "assets/Icons512/Group 6.ico",
+      "uninstallerIcon": "assets/Icons512/Group 6.ico",
+      "installerHeaderIcon": "assets/Icons512/Group 6.ico",
       "deleteAppDataOnUninstall": false
     },
     "portable": {
