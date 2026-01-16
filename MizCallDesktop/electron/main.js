@@ -293,7 +293,7 @@ app.whenReady().then(async () => {
       callWindow = null;
     }
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("navigate-main", { tab: "dashboard" });
+      mainWindow.webContents.send("navigate-main", { tab: "dashboard", clearActiveCall: true });
       mainWindow.show();
       mainWindow.focus();
     }

@@ -186,7 +186,9 @@ function App() {
   const [userSessions, setUserSessions] = useState<Array<{ id: string; deviceLabel?: string; deviceName?: string; platform?: string; createdAt?: string; lastSeenAt?: string }>>([]);
   const [userSessionRequests, setUserSessionRequests] = useState<Array<{ id: string; deviceLabel: string; platform?: string; requestedAt: string }>>([]);
   const [userSessionsLoading, setUserSessionsLoading] = useState(false);
-  const [calls, setCalls] = useState<Array<{ id: string; status: string; started_at: string; ended_at: string | null }>>([]);
+  const [calls, setCalls] = useState<
+    Array<{ id: string; status: string; started_at: string; ended_at: string | null; participants?: string[] }>
+  >([]);
   const [callsLoading, setCallsLoading] = useState(false);
   const [callsError, setCallsError] = useState<string | null>(null);
   const [callsSearchQuery, setCallsSearchQuery] = useState("");
@@ -832,6 +834,27 @@ function App() {
     }
   }, [authFetch, session]);
 
+  const fetchHostActiveCall = useCallback(async () => {
+    if (!session || session.role !== "host") return;
+    try {
+      const res = await authFetch(`${API_BASE}/host/calls`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const active = (data.calls ?? []).find((c: any) => c.status !== "ended");
+      if (active) {
+        setActiveCall({
+          id: active.id,
+          started_at: active.started_at ?? new Date().toISOString(),
+          routerRtpCapabilities: active.router_rtp_capabilities ?? null,
+        });
+      } else {
+        setActiveCall(null);
+      }
+    } catch (err) {
+      console.warn("[desktop] fetchHostActiveCall failed", err);
+    }
+  }, [authFetch, session]);
+
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -1101,7 +1124,12 @@ function App() {
         throw new Error(txt || `Error ${res.status}`);
       }
       const data = await res.json();
-      setCalls(data.calls ?? []);
+      setCalls(
+        (data.calls ?? []).map((call: any) => ({
+          ...call,
+          participants: Array.isArray(call.participants) ? call.participants : [],
+        }))
+      );
     } catch (e) {
       setCallsError(e instanceof Error ? e.message : "Failed to load calls");
     } finally {
@@ -1141,6 +1169,20 @@ function App() {
       showToast(e instanceof Error ? e.message : "Start call failed", "error");
     } finally {
       setStartCallLoading(false);
+    }
+  };
+
+  const openActiveCallUi = () => {
+    if (!activeCall) return;
+    if (window.mizcall?.openActiveCallWindow) {
+      window.mizcall.openActiveCallWindow({
+        session,
+        call: activeCall,
+        participants: activeParticipants ?? [],
+      });
+      setTab("calls");
+    } else {
+      setTab("call-active");
     }
   };
 
@@ -2393,6 +2435,11 @@ function App() {
     if (tab === "dashboard" && session?.role === "user") {
       fetchUserActiveCall();
     }
+
+    // For hosts, check if there's an active call to rejoin
+    if ((tab === "dashboard" || tab === "calls") && session?.role === "host" && !activeCall) {
+      fetchHostActiveCall();
+    }
     
     // Load call background when entering call screen (for both host and user)
     if (tab === "call-active" && session?.token) {
@@ -2424,6 +2471,11 @@ function App() {
         if (payload?.tab === "dashboard") {
           setTab("dashboard");
         }
+        if (payload?.clearActiveCall) {
+          setActiveCall(null);
+          setActiveParticipants([]);
+          setCallJoinState("idle");
+        }
       });
     }
 
@@ -2436,7 +2488,7 @@ function App() {
         navigateMainCleanup();
       }
     };
-  }, [tab, session?.token, session?.role]);
+  }, [tab, session?.token, session?.role, activeCall, fetchHostActiveCall]);
 
   // Update participant names when users list is loaded
   useEffect(() => {
@@ -3478,14 +3530,33 @@ function App() {
               </div>
               {session.role === "host" && (
                 <div className="dashboard-quick-actions">
-                  <button 
-                    className="quick-action-btn primary" 
-                    onClick={startCall}
-                    disabled={startCallLoading}
-                  >
-                    <FiPhoneCall />
-                    <span>{startCallLoading ? "Starting..." : "Start Call"}</span>
-                  </button>
+                  {activeCall ? (
+                    <>
+                      <button 
+                        className="quick-action-btn primary" 
+                        onClick={openActiveCallUi}
+                      >
+                        <FiPhoneCall />
+                        <span>Join Call</span>
+                      </button>
+                      <button
+                        className="quick-action-btn danger"
+                        onClick={() => endCall(activeCall.id)}
+                      >
+                        <FiX />
+                        <span>End Call</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      className="quick-action-btn primary" 
+                      onClick={startCall}
+                      disabled={startCallLoading}
+                    >
+                      <FiPhoneCall />
+                      <span>{startCallLoading ? "Starting..." : "Start Call"}</span>
+                    </button>
+                  )}
                   <button 
                     className="quick-action-btn secondary" 
                     onClick={() => setShowCreateUser(true)}
@@ -3996,19 +4067,33 @@ function App() {
         const endIndex = startIndex + callsPerPage;
         const paginatedCalls = sortedCalls.slice(startIndex, endIndex);
 
-        // Count participants for each call (mock data for now)
+        // Count participants per call using API data
         const getParticipantCount = (callId: string) => {
-          return Math.floor(Math.random() * 5) + 1; // Mock data
+          const call = calls.find((c) => c.id === callId);
+          return call?.participants?.length ?? 0;
         };
 
         return (
           <div className="stack gap-md">
             {/* Header with New Call Button */}
             <div className="calls-header">
-              <button className="btn btn-primary btn-no-shadow btn-with-icon" onClick={startCall} disabled={startCallLoading}>
-                <FiPlus />
-                <span>{startCallLoading ? "Starting..." : "New Call"}</span>
-              </button>
+              {activeCall ? (
+                <>
+                  <button className="btn btn-primary btn-no-shadow btn-with-icon" onClick={openActiveCallUi}>
+                    <FiPhoneCall />
+                    <span>Join Call</span>
+                  </button>
+                  <button className="btn btn-danger btn-no-shadow btn-with-icon" onClick={() => endCall(activeCall.id)}>
+                    <FiX />
+                    <span>End Call</span>
+                  </button>
+                </>
+              ) : (
+                <button className="btn btn-primary btn-no-shadow btn-with-icon" onClick={startCall} disabled={startCallLoading}>
+                  <FiPlus />
+                  <span>{startCallLoading ? "Starting..." : "New Call"}</span>
+                </button>
+              )}
             </div>
 
             {/* Search Bar */}
