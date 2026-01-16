@@ -181,6 +181,7 @@ function App() {
   const [editEnforceSingleDevice, setEditEnforceSingleDevice] = useState<boolean | null>(null);
   const [showViewUser, setShowViewUser] = useState(false);
   const [viewUser, setViewUser] = useState<{ id: string; username: string; enabled: boolean; password?: string | null } | null>(null);
+  const [viewUserLoading, setViewUserLoading] = useState(false);
   const [showUserSessions, setShowUserSessions] = useState(false);
   const [userSessions, setUserSessions] = useState<Array<{ id: string; deviceLabel?: string; deviceName?: string; platform?: string; createdAt?: string; lastSeenAt?: string }>>([]);
   const [userSessionRequests, setUserSessionRequests] = useState<Array<{ id: string; deviceLabel: string; platform?: string; requestedAt: string }>>([]);
@@ -241,6 +242,7 @@ function App() {
   >({});
   const [callMuted, setCallMuted] = useState(false);
   const [callVolume, setCallVolume] = useState(70);
+  const [callOutputMuted, setCallOutputMuted] = useState(false);
   const [remoteAudioStream, setRemoteAudioStream] = useState<MediaStream | null>(null);
   const [callJoinState, setCallJoinState] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [callError, setCallError] = useState<string | null>(null);
@@ -907,6 +909,24 @@ function App() {
     }
   };
 
+  const fetchUserDetails = async (userId: string) => {
+    if (!session?.token || session.role !== "host") return null;
+    try {
+      const res = await authFetch(`${API_BASE}/host/users/${userId}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return {
+        id: data.user?.id ?? data.id ?? userId,
+        username: data.user?.username ?? data.username,
+        enabled: data.user?.enabled ?? data.enabled ?? true,
+        password: data.user?.password ?? data.password ?? null,
+        enforce_single_device: data.user?.enforce_single_device ?? data.enforce_single_device ?? null,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   const handleDeleteUser = async (userId: string) => {
     if (!session?.token) return;
     
@@ -1145,6 +1165,9 @@ function App() {
     setActiveCall(null);
     setActiveParticipants([]);
     setTab("dashboard");
+    if (window.mizcall?.closeActiveCallWindow) {
+      window.mizcall.closeActiveCallWindow();
+    }
   };
 
   const cleanupCallMedia = () => {
@@ -2395,10 +2418,22 @@ function App() {
       });
     }
 
+    let navigateMainCleanup: (() => void) | null = null;
+    if (window.mizcall?.onNavigateMain) {
+      navigateMainCleanup = window.mizcall.onNavigateMain((payload: any) => {
+        if (payload?.tab === "dashboard") {
+          setTab("dashboard");
+        }
+      });
+    }
+
     return () => {
       if (activeCallListenerRef.current) {
         activeCallListenerRef.current();
         activeCallListenerRef.current = null;
+      }
+      if (navigateMainCleanup) {
+        navigateMainCleanup();
       }
     };
   }, [tab, session?.token, session?.role]);
@@ -2657,18 +2692,18 @@ function App() {
       document.body.appendChild(remoteAudioElRef.current);
     }
     remoteAudioElRef.current.srcObject = remoteAudioStream;
-    remoteAudioElRef.current.muted = false;
-    remoteAudioElRef.current.volume = callVolume / 100;
+    remoteAudioElRef.current.muted = callOutputMuted;
+    remoteAudioElRef.current.volume = callOutputMuted ? 0 : callVolume / 100;
     remoteAudioElRef.current.play().catch((err) => console.warn("[desktop] audio play failed", err));
 
     // keep gain node in sync
     if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = callVolume / 100;
+      gainNodeRef.current.gain.value = callOutputMuted ? 0 : callVolume / 100;
     }
     if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
       audioCtxRef.current.resume().catch(() => {});
     }
-  }, [remoteAudioStream, callVolume, callMuted]);
+  }, [remoteAudioStream, callVolume, callMuted, callOutputMuted]);
 
   useEffect(() => {
     if (session?.role === "host" && producerRef.current?.track) {
@@ -3172,10 +3207,6 @@ function App() {
                 <p className="muted small">Call ID: {activeCall.id}</p>
                 <p className="muted small">Started: {formatDateTime(activeCall.started_at)}</p>
               </div>
-              <div className="row-inline gap-sm">
-                <Button label="Copy ID" variant="ghost" onClick={() => copyToClipboard(activeCall.id)} />
-                <Button label="End Call" variant="danger" onClick={() => endCall(activeCall.id)} />
-              </div>
             </div>
           </div>
 
@@ -3376,32 +3407,53 @@ function App() {
           </div>
 
           <div className="card call-footer">
-            <button
-              className="icon-btn"
-              onClick={() => setShowAudioSettings(true)}
-              title="Audio settings"
-            >
-              <FiSettings />
-            </button>
-            <button
-              className={`mute-btn ${callMuted || hardwareMuted ? "muted" : "unmuted"}`}
-              onClick={() => setCallMuted((m) => !m)}
-              disabled={hardwareMuted}
-              title={hardwareMuted ? "Muted by hardware" : callMuted ? "Unmute" : "Mute"}
-            >
-              {callMuted || hardwareMuted ? <FiVolumeX /> : <FiVolume2 />}
-              <span>{hardwareMuted ? "Hardware Muted" : callMuted ? "Unmute" : "Mute"}</span>
-            </button>
-            <div className="volume-control">
-              <span className="muted small">Volume</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={callVolume}
-                onChange={(e) => setCallVolume(Number(e.target.value))}
-              />
-              <span className="muted small">{callVolume}%</span>
+            <div className="call-controls-group left">
+              <button className="control-chip" onClick={() => setShowAudioSettings(true)} title="Audio settings">
+                <FiSettings />
+                <span>Settings</span>
+              </button>
+            </div>
+
+            <div className="call-controls-group center">
+              <button
+                className={`call-control-btn ${callMuted || hardwareMuted ? "muted" : "mic-active"}`}
+                onClick={() => setCallMuted((m) => !m)}
+                disabled={hardwareMuted}
+                title={hardwareMuted ? "Muted by hardware" : callMuted ? "Unmute mic" : "Mute mic"}
+              >
+                <span className="call-control-icon">
+                  {callMuted || hardwareMuted ? <FiVolumeX /> : <FiVolume2 />}
+                </span>
+                <span className="call-control-label">{hardwareMuted ? "Hardware Muted" : callMuted ? "Unmute" : "Mute"}</span>
+              </button>
+              <div className="call-control-volume">
+                <span className="muted small">Output</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={callVolume}
+                  onChange={(e) => setCallVolume(Number(e.target.value))}
+                  disabled={callOutputMuted}
+                />
+                <span className="muted small">{callOutputMuted ? "Muted" : `${callVolume}%`}</span>
+                <button
+                  className={`volume-mute-toggle ${callOutputMuted ? "muted" : ""}`}
+                  onClick={() => setCallOutputMuted((m) => !m)}
+                  title={callOutputMuted ? "Unmute output" : "Mute output"}
+                >
+                  {callOutputMuted ? <FiVolumeX /> : <FiVolume2 />}
+                </button>
+              </div>
+            </div>
+
+            <div className="call-controls-group right">
+              <button className="call-control-btn danger" onClick={() => endCall(activeCall.id)}>
+                <span className="call-control-icon">
+                  <FiX />
+                </span>
+                <span className="call-control-label">End Call</span>
+              </button>
             </div>
           </div>
         </div>
@@ -3821,11 +3873,15 @@ function App() {
                             <div className="action-buttons">
                               <button
                                 className="action-btn view-btn"
-                                onClick={() => {
-                                  console.log("[View User] User data:", user);
-                                  console.log("[View User] Password:", user.password);
+                                onClick={async () => {
                                   setViewUser({ ...user });
                                   setShowViewUser(true);
+                                  setViewUserLoading(true);
+                                  const fullDetails = await fetchUserDetails(user.id);
+                                  if (fullDetails) {
+                                    setViewUser((prev) => ({ ...prev, ...fullDetails }));
+                                  }
+                                  setViewUserLoading(false);
                                 }}
                                 title="View"
                               >
@@ -4341,281 +4397,349 @@ function App() {
         };
 
         const hostSettings = (
-        <div className="stack gap-sm">
-          <div className="settings-grid two-col">
-            <div className="stack gap-sm">
-              <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <IoStar />
-                    <p className="muted strong">Membership</p>
-                  </div>
-                  <div className="row-inline between">
-                    <div className="row-inline gap-sm">
-                      <span className="pill">{membership.type}</span>
+          <div className="settings-container">
+            {/* <div className="settings-header">
+              <div>
+                <h2 className="settings-title">Settings</h2>
+                <p className="settings-subtitle">Manage your account and preferences</p>
+              </div>
+            </div> */}
+
+            <div className="settings-grid two-col settings-modern-grid">
+              <div className="stack gap-md">
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern membership-icon">
+                      <IoStar />
                     </div>
-                    <span className="muted small row-inline gap-xxs">
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 10,
-                          height: 10,
-                          borderRadius: "50%",
-                          backgroundColor: "#22c55e",
-                        }}
-                      />
-                      <span>Active</span>
-                    </span>
+                    <div>
+                      <h3 className="card-title-modern">Membership</h3>
+                      <p className="card-subtitle-modern">Your subscription plan</p>
+                    </div>
                   </div>
-                  <div className="row-inline between muted small">
-                    <span className="row-inline gap-xxs">
-                      <FiCalendar />
-                      <span>Start: {formatDateShort(membership.startDate)}</span>
-                    </span>
-                    <span className="row-inline gap-xxs">
-                      <FiCalendar />
-                      <span>End: {formatDateShort(membership.endDate)}</span>
-                    </span>
+                  <div className="card-content-modern">
+                    <div className="membership-badge-container">
+                      <span className="membership-badge premium">{membership.type}</span>
+                      <span className="status-indicator active">
+                        <span className="status-dot" />
+                        Active
+                      </span>
+                    </div>
+                    <div className="membership-dates">
+                      <div className="date-item">
+                        <FiCalendar />
+                        <div>
+                          <span className="date-label">Start Date</span>
+                          <span className="date-value">{formatDateShort(membership.startDate)}</span>
+                        </div>
+                      </div>
+                      <div className="date-item">
+                        <FiCalendar />
+                        <div>
+                          <span className="date-label">End Date</span>
+                          <span className="date-value">{formatDateShort(membership.endDate)}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <IoPersonCircleOutline />
-                    <p className="muted strong">Profile</p>
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern profile-icon">
+                      <IoPersonCircleOutline />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Profile</h3>
+                      <p className="card-subtitle-modern">Personal information</p>
+                    </div>
                   </div>
-                  <div className="profile-row">
-                    <div className="avatar-lg">
-                      {session.avatarUrl ? (
-                        <img 
-                          src={session.avatarUrl.startsWith('http') 
-                            ? session.avatarUrl 
-                            : `${API_BASE}${session.avatarUrl}`
-                          } 
-                          alt="avatar" 
-                        />
-                      ) : initials}
+                  <div className="card-content-modern">
+                    <div className="profile-section-modern">
+                      <div className="avatar-large-modern">
+                        {session.avatarUrl ? (
+                          <img
+                            src={session.avatarUrl.startsWith("http")
+                              ? session.avatarUrl
+                              : `${API_BASE}${session.avatarUrl}`
+                            }
+                            alt="avatar"
+                          />
+                        ) : (
+                          initials
+                        )}
+                      </div>
+                      <div className="profile-info-modern">
+                        <strong className="profile-name">{name}</strong>
+                        {/* <span className="profile-role">Host Account</span> */}
+                      </div>
                     </div>
-            <div className="stack gap-xxs">
-                      <strong>{name}</strong>
-                      <span className="muted small">{session.hostId}</span>
-                    </div>
+                    {/* <div className="profile-details">
+                      <div className="detail-row-modern">
+                        <span className="detail-label-modern">Host ID</span>
+                        <div className="detail-value-modern">
+                          <span className="host-id-value">{session.hostId}</span>
+                          <button
+                            className="copy-btn-icon"
+                            onClick={() => copyToClipboard(session.hostId || "")}
+                            title="Copy Host ID"
+                          >
+                            📋
+                          </button>
+                        </div>
+                      </div>
+                    </div> */}
                     <Button label="Edit profile" variant="secondary" onClick={openEditProfileModal} />
                   </div>
-                  <div className="info-row">
+                </div>
+
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern appearance-icon">
+                      <IoColorPaletteOutline />
+                    </div>
                     <div>
-                      <span className="muted small">Host ID</span>
-                      <div className="row-inline">
-                        <strong>{session.hostId}</strong>
-                        <button className="linklike" onClick={() => copyToClipboard(session.hostId || "")}>Copy</button>
-                      </div>
+                      <h3 className="card-title-modern">Appearance</h3>
+                      <p className="card-subtitle-modern">Customize your theme</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    <div className="theme-buttons-modern">
+                      <button
+                        className={`theme-btn ${theme === "light" ? "active" : ""}`}
+                        onClick={() => setTheme("light")}
+                      >
+                        <FiSun />
+                        <span>Light</span>
+                      </button>
+                      <button
+                        className={`theme-btn ${theme === "system" ? "active" : ""}`}
+                        onClick={() => setTheme("system")}
+                      >
+                        <FiSmartphone />
+                        <span>System</span>
+                      </button>
+                      <button
+                        className={`theme-btn ${theme === "dark" ? "active" : ""}`}
+                        onClick={() => setTheme("dark")}
+                      >
+                        <FiMoon />
+                        <span>Dark</span>
+                      </button>
                     </div>
                   </div>
                 </div>
 
-                <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <IoColorPaletteOutline />
-                    <p className="muted strong">Appearance</p>
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern call-icon">
+                      <FiPhoneCall />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Call Customization</h3>
+                      <p className="card-subtitle-modern">Background image settings</p>
+                    </div>
                   </div>
-                  <div className="row-inline theme-buttons">
-                    <Button
-                      label="Light"
-                      variant={theme === "light" ? "secondary" : "ghost"}
-                      onClick={() => setTheme("light")}
-                      icon={<FiSun />}
+                  <div className="card-content-modern">
+                    {callBackgroundUrl ? (
+                      <div className="background-section">
+                        <div className="background-preview-modern">
+                          <img src={`${API_BASE}${callBackgroundUrl}`} alt="Call background" />
+                          <div className="background-overlay">
+                            <span className="preview-label">Current Background</span>
+                          </div>
+                        </div>
+                        <div className="background-actions">
+                          <Button
+                            label="Gallery"
+                            variant="secondary"
+                            onClick={() => setShowBackgroundGallery(true)}
+                          />
+                          <Button
+                            label={uploadingBackground ? "Uploading..." : "Upload New"}
+                            variant="secondary"
+                            onClick={handleBackgroundClick}
+                            disabled={uploadingBackground}
+                          />
+                          <Button label="Remove" variant="danger" onClick={handleRemoveBackground} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="background-section">
+                        <div className="background-empty">
+                          <div className="empty-background-icon">🖼️</div>
+                          <p>No background set</p>
+                        </div>
+                        <div className="background-actions">
+                          <Button
+                            label="Choose from Gallery"
+                            variant="secondary"
+                            onClick={() => setShowBackgroundGallery(true)}
+                          />
+                          <Button
+                            label={uploadingBackground ? "Uploading..." : "Upload Custom"}
+                            variant="secondary"
+                            onClick={handleBackgroundClick}
+                            disabled={uploadingBackground}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <input
+                      ref={backgroundInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      onChange={handleBackgroundFile}
                     />
-                    <Button
-                      label="System"
-                      variant={theme === "system" ? "secondary" : "ghost"}
-                      onClick={() => setTheme("system")}
-                      icon={<FiSmartphone />}
-                    />
-                    <Button
-                      label="Dark"
-                      variant={theme === "dark" ? "secondary" : "ghost"}
-                      onClick={() => setTheme("dark")}
-                      icon={<FiMoon />}
-                    />
+                    <p className="hint-text">Recommended: 16:9 aspect ratio, 1920x1080px</p>
                   </div>
                 </div>
 
-                <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <FiPhoneCall />
-                    <p className="muted strong">Call Customization</p>
-                  </div>
-                  <div className="stack gap-xxs">
-                    <strong>Call Background Image</strong>
-                    <span className="muted small">Set a background image for your active call screen</span>
-                  </div>
-                  {callBackgroundUrl ? (
-                    <div className="stack gap-sm">
-                      <div className="background-preview" style={{ position: 'relative', width: '100%', height: '180px', borderRadius: '12px', overflow: 'hidden' }}>
-                        <img 
-                          src={`${API_BASE}${callBackgroundUrl}`} 
-                          alt="Call background" 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        />
-                      </div>
-                      <div className="row-inline gap-sm">
-                        <Button 
-                          label="Gallery" 
-                          variant="secondary" 
-                          onClick={() => setShowBackgroundGallery(true)}
-                        />
-                        <Button 
-                          label={uploadingBackground ? "Uploading..." : "Upload Custom"} 
-                          variant="secondary" 
-                          onClick={handleBackgroundClick}
-                          disabled={uploadingBackground}
-                        />
-                        <Button 
-                          label="Remove" 
-                          variant="danger" 
-                          onClick={handleRemoveBackground}
-                        />
-                      </div>
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern danger-icon">
+                      <IoLogOutOutline />
                     </div>
-                  ) : (
-                    <div className="stack gap-sm">
-                      <Button 
-                        label="Choose from Gallery" 
-                        variant="secondary" 
-                        onClick={() => setShowBackgroundGallery(true)}
-                      />
-                      <div className="divider-text">
-                        <span className="muted small">or</span>
-                      </div>
-                      <Button 
-                        label={uploadingBackground ? "Uploading..." : "Upload Custom Image"} 
-                        variant="secondary" 
-                        onClick={handleBackgroundClick}
-                        disabled={uploadingBackground}
-                      />
+                    <div>
+                      <h3 className="card-title-modern">Account</h3>
+                      <p className="card-subtitle-modern">Sign out of your account</p>
                     </div>
-                  )}
-                  <input
-                    ref={backgroundInputRef}
-                    type="file"
-                    accept="image/*"
-                    style={{ display: "none" }}
-                    onChange={handleBackgroundFile}
-                  />
-                  <p className="muted small">Recommended: 16:9 aspect ratio, 1920x1080px</p>
-                </div>
-
-                <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <IoLogOutOutline />
-                    <p className="muted strong">Account</p>
                   </div>
-                  <Button label="Log out" variant="danger" onClick={() => setShowLogoutConfirm(true)} />
+                  <div className="card-content-modern">
+                    <Button label="Log out" variant="danger" onClick={() => setShowLogoutConfirm(true)} />
+                  </div>
                 </div>
               </div>
 
-              <div className="stack gap-sm">
-                <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <IoShieldCheckmarkOutline />
-                    <p className="muted strong">Security</p>
+              <div className="stack gap-md">
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern security-icon">
+                      <IoShieldCheckmarkOutline />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Security</h3>
+                      <p className="card-subtitle-modern">Protect your account</p>
+                    </div>
                   </div>
-                  <div className="row-inline">
+                  <div className="card-content-modern">
                     <Button label="Change Password" variant="secondary" onClick={() => setShowChangePassword(true)} />
-                  </div>
-                  <p className="muted small">Secure your account with a new password.</p>
-                  <button 
-                    className="security-option-btn"
-                    onClick={() => {
-                      loadTwoFactorSettings();
-                      setShowTwoFactorSettings(true);
-                    }}
-                  >
-                    <div className="stack gap-xxs">
-                      <strong>Two-Factor Authentication</strong>
-                      <span className="muted small">
-                        {twoFactorEnabled ? "Manage your 2FA methods" : "Add extra security to your account"}
-                      </span>
-                    </div>
-                    <div className="row-inline gap-sm align-center">
-                      {twoFactorEnabled && (
-                        <span className="status-enabled" style={{ fontSize: '13px' }}>Enabled</span>
-                      )}
-                      <FiChevronRight />
-                    </div>
-                  </button>
-                </div>
-
-                <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <IoNotificationsOutline />
-                    <p className="muted strong">Updates</p>
-                  </div>
-                  <div className="row-inline between">
-                    <div className="stack gap-xxs">
-                      <strong>App Notifications</strong>
-                      <span className="muted small">Enable notifications for calls and updates.</span>
-                    </div>
-                    <ToggleSwitch checked={notificationsEnabled} onToggle={() => setNotificationsEnabled((v) => !v)} />
-                  </div>
-                </div>
-
-                <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <IoLockClosedOutline />
-                    <p className="muted strong">Privacy</p>
-                  </div>
-                  <div className="row-inline between">
-                    <div className="stack gap-xxs">
-                      <strong>Device Lock</strong>
-                      <span className="muted small">
-                        {biometricSupport?.available 
-                          ? `Require ${biometricSupport.type === "touchid" ? "Touch ID" : "biometric"} or password when opening the app.`
-                          : "Require password when opening the app."}
-                      </span>
-                      {biometricSupport?.available && (
-                        <span className="muted small" style={{ color: "#22c55e" }}>
-                          ✓ {biometricSupport.type === "touchid" ? "Touch ID" : "Biometric"} available
+                    <div
+                      className="security-option-modern"
+                      onClick={() => {
+                        loadTwoFactorSettings();
+                        setShowTwoFactorSettings(true);
+                      }}
+                    >
+                      <div className="security-option-content">
+                        <strong>Two-Factor Authentication</strong>
+                        <span className="option-hint">
+                          {twoFactorEnabled ? "Manage your 2FA methods" : "Add extra security to your account"}
                         </span>
-                      )}
+                      </div>
+                      <div className="security-option-end">
+                        {twoFactorEnabled && <span className="status-badge-small enabled">Enabled</span>}
+                        <FiChevronRight />
+                      </div>
                     </div>
-                    <ToggleSwitch checked={deviceLockEnabled} onToggle={handleToggleDeviceLock} />
                   </div>
-                  <div className="row-inline between">
-                    <div className="stack gap-xxs">
-                      <strong>One User, One Device</strong>
-                      <span className="muted small">Restrict users to one device at a time. New logins require approval.</span>
-                    </div>
-                    <ToggleSwitch checked={oneDeviceOnly} onToggle={handleToggleUserSingleDevice} />
-                  </div>
-                  <div className="row-inline between">
-                    <div className="stack gap-xxs">
-                      <strong>Concurrent Sessions</strong>
-                      <span className="muted small">Allow multiple logins per user.</span>
-                    </div>
-                    <ToggleSwitch checked={allowMultipleSessions} onToggle={handleToggleMultipleSessions} />
-                  </div>
-                <div className="row-inline between">
-                  <div className="stack gap-xxs">
-                    <strong>Logged-in Devices</strong>
-                    <span className="muted small">View and log out active devices.</span>
-                  </div>
-                  <button className="linklike" onClick={openSessions}>View devices</button>
-                </div>
                 </div>
 
-                <div className="card stack gap-sm">
-                  <div className="row-inline gap-xxs align-center">
-                    <IoInformationCircleOutline />
-                    <p className="muted strong">App Information</p>
-                  </div>
-                  <div className="info-row">
-                    <div>
-                      <span className="muted small">Version</span>
-                      <strong>1.0.0</strong>
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern notifications-icon">
+                      <IoNotificationsOutline />
                     </div>
                     <div>
-                      <span className="muted small">Role</span>
-                      <strong>Host</strong>
+                      <h3 className="card-title-modern">Notifications</h3>
+                      <p className="card-subtitle-modern">Manage your alerts</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    <div className="toggle-row-modern">
+                      <div className="toggle-info">
+                        <strong>App Notifications</strong>
+                        <span className="toggle-hint">Get notified about calls and updates</span>
+                      </div>
+                      <ToggleSwitch checked={notificationsEnabled} onToggle={() => setNotificationsEnabled((v) => !v)} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern privacy-icon">
+                      <IoLockClosedOutline />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Privacy</h3>
+                      <p className="card-subtitle-modern">Security preferences</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    <div className="toggle-row-modern">
+                      <div className="toggle-info">
+                        <strong>Device Lock</strong>
+                        <span className="toggle-hint">
+                          {biometricSupport?.available
+                            ? `Require ${biometricSupport.type === "touchid" ? "Touch ID" : "biometric"} to open app`
+                            : "Require password to open app"}
+                        </span>
+                        {biometricSupport?.available && (
+                          <span className="toggle-status success">
+                            ✓ {biometricSupport.type === "touchid" ? "Touch ID" : "Biometric"} available
+                          </span>
+                        )}
+                      </div>
+                      <ToggleSwitch checked={deviceLockEnabled} onToggle={handleToggleDeviceLock} />
+                    </div>
+                    <div className="toggle-row-modern">
+                      <div className="toggle-info">
+                        <strong>One User, One Device</strong>
+                        <span className="toggle-hint">Restrict users to single device login</span>
+                      </div>
+                      <ToggleSwitch checked={oneDeviceOnly} onToggle={handleToggleUserSingleDevice} />
+                    </div>
+                    <div className="toggle-row-modern">
+                      <div className="toggle-info">
+                        <strong>Concurrent Sessions</strong>
+                        <span className="toggle-hint">Allow multiple simultaneous logins</span>
+                      </div>
+                      <ToggleSwitch checked={allowMultipleSessions} onToggle={handleToggleMultipleSessions} />
+                    </div>
+                    <div className="toggle-row-modern">
+                      <div className="toggle-info">
+                        <strong>Logged-in Devices</strong>
+                        <span className="toggle-hint">View and manage active sessions</span>
+                      </div>
+                      <button className="link-btn-modern" onClick={openSessions}>
+                        View devices →
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern info-icon">
+                      <IoInformationCircleOutline />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">App Information</h3>
+                      <p className="card-subtitle-modern">Version and details</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    <div className="info-grid-modern">
+                      <div className="info-item-modern">
+                        <span className="info-label-modern">Version</span>
+                        <strong className="info-value-modern">1.0.0</strong>
+                      </div>
+                      <div className="info-item-modern">
+                        <span className="info-label-modern">Role</span>
+                        <strong className="info-value-modern">Host</strong>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -4625,147 +4749,257 @@ function App() {
         );
 
         const userSettings = (
-        <div className="stack gap-sm">
-          <div className="settings-grid two-col">
-            <div className="stack gap-sm">
-              <div className="card stack gap-sm">
-                <p className="muted strong">Profile</p>
-                <div className="profile-row">
-                  <div className="avatar-lg">
-                    {session.avatarUrl ? (
-                      <img 
-                        src={session.avatarUrl.startsWith('http') 
-                          ? session.avatarUrl 
-                          : `${API_BASE}${session.avatarUrl}`
-                        } 
-                        alt="avatar" 
-                      />
-                    ) : initials}
-                  </div>
-                  <div className="stack gap-xxs">
-                    <strong>{name}</strong>
-                    <span className="muted small">ID: {userId}</span>
-                  </div>
-                  <Button label="Edit picture" variant="secondary" onClick={handleAvatarClick} />
-                </div>
-                <input
-                  ref={avatarInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={handleAvatarFile}
-                />
-                <div className="info-row">
-                  <div>
-                    <span className="muted small">User ID</span>
-                    <div className="row-inline">
-                      <strong>{userId}</strong>
-                      <button className="linklike" onClick={() => copyToClipboard(userId)}>Copy</button>
-                    </div>
-                  </div>
-                    {session.role === "user" ? (
-                  <div>
-                    <span className="muted small">Password</span>
-                    <div className="row-inline">
-                          <strong>{session.password || "Not available"}</strong>
-                      <button
-                        className="linklike"
-                        onClick={() => session.password && copyToClipboard(session.password)}
-                        disabled={!session.password}
-                      >
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-                    ) : null}
-                </div>
-              </div>
-
-              <div className="card stack gap-sm">
-                <p className="muted strong">Call Customization</p>
-                <div className="stack gap-xxs">
-                  <strong>Call Background Image</strong>
-                  <span className="muted small">Set a background image for your active call screen</span>
-                </div>
-                {callBackgroundUrl ? (
-                  <div className="stack gap-sm">
-                    <div className="background-preview" style={{ position: 'relative', width: '100%', height: '180px', borderRadius: '12px', overflow: 'hidden' }}>
-                      <img 
-                        src={`${API_BASE}${callBackgroundUrl}`} 
-                        alt="Call background" 
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      />
-                    </div>
-                    <div className="row-inline gap-sm">
-                      <Button 
-                        label="Gallery" 
-                        variant="secondary" 
-                        onClick={() => setShowBackgroundGallery(true)}
-                      />
-                      <Button 
-                        label={uploadingBackground ? "Uploading..." : "Upload Custom"} 
-                        variant="secondary" 
-                        onClick={handleBackgroundClick}
-                        disabled={uploadingBackground}
-                      />
-                      <Button 
-                        label="Remove" 
-                        variant="danger" 
-                        onClick={handleRemoveBackground}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="stack gap-sm">
-                    <Button 
-                      label="Choose from Gallery" 
-                      variant="secondary" 
-                      onClick={() => setShowBackgroundGallery(true)}
-                    />
-                    <div className="divider-text">
-                      <span className="muted small">or</span>
-                    </div>
-                    <Button 
-                      label={uploadingBackground ? "Uploading..." : "Upload Custom Image"} 
-                      variant="secondary" 
-                      onClick={handleBackgroundClick}
-                      disabled={uploadingBackground}
-                    />
-                  </div>
-                )}
-                <input
-                  ref={backgroundInputRef}
-                  type="file"
-                  accept="image/*"
-                  style={{ display: "none" }}
-                  onChange={handleBackgroundFile}
-                />
-                <p className="muted small">Recommended: 16:9 aspect ratio, 1920x1080px</p>
+          <div className="settings-container">
+            <div className="settings-header">
+              <div>
+                <h2 className="settings-title">Settings</h2>
+                <p className="settings-subtitle">Personalize your experience</p>
               </div>
             </div>
 
-            <div className="stack gap-sm">
-              <div className="card stack gap-sm">
-                <p className="muted strong">Theme</p>
-                <div className="row-inline theme-buttons">
-                  <Button label="Light" variant={theme === "light" ? "secondary" : "ghost"} onClick={() => setTheme("light")} />
-                  <Button label="System" variant={theme === "system" ? "secondary" : "ghost"} onClick={() => setTheme("system")} />
-                  <Button label="Dark" variant={theme === "dark" ? "secondary" : "ghost"} onClick={() => setTheme("dark")} />
+            <div className="settings-grid two-col settings-modern-grid">
+              <div className="stack gap-md">
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern profile-icon">
+                      <IoPersonCircleOutline />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Profile</h3>
+                      <p className="card-subtitle-modern">Personal information</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    <div className="profile-section-modern">
+                      <div className="avatar-large-modern">
+                        {session.avatarUrl ? (
+                          <img
+                            src={session.avatarUrl.startsWith("http")
+                              ? session.avatarUrl
+                              : `${API_BASE}${session.avatarUrl}`
+                            }
+                            alt="avatar"
+                          />
+                        ) : (
+                          initials
+                        )}
+                      </div>
+                      <div className="profile-info-modern">
+                        <strong className="profile-name">{name}</strong>
+                        <span className="profile-role">User Account</span>
+                      </div>
+                      <Button label="Edit picture" variant="secondary" onClick={handleAvatarClick} />
+                    </div>
+                    <input
+                      ref={avatarInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      onChange={handleAvatarFile}
+                    />
+                    <div className="profile-details">
+                      <div className="detail-row-modern">
+                        <span className="detail-label-modern">User ID</span>
+                        <div className="detail-value-modern">
+                          <span className="host-id-value">{userId}</span>
+                          <button className="copy-btn-icon" onClick={() => copyToClipboard(userId)} title="Copy User ID">
+                            📋
+                          </button>
+                        </div>
+                      </div>
+                      {session.role === "user" && (
+                        <div className="detail-row-modern">
+                          <span className="detail-label-modern">Password</span>
+                          <div className="detail-value-modern">
+                            <span className="host-id-value">{session.password || "Not available"}</span>
+                            <button
+                              className="copy-btn-icon"
+                              onClick={() => session.password && copyToClipboard(session.password)}
+                              disabled={!session.password}
+                              title="Copy Password"
+                            >
+                              📋
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern call-icon">
+                      <FiPhoneCall />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Call Customization</h3>
+                      <p className="card-subtitle-modern">Background image settings</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    {callBackgroundUrl ? (
+                      <div className="background-section">
+                        <div className="background-preview-modern">
+                          <img src={`${API_BASE}${callBackgroundUrl}`} alt="Call background" />
+                          <div className="background-overlay">
+                            <span className="preview-label">Current Background</span>
+                          </div>
+                        </div>
+                        <div className="background-actions">
+                          <Button
+                            label="Gallery"
+                            variant="secondary"
+                            onClick={() => setShowBackgroundGallery(true)}
+                          />
+                          <Button
+                            label={uploadingBackground ? "Uploading..." : "Upload New"}
+                            variant="secondary"
+                            onClick={handleBackgroundClick}
+                            disabled={uploadingBackground}
+                          />
+                          <Button label="Remove" variant="danger" onClick={handleRemoveBackground} />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="background-section">
+                        <div className="background-empty">
+                          <div className="empty-background-icon">🖼️</div>
+                          <p>No background set</p>
+                        </div>
+                        <div className="background-actions">
+                          <Button
+                            label="Choose from Gallery"
+                            variant="secondary"
+                            onClick={() => setShowBackgroundGallery(true)}
+                          />
+                          <Button
+                            label={uploadingBackground ? "Uploading..." : "Upload Custom"}
+                            variant="secondary"
+                            onClick={handleBackgroundClick}
+                            disabled={uploadingBackground}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <input
+                      ref={backgroundInputRef}
+                      type="file"
+                      accept="image/*"
+                      style={{ display: "none" }}
+                      onChange={handleBackgroundFile}
+                    />
+                    <p className="hint-text">Recommended: 16:9 aspect ratio, 1920x1080px</p>
+                  </div>
                 </div>
               </div>
 
-              <div className="card stack gap-sm">
-                <p className="muted strong">Support</p>
-                <p className="muted small">Need help? Contact us and we’ll get back to you.</p>
-                <div className="row-inline">
-                  <Button label="Open ticket" variant="secondary" />
-                  <Button label="Chat" variant="ghost" />
+              <div className="stack gap-md">
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern appearance-icon">
+                      <IoColorPaletteOutline />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Theme</h3>
+                      <p className="card-subtitle-modern">Choose your style</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    <div className="theme-buttons-modern">
+                      <button
+                        className={`theme-btn ${theme === "light" ? "active" : ""}`}
+                        onClick={() => setTheme("light")}
+                      >
+                        <FiSun />
+                        <span>Light</span>
+                      </button>
+                      <button
+                        className={`theme-btn ${theme === "system" ? "active" : ""}`}
+                        onClick={() => setTheme("system")}
+                      >
+                        <FiSmartphone />
+                        <span>System</span>
+                      </button>
+                      <button
+                        className={`theme-btn ${theme === "dark" ? "active" : ""}`}
+                        onClick={() => setTheme("dark")}
+                      >
+                        <FiMoon />
+                        <span>Dark</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern privacy-icon">
+                      <IoLockClosedOutline />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Privacy</h3>
+                      <p className="card-subtitle-modern">Security preferences</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    <div className="toggle-row-modern">
+                      <div className="toggle-info">
+                        <strong>Device Lock</strong>
+                        <span className="toggle-hint">
+                          {biometricSupport?.available
+                            ? `Require ${biometricSupport.type === "touchid" ? "Touch ID" : "biometric"} to open app`
+                            : "Require password to open app"}
+                        </span>
+                        {biometricSupport?.available && (
+                          <span className="toggle-status success">
+                            ✓ {biometricSupport.type === "touchid" ? "Touch ID" : "Biometric"} available
+                          </span>
+                        )}
+                      </div>
+                      <ToggleSwitch checked={deviceLockEnabled} onToggle={handleToggleDeviceLock} />
+                    </div>
+                    <div className="toggle-row-modern">
+                      <div className="toggle-info">
+                        <strong>One User, One Device</strong>
+                        <span className="toggle-hint">Restrict users to single device login</span>
+                      </div>
+                      <ToggleSwitch checked={oneDeviceOnly} onToggle={handleToggleUserSingleDevice} />
+                    </div>
+                    <div className="toggle-row-modern">
+                      <div className="toggle-info">
+                        <strong>Concurrent Sessions</strong>
+                        <span className="toggle-hint">Allow multiple simultaneous logins</span>
+                      </div>
+                      <ToggleSwitch checked={allowMultipleSessions} onToggle={handleToggleMultipleSessions} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="settings-card modern-card">
+                  <div className="card-header-modern">
+                    <div className="card-icon-modern info-icon">
+                      <IoInformationCircleOutline />
+                    </div>
+                    <div>
+                      <h3 className="card-title-modern">Support</h3>
+                      <p className="card-subtitle-modern">Get help when you need it</p>
+                    </div>
+                  </div>
+                  <div className="card-content-modern">
+                    <p className="support-text">Need help? Contact us and we’ll get back to you.</p>
+                    <div className="row-inline">
+                      <Button label="Open ticket" variant="secondary" />
+                      <Button label="Chat" variant="ghost" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      );
+        );
+
+
 
         return session.role === "host" ? hostSettings : userSettings;
       }
@@ -5196,13 +5430,9 @@ function App() {
                 <div className="user-detail-row">
                   <span className="detail-label">Password</span>
                   <div className="detail-value-with-action">
-                    {(() => {
-                      console.log("[View Modal] viewUser:", viewUser);
-                      console.log("[View Modal] Password value:", viewUser.password);
-                      console.log("[View Modal] Password type:", typeof viewUser.password);
-                      return null;
-                    })()}
-                    {viewUser.password ? (
+                    {viewUserLoading ? (
+                      <span className="detail-value-mono">Loading...</span>
+                    ) : viewUser.password ? (
                       <>
                         <span className="detail-value-mono">{viewUser.password}</span>
                         <button className="copy-btn-small" onClick={() => copyToClipboard(viewUser.password!)} title="Copy Password">
@@ -5212,7 +5442,7 @@ function App() {
                     ) : (
                       <>
                         <span className="detail-value-mono password-hidden">••••••••</span>
-                        <span className="password-note">Not available (password: {String(viewUser.password)})</span>
+                        <span className="password-note">Not available</span>
                       </>
                     )}
                   </div>
@@ -6020,6 +6250,15 @@ function App() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Output Mute */}
+              <div className="row-inline between" style={{ padding: "10px 0" }}>
+                <div className="stack gap-xxs">
+                  <strong>Mute Output Audio</strong>
+                  <span className="muted small">Completely silence audio on the host side</span>
+                </div>
+                <ToggleSwitch checked={callOutputMuted} onToggle={() => setCallOutputMuted((m) => !m)} />
               </div>
 
               {/* Info about automatic switching */}

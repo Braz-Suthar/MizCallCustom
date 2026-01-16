@@ -37,7 +37,9 @@ declare global {
       requestHostPasswordOtp?: (identifier: string) => Promise<{ ok: boolean; hostId: string; email?: string }>;
       resetHostPassword?: (payload: { hostId: string; otp: string; newPassword: string }) => Promise<{ ok: boolean }>;
       openActiveCallWindow?: (payload: any) => void;
+    closeActiveCallWindow?: () => void;
       onActiveCallContext?: (cb: (data: any) => void) => () => void;
+    onNavigateMain?: (cb: (data: any) => void) => () => void;
       openSystemSettings?: (type: "microphone" | "camera") => void;
       checkBiometricSupport?: () => Promise<{
         available: boolean;

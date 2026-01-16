@@ -66,6 +66,9 @@ async function requestMicrophonePermission() {
   return true;
 }
 
+let mainWindow = null;
+let callWindow = null;
+
 const createWindow = (opts = {}) => {
   const win = new BrowserWindow({
     width: 1100,
@@ -256,24 +259,49 @@ app.whenReady().then(async () => {
     }
   });
   
-  createWindow();
+  mainWindow = createWindow();
 
   ipcMain.on("open-active-call-window", (_event, payload) => {
-    const callWin = createWindow({ 
+    if (callWindow && !callWindow.isDestroyed()) {
+      callWindow.focus();
+      callWindow.webContents.send("active-call-context", payload);
+      return;
+    }
+    callWindow = createWindow({ 
       width: 1280, 
       height: 800, 
       minWidth: 900,
       minHeight: 600,
       title: "MizCall - Active Call" 
     });
-    callWin.webContents.once("did-finish-load", () => {
-      callWin.webContents.send("active-call-context", payload);
+    callWindow.on("closed", () => {
+      callWindow = null;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("navigate-main", { tab: "dashboard" });
+        mainWindow.show();
+        mainWindow.focus();
+      }
     });
+    callWindow.webContents.once("did-finish-load", () => {
+      callWindow.webContents.send("active-call-context", payload);
+    });
+  });
+
+  ipcMain.on("close-active-call-window", () => {
+    if (callWindow && !callWindow.isDestroyed()) {
+      callWindow.close();
+      callWindow = null;
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("navigate-main", { tab: "dashboard" });
+      mainWindow.show();
+      mainWindow.focus();
+    }
   });
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      mainWindow = createWindow();
     }
   });
 });

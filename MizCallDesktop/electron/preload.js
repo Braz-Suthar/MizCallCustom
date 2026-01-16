@@ -105,10 +105,18 @@ const bridge = {
   openActiveCallWindow(payload) {
     ipcRenderer.send("open-active-call-window", payload);
   },
+  closeActiveCallWindow() {
+    ipcRenderer.send("close-active-call-window");
+  },
   onActiveCallContext(cb) {
     const listener = (_event, data) => cb?.(data);
     ipcRenderer.on("active-call-context", listener);
     return () => ipcRenderer.removeListener("active-call-context", listener);
+  },
+  onNavigateMain(cb) {
+    const listener = (_event, data) => cb?.(data);
+    ipcRenderer.on("navigate-main", listener);
+    return () => ipcRenderer.removeListener("navigate-main", listener);
   },
   // New: Open system settings for permissions
   openSystemSettings(type) {
