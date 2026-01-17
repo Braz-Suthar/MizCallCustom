@@ -21,6 +21,10 @@
     "win": {
       "target": [
         {
+          "target": "appx",
+          "arch": ["x64"]
+        },
+        {
           "target": "nsis",
           "arch": [
             "x64",
@@ -38,7 +42,20 @@
         }
       ],
       "icon": "assets/Icons512/Group 6.ico",
-      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-Windows-${arch}.${ext}",
+      "publisherName": "CN=9EAC33C0-82DB-4E49-871F-C85D726D865E",
+      "applicationId": "MizCall.MizCall",
+      "identityName": "MizCall.MizCall",
+      "publisher": "CN=9EAC33C0-82DB-4E49-871F-C85D726D865E"
+    },
+    "appx": {
+      "applicationId": "MizCall",
+      "identityName": "MizCall.MizCall",
+      "publisher": "CN=9EAC33C0-82DB-4E49-871F-C85D726D865E",
+      "publisherDisplayName": "MizCall",
+      "backgroundColor": "#FFFFFF",
+      "showNameOnTiles": true,
+      "languages": ["en-US"]
     },
     "nsis": {
       "oneClick": false,
@@ -51,7 +68,8 @@
       "installerIcon": "assets/Icons512/Group 6.ico",
       "uninstallerIcon": "assets/Icons512/Group 6.ico",
       "installerHeaderIcon": "assets/Icons512/Group 6.ico",
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": false
     },
     "portable": {
       "artifactName": "${productName}-${version}-Windows-Portable.exe"
@@ -93,6 +111,7 @@
     "build": "vite build",
     "build:win": "npm run build && electron-builder --win --x64",
     "build:win-nsis": "npm run build && electron-builder --win nsis --x64",
+    "build:msstore": "npm run build && electron-builder --win appx --x64",
     "build:mac": "npm run build && electron-builder --mac",
     "build:linux": "npm run build && electron-builder --linux",
     "build:all": "npm run build && electron-builder -mwl",
